@@ -12,7 +12,6 @@ home screen, where it gets its own app icon.
 | | |
 |---|---|
 | ⚾ All Live Baseball | [Open](https://cmadisons.github.io/all-live-baseball/) |
-| 🛰️ GPS V.2 | [Open](https://cmadisons.github.io/gps/) |
 | 📞 Reach | [Open](https://cmadisons.github.io/reach/) |
 
 **Games**
