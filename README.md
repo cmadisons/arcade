@@ -34,6 +34,7 @@ home screen, where it gets its own app icon.
 | 🌀 Random Teleport | [Code](https://github.com/cmadisons/random-teleport) |
 | 🧪 Example Mod | [Code](https://github.com/cmadisons/example-mod) |
 | 🗡️ Zelda Mod | [Code](https://github.com/cmadisons/zelda-mod) |
+| 🏝️ Sky Blocks Mod | [Code](https://github.com/cmadisons/skyblock-mod) |
 
 ## Install it as an app
 
