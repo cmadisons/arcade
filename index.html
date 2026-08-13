@@ -1,4 +1,25 @@
 <!doctype html>
+<!--
+  ==============================================================
+  Starbr0 Arcade — the public front page, installable as an app.
+  ==============================================================
+
+  Two kinds of link in here, on purpose
+  -------------------------------------
+  Anything published sits on GitHub Pages, so those tiles use the full
+  https://cmadisons.github.io/... address and work for anyone who opens
+  the page.
+
+  The newer apps (Darts Counter) aren't pushed
+  anywhere yet, so those tiles use a relative ../name/ path instead.
+  That happens to work in both places: from this file it lands on the
+  folder next door, and from cmadisons.github.io/arcade/ it lands on
+  cmadisons.github.io/name/ — so once those repos exist, nothing here
+  needs changing.
+
+  The manifest + icons make this installable to a phone home screen or
+  the Dock, which is why the theme-color and apple- meta tags are here.
+-->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -150,6 +171,34 @@
         <span class="label">
           <span class="name">Reach</span>
           <span class="sub">Email, call, and keep the whole conversation</span>
+        </span>
+      </a>
+      <a class="tile" target="_blank" rel="noopener" href="../lego-pic/index.html">
+        <span class="emoji" aria-hidden="true">🧱</span>
+        <span class="label">
+          <span class="name">LEGO Pic</span>
+          <span class="sub">Turn any photo into LEGO bricks</span>
+        </span>
+      </a>
+      <a class="tile" target="_blank" rel="noopener" href="../darts-counter/index.html">
+        <span class="emoji" aria-hidden="true">🎯</span>
+        <span class="label">
+          <span class="name">Darts Counter</span>
+          <span class="sub">101, 301 or 501 — tap where you hit</span>
+        </span>
+      </a>
+      <a class="tile" target="_blank" rel="noopener" href="../links/index.html">
+        <span class="emoji" aria-hidden="true">🔗</span>
+        <span class="label">
+          <span class="name">Links</span>
+          <span class="sub">The address for every app, ready to share</span>
+        </span>
+      </a>
+      <a class="tile" target="_blank" rel="noopener" href="../walk-up-songs/index.html">
+        <span class="emoji" aria-hidden="true">🎵</span>
+        <span class="label">
+          <span class="name">Walk Up Songs</span>
+          <span class="sub">Every player and what they walk up to</span>
         </span>
       </a>
     </div>
