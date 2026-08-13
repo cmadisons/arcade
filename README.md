@@ -13,6 +13,7 @@ home screen, where it gets its own app icon.
 |---|---|
 | ⚾ All Live Baseball | [Open](https://cmadisons.github.io/all-live-baseball/) |
 | 📞 Reach | [Open](https://cmadisons.github.io/reach/) |
+| 🐾 Animal Pictures | [Open](https://cmadisons.github.io/animal-pictures/) |
 
 **Games**
 
