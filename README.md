@@ -35,6 +35,7 @@ home screen, where it gets its own app icon.
 | 🧪 Example Mod | [Code](https://github.com/cmadisons/example-mod) |
 | 🗡️ Zelda Mod | [Code](https://github.com/cmadisons/zelda-mod) |
 | 🏝️ Sky Blocks Mod | [Code](https://github.com/cmadisons/skyblock-mod) |
+| 🚀 Ship Life | [Code](https://github.com/cmadisons/ship-life) |
 
 ## Install it as an app
 
