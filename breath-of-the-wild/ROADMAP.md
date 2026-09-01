@@ -7,16 +7,17 @@ Tick items off as they land.
 
 ## Phase 1 — felt every second of play
 
-- [ ] **1. Animation** — a real skeletal system with authored poses.
-      Right now everything is rigid boxes rotating. This is the single biggest
-      improvement per second of playtime, and every character, enemy, NPC and
-      boss inherits it. It is also a foundation: building it later means
-      redoing the work.
-- [ ] **2. Art pass 2** — proper character, enemy and building models on top of
-      that skeleton. Pairs naturally with #1; doing them together avoids
-      modelling everything twice.
-- [ ] **3. Music** — a real multi-instrument score with per-region themes.
-      Cheap to build, and you hear it constantly.
+- [x] **1. Animation** — a real skeletal system with authored poses. **Done.**
+      Bone trees, 49 hand-authored keyframe clips, cross-fading and additive
+      layers. Every character, enemy, NPC, mount and boss is driven by it.
+- [x] **2. Art pass 2** — proper character, enemy and building models on top of
+      that skeleton. **Done.** One parameterised humanoid factory feeds thirteen
+      enemy species and six villager races; each region has its own architecture.
+- [x] **3. Music** — a real multi-instrument score with per-region themes.
+      **Done.** Nine instruments, 28 themes, look-ahead scheduling on the audio
+      clock, and segues when you cross a border or a fight starts.
+
+Phase 1 is complete. The next thing to build is Phase 2.
 
 ## Phase 2 — the biggest missing chunk of actual game
 
@@ -103,3 +104,16 @@ rewards · 900 Korok seeds · four Divine Beasts · Calamity Ganon and Dark Beas
 Ganon · 108 armour pieces placed where they are really found · 97 NPCs, shops
 and rupees · 30 wild horses · four Great Fairies · the real enemy HP and damage
 tables · the 1000-unit stamina wheel · a 24-minute day.
+
+**Phase 1 (Sep 2026).** A skeletal animation system: bone hierarchies built from
+data, 49 authored clips, cross-fading between states and additive layers over the
+top, so guarding while walking and swinging mid-sprint blend instead of fighting
+each other. Thirteen enemy species, six villager races, horses, boars and birds
+all ride the same rig and clip library — a Lynel gallops on its horse half while
+its sword arm plays a combat pose. Seven regional architectures. A nine-instrument
+score with 28 per-region themes on a look-ahead audio-clock scheduler.
+
+Two long-standing bugs fell out of the work: every model was built facing −Z while
+`rotation.y` points +Z, so Link ran ponytail-first and enemies charged you
+backwards; and `const all=enemies` in the enemy think-cull aliased the live array
+instead of copying it, so all 367 enemies stopped updating after the first frame.

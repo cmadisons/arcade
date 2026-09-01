@@ -1347,7 +1347,1794 @@ const MAT={
 const world=new THREE.Group(); scene.add(world);
 const rnd=(()=>{let s=99991;return()=>{s=Math.imul(s,48271)%2147483647; if(s<0)s+=2147483647;
   return s/2147483647;};})();
+</script>
+<script>
+"use strict";
+/* ================= BATCH 12A — SKELETON: bones, authored poses, clips, blending =================
+   Roadmap #1. Every character in the game — player, enemy, boss, NPC, mount, critter — is now
+   built from a bone tree defined here and driven by authored keyframe clips with cross-fading.
+   Nothing rotates a raw box any more.
 
+   Three facts that shape the whole system:
+     · rotation.y = yaw points local +Z along the movement direction, so every model here is
+       built facing +Z. The old models faced -Z, which is why Link ran ponytail-first and
+       bokoblins charged you backwards.
+     · +rx swings a downward-hanging limb backward, -rx swings it forward.
+     · a pose entry is [rx,ry,rz,px,py,pz,sx,sy,sz] added to the bind pose, so a rig can bake
+       in a stance (a lizalfos crouch, a lynel's horse half) and still share the common clips.
+       Scale channels are deltas on 1, so an absent channel is simply no change.             */
+
+/* ---- shared unit geometry: a thousand limbs, one buffer each ---- */
+const GEO={
+  box  : BOX,
+  cyl  : new THREE.CylinderGeometry(.5,.5,1,10),
+  cyl6 : new THREE.CylinderGeometry(.5,.5,1,6),
+  sph  : new THREE.SphereGeometry(.5,10,8),
+  sphHi: new THREE.SphereGeometry(.5,14,11),
+  hemi : new THREE.SphereGeometry(.5,12,7,0,TAU,0,Math.PI*.5),
+  cone : new THREE.ConeGeometry(.5,1,7),
+  cone4: new THREE.ConeGeometry(.5,1,4),
+  cone5: new THREE.ConeGeometry(.5,1,5),
+  cone3: new THREE.ConeGeometry(.5,1,3),
+  ico  : new THREE.IcosahedronGeometry(.5,0),
+  ico1 : new THREE.IcosahedronGeometry(.5,1),
+  dodec: new THREE.DodecahedronGeometry(.5,0),
+  tetra: new THREE.TetrahedronGeometry(.5,0),
+  plane: new THREE.PlaneGeometry(1,1),
+  torus: new THREE.TorusGeometry(.4,.1,6,14)
+};
+const TAPERS={};
+function taperGeo(a,b){                       /* a cylinder with a different top and bottom */
+  const k=a+':'+b;
+  return TAPERS[k]||(TAPERS[k]=new THREE.CylinderGeometry(a,b,1,8));
+}
+/* ---- materials, cached hard: rigs share them across every instance ---- */
+const RIGMATS={};
+function rigMat(pt,pal){
+  let v=(pal&&pal[pt.m]!==undefined)?pal[pt.m]:pt.m;
+  if(v&&v.isMaterial) return v;
+  if(typeof v!=='number') v=0xbbbbbb;
+  const key=v+'|'+(pt.d?1:0)+'|'+(pt.e||0)+'|'+(pt.o===undefined?1:pt.o)+'|'+(pt.b?1:0)+'|'+(pt.sm?1:0);
+  let m=RIGMATS[key];
+  if(!m){
+    /* r128's MeshLambertMaterial ignores flatShading (it shades per vertex), so the
+       faceted look the art depends on needs Phong. Matte settings keep it reading
+       like the Lambert world around it, just with hard facet edges. */
+    m=pt.b? new THREE.MeshBasicMaterial({color:v})
+          : new THREE.MeshPhongMaterial({color:v,flatShading:!pt.sm,
+              shininess:0,specular:0x0a0a0a});
+    if(pt.d) m.side=THREE.DoubleSide;
+    if(pt.e&&m.emissive) m.emissive=new THREE.Color(pt.e);
+    if(pt.o!==undefined&&pt.o<1){ m.transparent=true; m.opacity=pt.o; }
+    RIGMATS[key]=m;
+  }
+  return m;
+}
+/* ---- one visual part hung off a bone ---- */
+function rigPart(bone,pt,pal,S,R){
+  const geo = pt.g==='taper' ? taperGeo(pt.t0===undefined?.5:pt.t0, pt.t1===undefined?.5:pt.t1)
+                             : (GEO[pt.g||'box']||GEO.box);
+  const m=new THREE.Mesh(geo,rigMat(pt,pal));
+  const s=pt.s||[1,1,1], p=pt.p||[0,0,0];
+  m.scale.set(s[0]*S,(s[1]===undefined?s[0]:s[1])*S,(s[2]===undefined?s[0]:s[2])*S);
+  m.position.set((p[0]||0)*S,(p[1]||0)*S,(p[2]||0)*S);
+  if(pt.r) m.rotation.set(pt.r[0]||0,pt.r[1]||0,pt.r[2]||0);
+  m.castShadow=!pt.b; m.receiveShadow=!pt.b;
+  bone.add(m);
+  if(pt.id) R.parts[pt.id]=m;
+  return m;
+}
+/* ---- build a bone tree from a spec ---- */
+function buildRig(spec,pal,scale){
+  const S=scale===undefined?1:scale;
+  const R={root:new THREE.Group(),bones:{},parts:{},scale:S,spec:spec,pal:pal||{}};
+  (function walk(node,parent){
+    const b=new THREE.Bone();
+    b.name=node.n;
+    const p=node.p||[0,0,0];
+    b.position.set((p[0]||0)*S,(p[1]||0)*S,(p[2]||0)*S);
+    if(node.r) b.rotation.set(node.r[0]||0,node.r[1]||0,node.r[2]||0);
+    b.userData.rest=b.position.clone();
+    b.userData.restRot=b.rotation.clone();
+    b.userData.restScl=b.scale.clone();
+    parent.add(b);
+    R.bones[node.n]=b;
+    if(node.parts) for(let i=0;i<node.parts.length;i++) rigPart(b,node.parts[i],R.pal,S,R);
+    if(node.c) for(let i=0;i<node.c.length;i++) walk(node.c[i],b);
+  })(spec,R.root);
+  return R;
+}
+/* recolour a named part after the fact — armour swaps, blood moon tinting, ore veins */
+function rigSkin(R,id,color,opts){
+  const m=R.parts[id]; if(!m) return;
+  m.material=rigMat(Object.assign({m:color},opts||{}),R.pal);
+}
+function rigShow(R,id,on){ const m=R.parts[id]; if(m) m.visible=!!on; }
+
+/* ================= authored poses and clips ================= */
+const CLIPS={};
+const Z6=[0,0,0,0,0,0,0,0,0];
+function defClip(name,def){
+  const seen={};
+  for(let i=0;i<def.k.length;i++) for(const n in def.k[i].p) seen[n]=1;
+  def.names=Object.keys(seen);
+  if(def.d===undefined) def.d=1;
+  if(def.loop===undefined) def.loop=true;
+  def.name=name;
+  CLIPS[name]=def;
+  return def;
+}
+/* author half a walk cycle, get the other half free — and exact symmetry with it */
+function mirrorPose(p){
+  const o={};
+  for(const n in p){
+    const v=p[n];
+    const m = n.charAt(n.length-1)==='L' ? n.slice(0,-1)+'R'
+            : n.charAt(n.length-1)==='R' ? n.slice(0,-1)+'L' : n;
+    o[m]=[v[0]||0,-(v[1]||0),-(v[2]||0),-(v[3]||0),v[4]||0,v[5]||0];
+  }
+  return o;
+}
+/* a symmetric looping cycle from two authored keys: contact and passing */
+function cycleClip(name,dur,contact,passing,extra){
+  return defClip(name,Object.assign({d:dur,loop:true,k:[
+    {t:0,        p:contact},
+    {t:dur*.25,  p:passing},
+    {t:dur*.5,   p:mirrorPose(contact)},
+    {t:dur*.75,  p:mirrorPose(passing)},
+    {t:dur,      p:contact}
+  ]},extra||{}));
+}
+function sampleClip(cl,time,out){
+  const d=cl.d,K=cl.k;
+  let t = cl.loop ? ((time%d)+d)%d : (time<0?0:(time>d?d:time));
+  let i=0;
+  while(i<K.length-1&&K[i+1].t<=t) i++;
+  const a=K[i];
+  const b=K[i+1]||(cl.loop?{t:d,p:K[0].p}:a);
+  const span=(b.t-a.t)||1;
+  let u=(t-a.t)/span; if(u<0)u=0; else if(u>1)u=1;
+  const e=cl.linear?u:u*u*(3-2*u);
+  for(let j=0;j<cl.names.length;j++){
+    const n=cl.names[j], pa=a.p[n]||Z6, pb=b.p[n]||Z6;
+    let o=out[n]; if(!o) o=out[n]=[0,0,0,0,0,0,0,0,0];
+    for(let c=0;c<9;c++){ const va=pa[c]||0,vb=pb[c]||0; o[c]=va+(vb-va)*e; }
+  }
+}
+/* ================= the animator: cross-fades plus additive layers =================
+   The old animate() was an if/else chain followed by unguarded ifs, so gliding, swinging
+   and guarding overwrote each other in source order. Locomotion is one blended track now;
+   everything that used to clobber it is a layer on top with its own weight.            */
+function makeAnim(rig,start){
+  return {rig:rig,cur:start||'idle',t:0,prev:null,pt:0,bl:1,fade:.18,spd:1,
+          A:{},B:{},add:[],was:{},done:false};
+}
+function playClip(A,name,fade,restart){
+  if(!CLIPS[name]||!A) return;
+  if(A.cur===name&&!restart){ return; }
+  A.prev=A.cur; A.pt=A.t; A.bl=0;
+  A.fade=(fade===undefined)?.18:fade;
+  A.cur=name; A.t=0; A.done=false;
+  if(A.fade<=0){ A.bl=1; A.prev=null; }
+}
+/* mode 'add' stacks on the locomotion (a flinch, a head turn);
+   'set' lerps toward the pose (an attack that must own the arm regardless of gait) */
+function layer(A,pose,w,mode){
+  if(!A||!pose||w<=.001) return;
+  A.add.push(pose,w>1?1:w,mode==='set'?1:0);
+}
+function stepAnim(A,dt){
+  if(!A) return;
+  const R=A.rig,out=A.A;
+  A.t+=dt*A.spd;
+  const cl=CLIPS[A.cur];
+  if(cl&&!cl.loop&&A.t>=cl.d) A.done=true;
+  if(A.bl<1){ A.bl+=dt/(A.fade>.001?A.fade:.001); if(A.bl>=1){A.bl=1;A.prev=null;} }
+  for(const k in out) delete out[k];
+  if(cl) sampleClip(cl,A.t,out);
+  if(A.prev&&A.bl<1){
+    const pc=CLIPS[A.prev];
+    if(pc){
+      A.pt+=dt*A.spd;
+      const B=A.B; for(const k in B) delete B[k];
+      sampleClip(pc,A.pt,B);
+      const w=1-A.bl;
+      for(const n in out){ const o=out[n]; for(let c=0;c<9;c++) o[c]*=A.bl; }
+      for(const n in B){ let o=out[n]||(out[n]=[0,0,0,0,0,0,0,0,0]); const b=B[n];
+        for(let c=0;c<9;c++) o[c]+=b[c]*w; }
+    }
+  }
+  const L=A.add;
+  for(let i=0;i<L.length;i+=3){
+    const pose=L[i],w=L[i+1],set=L[i+2];
+    for(const n in pose){
+      let o=out[n]||(out[n]=[0,0,0,0,0,0,0,0,0]);
+      const p=pose[n];
+      if(set) for(let c=0;c<9;c++) o[c]+=((p[c]||0)-o[c])*w;
+      else    for(let c=0;c<9;c++) o[c]+=(p[c]||0)*w;
+    }
+  }
+  L.length=0;
+  const bones=R.bones,was=A.was,S=R.scale;
+  for(const n in was) if(!(n in out)){
+    const b=bones[n];
+    if(b){ b.rotation.copy(b.userData.restRot); b.position.copy(b.userData.rest);
+           b.scale.copy(b.userData.restScl); }
+  }
+  for(const n in out){
+    const b=bones[n]; if(!b) continue;
+    const o=out[n],rr=b.userData.restRot,rp=b.userData.rest,rs=b.userData.restScl;
+    b.rotation.set(rr.x+o[0],rr.y+o[1],rr.z+o[2]);
+    if(o[3]||o[4]||o[5]) b.position.set(rp.x+o[3]*S,rp.y+o[4]*S,rp.z+o[5]*S);
+    else if(b.position.x!==rp.x||b.position.y!==rp.y||b.position.z!==rp.z) b.position.copy(rp);
+    if(o[6]||o[7]||o[8]) b.scale.set(rs.x*(1+o[6]),rs.y*(1+o[7]),rs.z*(1+o[8]));
+    else if(b.scale.x!==rs.x||b.scale.y!==rs.y||b.scale.z!==rs.z) b.scale.copy(rs);
+  }
+  for(const k in was) delete was[k];
+  for(const n in out) was[n]=1;
+}
+</script>
+<script>
+"use strict";
+/* ================= BATCH 12B — the authored pose library =================
+   Hand-authored keys, not sin(t). Every biped in the game shares these, so a pose
+   written once shows up on Link, a bokoblin, a Gerudo shopkeeper and a Lynel.      */
+
+/* ---------- standing ---------- */
+defClip('idle',{d:3.6,k:[
+  {t:0,   p:{hips:[0,0,0,0,0,0],spine:[.02,0,0],chest:[.02,0,0],neck:[-.02,0,0],head:[0,.05,0],
+             shoulderL:[0,0,.03],armL:[.05,0,.10],forearmL:[-.16,0,0],
+             shoulderR:[0,0,-.03],armR:[.05,0,-.10],forearmR:[-.16,0,0],
+             thighL:[.01,0,.02],thighR:[.01,0,-.02]}},
+  {t:1.8, p:{hips:[0,0,0,0,-.022,0],spine:[-.03,0,0],chest:[-.04,0,0],neck:[.03,0,0],head:[0,-.04,0],
+             shoulderL:[0,0,.01],armL:[-.03,0,.14],forearmL:[-.22,0,0],
+             shoulderR:[0,0,-.01],armR:[-.03,0,-.14],forearmR:[-.22,0,0],
+             thighL:[-.01,0,.02],thighR:[-.01,0,-.02]}},
+  {t:3.6, p:{hips:[0,0,0,0,0,0],spine:[.02,0,0],chest:[.02,0,0],neck:[-.02,0,0],head:[0,.05,0],
+             shoulderL:[0,0,.03],armL:[.05,0,.10],forearmL:[-.16,0,0],
+             shoulderR:[0,0,-.03],armR:[.05,0,-.10],forearmR:[-.16,0,0],
+             thighL:[.01,0,.02],thighR:[.01,0,-.02]}}
+]});
+/* weapon out, weight forward, ready to move — what an aggro'd enemy stands in */
+defClip('alert',{d:2.0,k:[
+  {t:0,  p:{hips:[.06,0,0,0,-.05,0],spine:[.06,0,0],chest:[.04,0,0],head:[-.10,0,0],
+            armL:[-.30,0,.26],forearmL:[-.60,0,0],armR:[-.34,0,-.24],forearmR:[-.66,0,0],
+            thighL:[-.20,0,.06],shinL:[.34,0,0],thighR:[.12,0,-.06],shinR:[.20,0,0]}},
+  {t:1.0,p:{hips:[.06,0,0,0,-.07,0],spine:[.08,0,0],chest:[.05,0,0],head:[-.12,0,0],
+            armL:[-.26,0,.30],forearmL:[-.68,0,0],armR:[-.30,0,-.28],forearmR:[-.74,0,0],
+            thighL:[-.22,0,.06],shinL:[.38,0,0],thighR:[.14,0,-.06],shinR:[.24,0,0]}},
+  {t:2.0,p:{hips:[.06,0,0,0,-.05,0],spine:[.06,0,0],chest:[.04,0,0],head:[-.10,0,0],
+            armL:[-.30,0,.26],forearmL:[-.60,0,0],armR:[-.34,0,-.24],forearmR:[-.66,0,0],
+            thighL:[-.20,0,.06],shinL:[.34,0,0],thighR:[.12,0,-.06],shinR:[.20,0,0]}}
+]});
+/* ---------- locomotion: contact + passing, mirrored ---------- */
+cycleClip('walk',1.02,
+  { hips:[.02,.09,0, 0,-.030,0],spine:[.03,-.05,0],chest:[.01,-.10,.02],neck:[0,.04,0],head:[-.02,.05,0],
+    thighL:[-.50,0,.03],shinL:[.12,0,0],footL:[.20,0,0],
+    thighR:[ .38,0,-.03],shinR:[.44,0,0],footR:[-.20,0,0],
+    shoulderL:[0,0,.03],armL:[ .34,0,.11],forearmL:[-.26,0,0],
+    shoulderR:[0,0,-.03],armR:[-.38,0,-.11],forearmR:[-.34,0,0] },
+  { hips:[.02,0,.03, 0,.024,0],spine:[.03,0,0],chest:[.01,0,0],neck:[0,0,0],head:[0,0,0],
+    thighL:[-.10,0,.03],shinL:[.05,0,0],footL:[.02,0,0],
+    thighR:[-.04,0,-.03],shinR:[.60,0,0],footR:[-.30,0,0],
+    armL:[.08,0,.11],forearmL:[-.20,0,0],
+    armR:[-.10,0,-.11],forearmR:[-.26,0,0] });
+cycleClip('run',.70,
+  { hips:[.14,.15,0, 0,-.055,0],spine:[.10,-.08,0],chest:[.06,-.16,.03],neck:[-.10,.06,0],head:[-.06,.06,0],
+    thighL:[-.86,0,.04],shinL:[.26,0,0],footL:[.30,0,0],
+    thighR:[ .62,0,-.04],shinR:[.86,0,0],footR:[-.34,0,0],
+    shoulderL:[0,0,.06],armL:[ .72,0,.14],forearmL:[-1.05,0,0],
+    shoulderR:[0,0,-.06],armR:[-.80,0,-.14],forearmR:[-1.15,0,0] },
+  { hips:[.14,0,.05, 0,.050,0],spine:[.10,0,0],chest:[.06,0,0],neck:[-.10,0,0],head:[-.06,0,0],
+    thighL:[-.18,0,.04],shinL:[.10,0,0],footL:[.06,0,0],
+    thighR:[-.14,0,-.04],shinR:[1.28,0,0],footR:[-.42,0,0],
+    armL:[.18,0,.14],forearmL:[-.95,0,0],
+    armR:[-.22,0,-.14],forearmR:[-1.05,0,0] });
+cycleClip('sprint',.54,
+  { hips:[.26,.18,0, 0,-.07,0],spine:[.16,-.10,0],chest:[.10,-.20,.04],neck:[-.20,.07,0],head:[-.10,.07,0],
+    thighL:[-1.10,0,.04],shinL:[.30,0,0],footL:[.36,0,0],
+    thighR:[ .78,0,-.04],shinR:[1.05,0,0],footR:[-.38,0,0],
+    shoulderL:[0,0,.08],armL:[ .95,0,.16],forearmL:[-1.30,0,0],
+    shoulderR:[0,0,-.08],armR:[-1.02,0,-.16],forearmR:[-1.40,0,0] },
+  { hips:[.26,0,.06, 0,.062,0],spine:[.16,0,0],chest:[.10,0,0],neck:[-.20,0,0],head:[-.10,0,0],
+    thighL:[-.22,0,.04],shinL:[.12,0,0],footL:[.08,0,0],
+    thighR:[-.18,0,-.04],shinR:[1.55,0,0],footR:[-.46,0,0],
+    armL:[.24,0,.16],forearmL:[-1.20,0,0],
+    armR:[-.28,0,-.16],forearmR:[-1.30,0,0] });
+/* a heavy, wide-stance plod for moblins, gorons, hinox */
+cycleClip('lumber',1.50,
+  { hips:[.06,.07,0, 0,-.050,0],spine:[.05,-.04,0],chest:[.03,-.08,.03],head:[-.04,.04,0],
+    thighL:[-.40,0,.10],shinL:[.16,0,0],footL:[.18,0,0],
+    thighR:[ .30,0,-.10],shinR:[.40,0,0],footR:[-.16,0,0],
+    armL:[ .24,0,.24],forearmL:[-.34,0,0],
+    armR:[-.26,0,-.24],forearmR:[-.38,0,0] },
+  { hips:[.06,0,.06, 0,.040,0],spine:[.05,0,0],chest:[.03,0,0],head:[0,0,0],
+    thighL:[-.08,0,.10],shinL:[.06,0,0],footL:[.02,0,0],
+    thighR:[-.04,0,-.10],shinR:[.66,0,0],footR:[-.34,0,0],
+    armL:[.06,0,.26],forearmL:[-.30,0,0],
+    armR:[-.08,0,-.26],forearmR:[-.34,0,0] });
+/* crouched, knees out, tail counterweight — lizalfos and the sneaking player */
+cycleClip('creep',1.30,
+  { hips:[.30,.06,0, 0,-.22,0],spine:[.16,-.04,0],chest:[.10,-.07,0],neck:[-.34,0,0],head:[-.16,.04,0],
+    thighL:[-.62,0,.18],shinL:[.86,0,0],footL:[.10,0,0],
+    thighR:[ .04,0,-.18],shinR:[.94,0,0],footR:[-.16,0,0],
+    armL:[-.16,0,.34],forearmL:[-.80,0,0],
+    armR:[-.30,0,-.34],forearmR:[-.86,0,0],tail:[-.16,.14,0] },
+  { hips:[.30,0,.03, 0,-.19,0],spine:[.16,0,0],chest:[.10,0,0],neck:[-.34,0,0],head:[-.16,0,0],
+    thighL:[-.26,0,.18],shinL:[.66,0,0],footL:[.04,0,0],
+    thighR:[-.20,0,-.18],shinR:[1.10,0,0],footR:[-.24,0,0],
+    armL:[-.22,0,.34],forearmL:[-.84,0,0],
+    armR:[-.24,0,-.34],forearmR:[-.84,0,0],tail:[-.16,0,0] });
+/* ---------- airborne ---------- */
+defClip('jump',{d:.45,loop:false,k:[
+  {t:0,  p:{hips:[.20,0,0,0,-.20,0],spine:[.14,0,0],thighL:[-.70,0,.05],shinL:[.90,0,0],
+            thighR:[-.66,0,-.05],shinR:[.86,0,0],armL:[-.50,0,.20],armR:[-.54,0,-.20]}},
+  {t:.16,p:{hips:[-.10,0,0,0,.05,0],spine:[-.06,0,0],thighL:[-.30,0,.05],shinL:[.20,0,0],
+            thighR:[.16,0,-.05],shinR:[.16,0,0],armL:[-1.90,0,.30],armR:[-1.95,0,-.30]}},
+  {t:.45,p:{hips:[.04,0,0,0,0,0],spine:[.02,0,0],thighL:[-.44,0,.05],shinL:[.52,0,0],
+            thighR:[.20,0,-.05],shinR:[.34,0,0],armL:[-1.10,0,.34],armR:[-1.15,0,-.34]}}
+]});
+defClip('fall',{d:1.4,k:[
+  {t:0,  p:{hips:[-.10,0,0],spine:[-.06,0,0],chest:[-.05,0,0],head:[-.16,0,0],
+            armL:[-2.10,0,.42],forearmL:[-.44,0,0],armR:[-2.16,0,-.42],forearmR:[-.48,0,0],
+            thighL:[-.46,0,.10],shinL:[.60,0,0],thighR:[.14,0,-.10],shinR:[.32,0,0]}},
+  {t:.7, p:{hips:[-.10,0,0],spine:[-.06,0,0],chest:[-.05,0,0],head:[-.20,0,0],
+            armL:[-2.24,0,.50],forearmL:[-.34,0,0],armR:[-2.04,0,-.36],forearmR:[-.56,0,0],
+            thighL:[-.34,0,.10],shinL:[.44,0,0],thighR:[.24,0,-.10],shinR:[.46,0,0]}},
+  {t:1.4,p:{hips:[-.10,0,0],spine:[-.06,0,0],chest:[-.05,0,0],head:[-.16,0,0],
+            armL:[-2.10,0,.42],forearmL:[-.44,0,0],armR:[-2.16,0,-.42],forearmR:[-.48,0,0],
+            thighL:[-.46,0,.10],shinL:[.60,0,0],thighR:[.14,0,-.10],shinR:[.32,0,0]}}
+]});
+defClip('land',{d:.34,loop:false,k:[
+  {t:0,  p:{hips:[.34,0,0,0,-.34,0],spine:[.24,0,0],chest:[.10,0,0],head:[-.24,0,0],
+            thighL:[-.94,0,.14],shinL:[1.24,0,0],footL:[-.26,0,0],
+            thighR:[-.90,0,-.14],shinR:[1.20,0,0],footR:[-.26,0,0],
+            armL:[-.70,0,.44],forearmL:[-.50,0,0],armR:[-.74,0,-.44],forearmR:[-.54,0,0]}},
+  {t:.34,p:{hips:[.03,0,0,0,-.02,0],spine:[.02,0,0],chest:[.01,0,0],head:[0,0,0],
+            thighL:[-.05,0,.03],shinL:[.06,0,0],thighR:[-.04,0,-.03],shinR:[.05,0,0],
+            armL:[.04,0,.11],forearmL:[-.18,0,0],armR:[.04,0,-.11],forearmR:[-.18,0,0]}}
+]});
+/* paraglider: both hands on the bar overhead, legs trailing and drifting */
+defClip('glide',{d:3.0,k:[
+  {t:0,  p:{hips:[-.12,0,0],spine:[-.08,0,0],chest:[-.06,0,0],neck:[.10,0,0],head:[.06,.06,0],
+            shoulderL:[0,0,.30],armL:[-2.62,0,.30],forearmL:[-.20,0,0],
+            shoulderR:[0,0,-.30],armR:[-2.62,0,-.30],forearmR:[-.20,0,0],
+            thighL:[.22,0,.05],shinL:[.24,0,0],thighR:[.06,0,-.05],shinR:[.40,0,0]}},
+  {t:1.5,p:{hips:[-.12,.05,0],spine:[-.08,0,0],chest:[-.06,-.04,0],neck:[.10,0,0],head:[.06,-.06,0],
+            shoulderL:[0,0,.30],armL:[-2.66,0,.32],forearmL:[-.16,0,0],
+            shoulderR:[0,0,-.30],armR:[-2.58,0,-.28],forearmR:[-.24,0,0],
+            thighL:[.10,0,.05],shinL:[.36,0,0],thighR:[.18,0,-.05],shinR:[.28,0,0]}},
+  {t:3.0,p:{hips:[-.12,0,0],spine:[-.08,0,0],chest:[-.06,0,0],neck:[.10,0,0],head:[.06,.06,0],
+            shoulderL:[0,0,.30],armL:[-2.62,0,.30],forearmL:[-.20,0,0],
+            shoulderR:[0,0,-.30],armR:[-2.62,0,-.30],forearmR:[-.20,0,0],
+            thighL:[.22,0,.05],shinL:[.24,0,0],thighR:[.06,0,-.05],shinR:[.40,0,0]}}
+]});
+/* ---------- surfaces ---------- */
+cycleClip('climb',1.60,
+  { hips:[.08,.06,0, 0,-.03,0],spine:[.06,-.04,0],chest:[.04,-.06,0],head:[-.30,.06,0],
+    shoulderL:[0,0,.20],armL:[-2.55,0,.22],forearmL:[-.30,0,0],
+    shoulderR:[0,0,-.20],armR:[-1.55,0,-.26],forearmR:[-.55,0,0],
+    thighL:[-.90,0,.24],shinL:[.95,0,0],footL:[-.10,0,0],
+    thighR:[-.30,0,-.20],shinR:[.40,0,0],footR:[-.06,0,0] },
+  { hips:[.08,0,0, 0,.03,0],spine:[.06,0,0],chest:[.04,0,0],head:[-.30,0,0],
+    shoulderL:[0,0,.20],armL:[-2.15,0,.24],forearmL:[-.42,0,0],
+    shoulderR:[0,0,-.20],armR:[-2.05,0,-.24],forearmR:[-.44,0,0],
+    thighL:[-.60,0,.22],shinL:[.68,0,0],footL:[-.08,0,0],
+    thighR:[-.58,0,-.22],shinR:[.66,0,0],footR:[-.08,0,0] });
+cycleClip('swim',1.40,
+  { hips:[1.28,.05,0, 0,-.10,0],spine:[.06,-.05,0],chest:[.06,-.06,0],neck:[-.55,0,0],head:[-.30,.06,0],
+    shoulderL:[0,0,.24],armL:[-2.30,0,.26],forearmL:[-.30,0,0],
+    shoulderR:[0,0,-.24],armR:[-.60,0,-.40],forearmR:[-.70,0,0],
+    thighL:[-.34,0,.16],shinL:[.44,0,0],thighR:[.10,0,-.16],shinR:[.30,0,0] },
+  { hips:[1.28,0,.03, 0,-.06,0],spine:[.06,0,0],chest:[.06,0,0],neck:[-.55,0,0],head:[-.30,0,0],
+    shoulderL:[0,0,.24],armL:[-1.45,0,.34],forearmL:[-.50,0,0],
+    shoulderR:[0,0,-.24],armR:[-1.40,0,-.34],forearmR:[-.52,0,0],
+    thighL:[-.10,0,.16],shinL:[.30,0,0],thighR:[-.06,0,-.16],shinR:[.36,0,0] });
+defClip('tread',{d:2.2,k:[
+  {t:0,  p:{hips:[.30,0,0,0,-.06,0],spine:[.06,0,0],neck:[-.22,0,0],head:[-.10,0,0],
+            armL:[-1.30,0,.55],forearmL:[-.60,0,0],armR:[-1.30,0,-.55],forearmR:[-.60,0,0],
+            thighL:[-.50,0,.20],shinL:[.70,0,0],thighR:[-.20,0,-.20],shinR:[.50,0,0]}},
+  {t:1.1,p:{hips:[.30,0,0,0,.02,0],spine:[.06,0,0],neck:[-.22,0,0],head:[-.10,0,0],
+            armL:[-1.10,0,.72],forearmL:[-.44,0,0],armR:[-1.10,0,-.72],forearmR:[-.44,0,0],
+            thighL:[-.22,0,.20],shinL:[.50,0,0],thighR:[-.48,0,-.20],shinR:[.72,0,0]}},
+  {t:2.2,p:{hips:[.30,0,0,0,-.06,0],spine:[.06,0,0],neck:[-.22,0,0],head:[-.10,0,0],
+            armL:[-1.30,0,.55],forearmL:[-.60,0,0],armR:[-1.30,0,-.55],forearmR:[-.60,0,0],
+            thighL:[-.50,0,.20],shinL:[.70,0,0],thighR:[-.20,0,-.20],shinR:[.50,0,0]}}
+]});
+defClip('surf',{d:2.4,k:[
+  {t:0,  p:{hips:[.10,.55,0,0,-.10,0],spine:[.08,-.20,0],chest:[.04,-.16,.10],head:[-.06,-.30,0],
+            thighL:[-.44,0,.30],shinL:[.50,0,0],thighR:[.30,0,-.30],shinR:[.34,0,0],
+            armL:[-.60,0,.90],forearmL:[-.30,0,0],armR:[-.40,0,-.85],forearmR:[-.25,0,0]}},
+  {t:1.2,p:{hips:[.10,.42,0,0,-.16,0],spine:[.08,-.14,0],chest:[.04,-.12,.06],head:[-.06,-.22,0],
+            thighL:[-.60,0,.30],shinL:[.70,0,0],thighR:[.20,0,-.30],shinR:[.46,0,0],
+            armL:[-.80,0,.80],forearmL:[-.40,0,0],armR:[-.30,0,-.95],forearmR:[-.20,0,0]}},
+  {t:2.4,p:{hips:[.10,.55,0,0,-.10,0],spine:[.08,-.20,0],chest:[.04,-.16,.10],head:[-.06,-.30,0],
+            thighL:[-.44,0,.30],shinL:[.50,0,0],thighR:[.30,0,-.30],shinR:[.34,0,0],
+            armL:[-.60,0,.90],forearmL:[-.30,0,0],armR:[-.40,0,-.85],forearmR:[-.25,0,0]}}
+]});
+/* ---------- combat ---------- */
+/* three-beat combo: overhead chop, horizontal cut, lunging thrust */
+defClip('attack1',{d:.36,loop:false,k:[
+  {t:0,   p:{hips:[0,-.30,0],spine:[-.05,-.22,0],chest:[-.06,-.26,0],head:[0,.22,0],
+             shoulderR:[0,0,-.20],armR:[-2.45,.20,-.30],forearmR:[-.30,0,0],
+             armL:[-.35,0,.40],forearmL:[-.90,0,0],thighR:[-.20,0,-.05],thighL:[.10,0,.05]}},
+  {t:.13, p:{hips:[.06,.28,0,0,-.05,0],spine:[.12,.22,0],chest:[.14,.26,0],head:[-.14,-.18,0],
+             shoulderR:[0,0,-.05],armR:[-.30,-.10,-.10],forearmR:[-.14,0,0],
+             armL:[-.10,0,.24],forearmL:[-.60,0,0],thighR:[.18,0,-.05],thighL:[-.24,0,.05]}},
+  {t:.36, p:{hips:[.02,.10,0],spine:[.05,.08,0],chest:[.05,.10,0],head:[-.04,-.06,0],
+             shoulderR:[0,0,-.05],armR:[-.42,-.04,-.16],forearmR:[-.40,0,0],
+             armL:[-.06,0,.18],forearmL:[-.42,0,0],thighR:[.06,0,-.05],thighL:[-.08,0,.05]}}
+]});
+defClip('attack2',{d:.36,loop:false,k:[
+  {t:0,   p:{hips:[0,.55,0],spine:[.04,.34,0],chest:[.04,.40,-.10],head:[0,-.40,0],
+             shoulderR:[0,0,-.10],armR:[-.90,-.55,-.55],forearmR:[-.95,0,0],
+             armL:[-.25,0,.30],forearmL:[-.70,0,0],thighR:[.14,0,-.05],thighL:[-.16,0,.05]}},
+  {t:.14, p:{hips:[0,-.62,0,0,-.04,0],spine:[.04,-.38,0],chest:[.04,-.44,.10],head:[0,.42,0],
+             shoulderR:[0,0,-.10],armR:[-1.30,.62,-.28],forearmR:[-.22,0,0],
+             armL:[-.15,0,.48],forearmL:[-.75,0,0],thighR:[-.18,0,-.05],thighL:[.16,0,.05]}},
+  {t:.36, p:{hips:[0,-.22,0],spine:[.03,-.14,0],chest:[.03,-.16,.04],head:[0,.16,0],
+             shoulderR:[0,0,-.08],armR:[-.60,.20,-.20],forearmR:[-.42,0,0],
+             armL:[-.08,0,.24],forearmL:[-.48,0,0],thighR:[-.06,0,-.05],thighL:[.06,0,.05]}}
+]});
+defClip('attack3',{d:.42,loop:false,k:[
+  {t:0,   p:{hips:[.06,.40,0,0,-.08,0],spine:[.08,.26,0],chest:[.06,.30,0],head:[-.06,-.26,0],
+             shoulderR:[0,0,-.10],armR:[-.55,.40,-.20],forearmR:[-1.35,0,0],
+             armL:[-.30,0,.36],forearmL:[-.85,0,0],
+             thighR:[.30,0,-.06],shinR:[.34,0,0],thighL:[-.34,0,.06],shinL:[.30,0,0]}},
+  {t:.16, p:{hips:[.02,-.14,0,0,-.16,-.14],spine:[.04,-.10,0],chest:[.02,-.12,0],head:[-.02,.10,0],
+             shoulderR:[0,0,-.02],armR:[-1.62,-.06,-.06],forearmR:[-.06,0,0],
+             armL:[.20,0,.55],forearmL:[-.55,0,0],
+             thighR:[-.10,0,-.06],shinR:[.16,0,0],thighL:[-.62,0,.06],shinL:[.80,0,0]}},
+  {t:.42, p:{hips:[.02,0,0,0,-.06,-.04],spine:[.03,0,0],chest:[.02,0,0],head:[0,0,0],
+             shoulderR:[0,0,-.04],armR:[-.85,0,-.14],forearmR:[-.40,0,0],
+             armL:[.05,0,.30],forearmL:[-.44,0,0],
+             thighR:[-.04,0,-.06],shinR:[.08,0,0],thighL:[-.24,0,.06],shinL:[.32,0,0]}}
+]});
+/* the spin attack: crouch, then a whole-body sweep with the blade held out */
+defClip('spin',{d:.50,loop:false,k:[
+  {t:0,  p:{hips:[.24,0,0,0,-.22,0],spine:[.16,0,0],chest:[.10,0,0],head:[-.14,0,0],
+            armR:[-1.20,-.30,-.90],forearmR:[-.20,0,0],armL:[-1.10,.30,.90],forearmL:[-.20,0,0],
+            thighL:[-.60,0,.16],shinL:[.80,0,0],thighR:[-.56,0,-.16],shinR:[.76,0,0]}},
+  {t:.18,p:{hips:[-.06,0,0,0,.04,0],spine:[-.04,0,0],chest:[-.04,0,0],head:[.06,0,0],
+            armR:[-1.62,-.10,-1.30],forearmR:[0,0,0],armL:[-1.55,.10,1.30],forearmL:[0,0,0],
+            thighL:[-.20,0,.20],shinL:[.24,0,0],thighR:[-.16,0,-.20],shinR:[.22,0,0]}},
+  {t:.50,p:{hips:[.06,0,0,0,-.06,0],spine:[.04,0,0],chest:[.03,0,0],head:[-.04,0,0],
+            armR:[-.70,0,-.40],forearmR:[-.40,0,0],armL:[-.64,0,.40],forearmL:[-.40,0,0],
+            thighL:[-.14,0,.10],shinL:[.20,0,0],thighR:[-.12,0,-.10],shinR:[.18,0,0]}}
+]});
+/* holding a charge: weapon cocked back, whole body trembling with it */
+defClip('charge',{d:.30,k:[
+  {t:0,  p:{hips:[.10,.34,0,0,-.10,0],spine:[.10,.24,0],chest:[.08,.28,0],head:[-.08,-.24,0],
+            shoulderR:[0,0,-.12],armR:[-2.30,.30,-.34],forearmR:[-.42,0,0],
+            armL:[-.34,0,.42],forearmL:[-.92,0,0],
+            thighL:[-.30,0,.10],shinL:[.40,0,0],thighR:[.16,0,-.10],shinR:[.28,0,0]}},
+  {t:.15,p:{hips:[.10,.31,0,0,-.12,0],spine:[.10,.22,0],chest:[.08,.25,0],head:[-.08,-.21,0],
+            shoulderR:[0,0,-.12],armR:[-2.36,.27,-.30],forearmR:[-.38,0,0],
+            armL:[-.30,0,.45],forearmL:[-.88,0,0],
+            thighL:[-.32,0,.10],shinL:[.43,0,0],thighR:[.18,0,-.10],shinR:[.30,0,0]}},
+  {t:.30,p:{hips:[.10,.34,0,0,-.10,0],spine:[.10,.24,0],chest:[.08,.28,0],head:[-.08,-.24,0],
+            shoulderR:[0,0,-.12],armR:[-2.30,.30,-.34],forearmR:[-.42,0,0],
+            armL:[-.34,0,.42],forearmL:[-.92,0,0],
+            thighL:[-.30,0,.10],shinL:[.40,0,0],thighR:[.16,0,-.10],shinR:[.28,0,0]}}
+]});
+/* shield up, weight on the back foot */
+defClip('guard',{d:2.6,k:[
+  {t:0,  p:{hips:[.10,.30,0,0,-.12,0],spine:[.10,.18,0],chest:[.08,.22,0],neck:[-.10,-.16,0],head:[-.10,-.20,0],
+            shoulderL:[0,0,.28],armL:[-1.42,-.42,.50],forearmL:[-1.30,0,0],
+            shoulderR:[0,0,-.10],armR:[-.42,.10,-.28],forearmR:[-.70,0,0],
+            thighL:[-.34,0,.14],shinL:[.46,0,0],thighR:[.20,0,-.14],shinR:[.36,0,0]}},
+  {t:1.3,p:{hips:[.10,.30,0,0,-.15,0],spine:[.10,.18,0],chest:[.08,.22,0],neck:[-.10,-.16,0],head:[-.10,-.20,0],
+            shoulderL:[0,0,.28],armL:[-1.36,-.42,.54],forearmL:[-1.36,0,0],
+            shoulderR:[0,0,-.10],armR:[-.38,.10,-.30],forearmR:[-.76,0,0],
+            thighL:[-.36,0,.14],shinL:[.50,0,0],thighR:[.22,0,-.14],shinR:[.38,0,0]}},
+  {t:2.6,p:{hips:[.10,.30,0,0,-.12,0],spine:[.10,.18,0],chest:[.08,.22,0],neck:[-.10,-.16,0],head:[-.10,-.20,0],
+            shoulderL:[0,0,.28],armL:[-1.42,-.42,.50],forearmL:[-1.30,0,0],
+            shoulderR:[0,0,-.10],armR:[-.42,.10,-.28],forearmR:[-.70,0,0],
+            thighL:[-.34,0,.14],shinL:[.46,0,0],thighR:[.20,0,-.14],shinR:[.36,0,0]}}
+]});
+defClip('parry',{d:.30,loop:false,k:[
+  {t:0,  p:{hips:[.06,-.34,0],spine:[.04,-.22,0],chest:[.02,-.26,0],head:[0,.24,0],
+            shoulderL:[0,0,.34],armL:[-1.70,-.20,.62],forearmL:[-1.05,0,0],
+            armR:[-.30,0,-.40],forearmR:[-.60,0,0]}},
+  {t:.30,p:{hips:[.10,.30,0,0,-.12,0],spine:[.10,.18,0],chest:[.08,.22,0],head:[-.10,-.20,0],
+            shoulderL:[0,0,.28],armL:[-1.42,-.42,.50],forearmL:[-1.30,0,0],
+            armR:[-.42,.10,-.28],forearmR:[-.70,0,0]}}
+]});
+/* bow: front arm locked out, drawing hand at the cheek */
+defClip('aim',{d:3.0,k:[
+  {t:0,  p:{hips:[0,.62,0],spine:[.02,.30,0],chest:[0,.36,0],neck:[0,-.34,0],head:[-.04,-.42,0],
+            shoulderL:[0,0,.26],armL:[-1.56,-.62,.26],forearmL:[-.10,0,0],
+            shoulderR:[0,0,-.24],armR:[-1.48,.30,-.62],forearmR:[-1.80,0,0],
+            thighL:[-.12,0,.14],thighR:[.08,0,-.14]}},
+  {t:1.5,p:{hips:[0,.62,0,0,-.014,0],spine:[.02,.30,0],chest:[0,.36,0],neck:[0,-.34,0],head:[-.04,-.42,0],
+            shoulderL:[0,0,.26],armL:[-1.58,-.62,.27],forearmL:[-.08,0,0],
+            shoulderR:[0,0,-.24],armR:[-1.44,.30,-.64],forearmR:[-1.86,0,0],
+            thighL:[-.13,0,.14],thighR:[.09,0,-.14]}},
+  {t:3.0,p:{hips:[0,.62,0],spine:[.02,.30,0],chest:[0,.36,0],neck:[0,-.34,0],head:[-.04,-.42,0],
+            shoulderL:[0,0,.26],armL:[-1.56,-.62,.26],forearmL:[-.10,0,0],
+            shoulderR:[0,0,-.24],armR:[-1.48,.30,-.62],forearmR:[-1.80,0,0],
+            thighL:[-.12,0,.14],thighR:[.08,0,-.14]}}
+]});
+/* ---------- reactions ---------- */
+defClip('hurt',{d:.34,loop:false,k:[
+  {t:0,  p:{hips:[-.26,0,0,0,-.06,-.10],spine:[-.20,0,0],chest:[-.16,0,0],neck:[.24,0,0],head:[.30,0,0],
+            armL:[-.55,0,.62],forearmL:[-.70,0,0],armR:[-.60,0,-.62],forearmR:[-.74,0,0],
+            thighL:[-.30,0,.14],shinL:[.34,0,0],thighR:[-.26,0,-.14],shinR:[.30,0,0]}},
+  {t:.34,p:{hips:[-.04,0,0],spine:[-.02,0,0],chest:[-.02,0,0],neck:[.04,0,0],head:[.04,0,0],
+            armL:[-.10,0,.20],forearmL:[-.30,0,0],armR:[-.12,0,-.20],forearmR:[-.32,0,0],
+            thighL:[-.05,0,.04],thighR:[-.04,0,-.04]}}
+]});
+defClip('die',{d:.85,loop:false,k:[
+  {t:0,  p:{hips:[-.20,0,0,0,-.05,0],spine:[-.16,0,0],chest:[-.12,0,0],head:[.26,0,0],
+            armL:[-.70,0,.70],armR:[-.74,0,-.70],thighL:[-.26,0,.12],thighR:[-.22,0,-.12]}},
+  {t:.34,p:{hips:[.55,0,.20,0,-.42,0],spine:[.30,0,0],chest:[.24,0,0],head:[-.30,0,.14],
+            armL:[-.30,0,.90],forearmL:[-.60,0,0],armR:[-.20,0,-.85],forearmR:[-.55,0,0],
+            thighL:[-1.05,0,.26],shinL:[1.30,0,0],thighR:[-.95,0,-.26],shinR:[1.20,0,0]}},
+  {t:.85,p:{hips:[1.34,0,.30,0,-.70,0],spine:[.20,0,.10],chest:[.14,0,.08],head:[-.44,0,.22],
+            armL:[.30,0,1.25],forearmL:[-.35,0,0],armR:[.40,0,-1.20],forearmR:[-.30,0,0],
+            thighL:[-1.35,0,.34],shinL:[1.55,0,0],thighR:[-1.20,0,-.34],shinR:[1.45,0,0]}}
+]});
+/* a stal- enemy coming back together, played in reverse of the collapse */
+defClip('rebuild',{d:.9,loop:false,k:[
+  {t:0,  p:{hips:[1.34,0,.30,0,-.70,0],spine:[.20,0,.10],head:[-.44,0,.22],
+            armL:[.30,0,1.25],armR:[.40,0,-1.20],thighL:[-1.35,0,.34],shinL:[1.55,0,0],
+            thighR:[-1.20,0,-.34],shinR:[1.45,0,0]}},
+  {t:.55,p:{hips:[.30,0,.10,0,-.24,0],spine:[.10,0,0],head:[-.16,0,.06],
+            armL:[-.40,0,.80],armR:[-.36,0,-.78],thighL:[-.66,0,.20],shinL:[.80,0,0],
+            thighR:[-.60,0,-.20],shinR:[.74,0,0]}},
+  {t:.9, p:{hips:[.06,0,0,0,-.05,0],spine:[.06,0,0],head:[-.10,0,0],
+            armL:[-.30,0,.26],armR:[-.34,0,-.24],thighL:[-.20,0,.06],shinL:[.34,0,0],
+            thighR:[.12,0,-.06],shinR:[.20,0,0]}}
+]});
+/* ---------- downtime ---------- */
+defClip('sleep',{d:5.0,k:[
+  {t:0,  p:{hips:[.30,0,.12,0,-.56,0],spine:[.34,0,0],chest:[.20,0,0],neck:[.30,0,0],head:[.34,.14,0],
+            armL:[-.20,0,1.05],forearmL:[-.55,0,0],armR:[-.16,0,-1.00],forearmR:[-.50,0,0],
+            thighL:[-1.35,0,.34],shinL:[1.50,0,0],thighR:[-1.28,0,-.34],shinR:[1.44,0,0]}},
+  {t:2.5,p:{hips:[.30,0,.12,0,-.51,0],spine:[.30,0,0],chest:[.16,0,0],neck:[.26,0,0],head:[.30,.16,0],
+            armL:[-.24,0,1.02],forearmL:[-.60,0,0],armR:[-.12,0,-1.04],forearmR:[-.46,0,0],
+            thighL:[-1.32,0,.34],shinL:[1.46,0,0],thighR:[-1.30,0,-.34],shinR:[1.48,0,0]}},
+  {t:5.0,p:{hips:[.30,0,.12,0,-.56,0],spine:[.34,0,0],chest:[.20,0,0],neck:[.30,0,0],head:[.34,.14,0],
+            armL:[-.20,0,1.05],forearmL:[-.55,0,0],armR:[-.16,0,-1.00],forearmR:[-.50,0,0],
+            thighL:[-1.35,0,.34],shinL:[1.50,0,0],thighR:[-1.28,0,-.34],shinR:[1.44,0,0]}}
+]});
+defClip('sit',{d:4.2,k:[
+  {t:0,  p:{hips:[.10,0,0,0,-.44,0],spine:[.10,0,0],chest:[.04,0,0],head:[-.06,.08,0],
+            armL:[.10,0,.16],forearmL:[-.90,0,0],armR:[.10,0,-.16],forearmR:[-.94,0,0],
+            thighL:[-1.45,0,.22],shinL:[1.50,0,0],thighR:[-1.42,0,-.22],shinR:[1.48,0,0]}},
+  {t:2.1,p:{hips:[.10,0,0,0,-.46,0],spine:[.06,0,0],chest:[.01,0,0],head:[-.02,-.08,0],
+            armL:[.06,0,.19],forearmL:[-.96,0,0],armR:[.06,0,-.19],forearmR:[-.88,0,0],
+            thighL:[-1.44,0,.22],shinL:[1.48,0,0],thighR:[-1.44,0,-.22],shinR:[1.50,0,0]}},
+  {t:4.2,p:{hips:[.10,0,0,0,-.44,0],spine:[.10,0,0],chest:[.04,0,0],head:[-.06,.08,0],
+            armL:[.10,0,.16],forearmL:[-.90,0,0],armR:[.10,0,-.16],forearmR:[-.94,0,0],
+            thighL:[-1.45,0,.22],shinL:[1.50,0,0],thighR:[-1.42,0,-.22],shinR:[1.48,0,0]}}
+]});
+/* an NPC mid-sentence — hands do the talking */
+defClip('talk',{d:2.8,k:[
+  {t:0,  p:{spine:[.02,.05,0],chest:[.02,.06,0],head:[-.04,-.08,.04],
+            armL:[-.55,0,.42],forearmL:[-1.15,0,0],armR:[-.20,0,-.22],forearmR:[-.45,0,0]}},
+  {t:.7, p:{spine:[.03,-.04,0],chest:[.03,-.05,0],head:[.04,.07,-.03],
+            armL:[-.30,0,.30],forearmL:[-.85,0,0],armR:[-.50,0,-.36],forearmR:[-1.05,0,0]}},
+  {t:1.5,p:{spine:[.02,.06,0],chest:[.02,.07,0],head:[-.06,-.10,.05],
+            armL:[-.62,0,.50],forearmL:[-1.25,0,0],armR:[-.22,0,-.24],forearmR:[-.50,0,0]}},
+  {t:2.8,p:{spine:[.02,.05,0],chest:[.02,.06,0],head:[-.04,-.08,.04],
+            armL:[-.55,0,.42],forearmL:[-1.15,0,0],armR:[-.20,0,-.22],forearmR:[-.45,0,0]}}
+]});
+/* shopkeepers and idlers who are doing something with their hands */
+defClip('work',{d:3.2,k:[
+  {t:0,  p:{hips:[.08,0,0,0,-.04,0],spine:[.14,.06,0],chest:[.10,.08,0],head:[-.26,-.06,0],
+            armL:[-1.05,0,.34],forearmL:[-1.10,0,0],armR:[-.95,0,-.30],forearmR:[-1.25,0,0]}},
+  {t:.8, p:{hips:[.08,0,0,0,-.06,0],spine:[.16,-.05,0],chest:[.12,-.06,0],head:[-.28,.05,0],
+            armL:[-.80,0,.30],forearmL:[-1.35,0,0],armR:[-1.20,0,-.34],forearmR:[-1.00,0,0]}},
+  {t:1.8,p:{hips:[.08,0,0,0,-.03,0],spine:[.13,.07,0],chest:[.09,.09,0],head:[-.24,-.07,0],
+            armL:[-1.12,0,.36],forearmL:[-1.02,0,0],armR:[-.88,0,-.28],forearmR:[-1.30,0,0]}},
+  {t:3.2,p:{hips:[.08,0,0,0,-.04,0],spine:[.14,.06,0],chest:[.10,.08,0],head:[-.26,-.06,0],
+            armL:[-1.05,0,.34],forearmL:[-1.10,0,0],armR:[-.95,0,-.30],forearmR:[-1.25,0,0]}}
+]});
+/* ---------- additive layers, applied on top of whatever is playing ---------- */
+const POSE={
+  flinch : {spine:[-.22,0,0],chest:[-.16,0,0],head:[.26,0,0],armL:[0,0,.24],armR:[0,0,-.24]},
+  lookL  : {neck:[0,.34,0],head:[0,.30,0],chest:[0,.10,0]},
+  lookR  : {neck:[0,-.34,0],head:[0,-.30,0],chest:[0,-.10,0]},
+  lookUp : {neck:[-.30,0,0],head:[-.22,0,0]},
+  lookDn : {neck:[.30,0,0],head:[.22,0,0]},
+  crouch : {hips:[.20,0,0,0,-.30,0],spine:[.16,0,0],chest:[.06,0,0],neck:[-.24,0,0],
+            thighL:[-.55,0,.10],shinL:[.80,0,0],thighR:[-.52,0,-.10],shinR:[.78,0,0]},
+  burn   : {spine:[-.10,.10,0],chest:[-.08,-.14,0],head:[.14,.12,0],armL:[-.40,0,.55],armR:[-.44,0,-.50]},
+  shock  : {spine:[-.14,0,.06],chest:[.12,0,-.06],head:[.18,0,.08],
+            armL:[-.62,0,.70],forearmL:[-.30,0,0],armR:[-.58,0,-.66],forearmR:[-.34,0,0],
+            thighL:[-.20,0,.16],thighR:[-.16,0,-.16]},
+  freeze : {hips:[.05,0,0,0,-.04,0],spine:[.10,0,0],chest:[.06,0,0],head:[.08,0,0],
+            armL:[-.20,0,.34],forearmL:[-.40,0,0],armR:[-.22,0,-.32],forearmR:[-.42,0,0]},
+  ride   : {hips:[.06,0,0,0,-.30,0],spine:[.10,0,0],chest:[.06,0,0],head:[-.10,0,0],
+            armL:[-.85,0,.30],forearmL:[-.95,0,0],armR:[-.88,0,-.28],forearmR:[-.98,0,0],
+            thighL:[-1.15,0,.55],shinL:[1.05,0,0],footL:[.20,0,0],
+            thighR:[-1.12,0,-.55],shinR:[1.02,0,0],footR:[.20,0,0]},
+  torch  : {shoulderL:[0,0,.16],armL:[-.95,0,.24],forearmL:[-.55,0,0]},
+  hold2h : {shoulderL:[0,0,.20],armL:[-.75,-.30,.40],forearmL:[-1.05,0,0],
+            shoulderR:[0,0,-.12],armR:[-.70,.18,-.26],forearmR:[-.95,0,0]},
+  roar   : {hips:[-.10,0,0],spine:[-.16,0,0],chest:[-.20,0,0],neck:[-.34,0,0],head:[-.30,0,0],
+            shoulderL:[0,0,.30],armL:[-.55,0,.95],forearmL:[-.80,0,0],
+            shoulderR:[0,0,-.30],armR:[-.58,0,-.92],forearmR:[-.84,0,0]},
+  wing   : {shoulderL:[0,0,.55],armL:[-.20,0,.60],shoulderR:[0,0,-.55],armR:[-.22,0,-.58]}
+};
+/* a head that actually tracks something, mixed in over any clip */
+function lookAt(A,selfYaw,tx,tz,sx,sz,w){
+  let d=Math.atan2(tx-sx,tz-sz)-selfYaw;
+  d=((d+Math.PI)%TAU+TAU)%TAU-Math.PI;
+  const c=Math.max(-1.1,Math.min(1.1,d));
+  layer(A,{neck:[0,c*.55,0],head:[0,c*.45,0],chest:[0,c*.16,0]},w===undefined?1:w);
+}
+</script>
+<script>
+"use strict";
+/* ================= BATCH 12C — ART PASS 2: models built on the skeleton =================
+   Roadmap #2. One parameterised humanoid factory feeds every biped in Hyrule, so a pose
+   authored once in BATCH 12B lands correctly on Link, a bokoblin, a Gerudo shopkeeper
+   and a Lynel's upper body. Species differ by dimensions and hung parts, never by rig.
+   Everything faces +Z, the direction rotation.y actually points.                        */
+
+/* mirror a part list across the centre line */
+function mirrorParts(list){
+  const o=[];
+  for(let i=0;i<list.length;i++){
+    const p=list[i],q={};
+    for(const k in p) q[k]=p[k];
+    if(p.p) q.p=[-(p.p[0]||0),p.p[1]||0,p.p[2]||0];
+    if(p.r) q.r=[p.r[0]||0,-(p.r[1]||0),-(p.r[2]||0)];
+    if(p.id) q.id=p.id.charAt(p.id.length-1)==='L'?p.id.slice(0,-1)+'R':p.id+'R';
+    o.push(q);
+  }
+  return o;
+}
+/* the standard biped skeleton. D gives dimensions, D.parts hangs meshes off named bones. */
+function makeBiped(D){
+  const P=D.parts||{}, g=n=>P[n]||[];
+  const armSide=(s)=>{
+    const L=s<0?'L':'R';
+    const src=s<0?g('armL'):mirrorParts(g('armL'));
+    const fore=s<0?g('forearmL'):mirrorParts(g('forearmL'));
+    const hand=s<0?g('handL'):mirrorParts(g('handL'));
+    const sh=s<0?g('shoulderL'):mirrorParts(g('shoulderL'));
+    return {n:'shoulder'+L,p:[s*D.shX,D.shY,D.shZ||0],parts:sh,c:[
+      {n:'arm'+L,p:[0,0,0],parts:src,c:[
+        {n:'forearm'+L,p:[0,-D.upper,0],parts:fore,c:[
+          {n:'hand'+L,p:[0,-D.fore,0],parts:hand}
+        ]}
+      ]}
+    ]};
+  };
+  const legSide=(s)=>{
+    const L=s<0?'L':'R';
+    const th=s<0?g('thighL'):mirrorParts(g('thighL'));
+    const sh=s<0?g('shinL'):mirrorParts(g('shinL'));
+    const ft=s<0?g('footL'):mirrorParts(g('footL'));
+    return {n:'thigh'+L,p:[s*D.thX,D.thY,D.thZ||0],r:D.thighBind,parts:th,c:[
+      {n:'shin'+L,p:[0,-D.thigh,0],r:D.shinBind,parts:sh,c:[
+        {n:'foot'+L,p:[0,-D.shin,0],r:D.footBind,parts:ft}
+      ]}
+    ]};
+  };
+  const chestKids=[{n:'neck',p:[0,D.neckY,0],parts:g('neck'),c:[
+      {n:'head',p:[0,D.headY,0],parts:g('head'),c:g('headKids')||[]}]},
+    armSide(-1),armSide(1)];
+  if(D.chestKids) for(const k of D.chestKids) chestKids.push(k);
+  const hipKids=[{n:'spine',p:[0,D.spineY,0],r:D.spineBind,parts:g('spine'),c:[
+      {n:'chest',p:[0,D.chestY,0],r:D.chestBind,parts:g('chest'),c:chestKids}]},
+    legSide(-1),legSide(1)];
+  if(D.hipKids) for(const k of D.hipKids) hipKids.push(k);
+  return {n:'root',p:[0,0,0],parts:g('root'),c:[
+    {n:'hips',p:[0,D.hipY,0],r:D.hipBind,parts:g('hips'),c:hipKids}]};
+}
+/* proportions shared by the Hylian-ish bipeds; species override what they need */
+function humanDims(){
+  return {hipY:.88,spineY:.20,chestY:.30,neckY:.32,headY:.14,
+          shX:.26,shY:.16,upper:.44,fore:.40,
+          thX:.155,thY:-.04,thigh:.44,shin:.40};
+}
+
+/* ================= Link ================= */
+/* the old Link was six boxes; this one has a tunic with a skirt that swings from the
+   hips, sleeves, gauntlets, boots, a hood that hides the hair when armour covers it,
+   and — the fix that matters most — a face on the front. */
+function linkSpec(){
+  const D=humanDims();
+  D.parts={
+    hips:[{g:'box',s:[.40,.20,.28],p:[0,-.02,0],m:'trouser',id:'pelvis'},
+          {g:'box',s:[.44,.09,.31],p:[0,.06,0],m:'belt'},
+          {g:'box',s:[.10,.10,.05],p:[0,.06,.16],m:'buckle'},
+          /* tunic skirt: four panels so it reads as cloth, not a block */
+          {g:'taper',t0:.5,t1:.62,s:[.46,.40,.34],p:[0,-.16,0],m:'tunic',id:'skirt'},
+          {g:'box',s:[.16,.34,.05],p:[-.12,-.20,.16],m:'tunic',id:'skirtFL'},
+          {g:'box',s:[.16,.34,.05],p:[ .12,-.20,.16],m:'tunic',id:'skirtFR'},
+          {g:'box',s:[.16,.34,.05],p:[-.12,-.20,-.16],m:'tunic',id:'skirtBL'},
+          {g:'box',s:[.16,.34,.05],p:[ .12,-.20,-.16],m:'tunic',id:'skirtBR'}],
+    spine:[{g:'box',s:[.44,.26,.30],p:[0,.10,0],m:'tunic',id:'waist'}],
+    chest:[{g:'taper',t0:.54,t1:.5,s:[.56,.36,.38],p:[0,.04,0],m:'tunic',id:'torso'},
+           {g:'box',s:[.50,.16,.34],p:[0,.18,0],m:'tunic',id:'yoke'},
+           /* the cross-strap that carries the sheath */
+           {g:'box',s:[.09,.44,.04],p:[.02,.04,.19],m:'strap',r:[0,0,-.34]},
+           {g:'box',s:[.09,.44,.04],p:[.02,.04,-.19],m:'strap',r:[0,0,.34]}],
+    neck:[{g:'cyl',s:[.16,.14,.16],p:[0,.05,0],m:'skin'}],
+    head:[{g:'box',s:[.42,.44,.40],p:[0,.22,0],m:'skin',id:'face'},
+          {g:'box',s:[.44,.20,.42],p:[0,.40,-.01],m:'hair',id:'hair'},
+          {g:'box',s:[.43,.10,.10],p:[0,.30,.19],m:'hair',id:'fringe'},
+          {g:'box',s:[.10,.16,.06],p:[-.14,.28,.205],m:'hairD',id:'bangL'},
+          {g:'box',s:[.10,.16,.06],p:[ .14,.28,.205],m:'hairD',id:'bangR'},
+          /* eyes and brows: a face reads at 30 m even when nothing else does */
+          {g:'box',s:[.07,.08,.03],p:[-.10,.24,.201],m:'eye'},
+          {g:'box',s:[.07,.08,.03],p:[ .10,.24,.201],m:'eye'},
+          {g:'box',s:[.09,.03,.03],p:[-.10,.31,.201],m:'hairD'},
+          {g:'box',s:[.09,.03,.03],p:[ .10,.31,.201],m:'hairD'},
+          {g:'cone',s:[.13,.30,.09],p:[-.22,.24,-.02],r:[0,0,1.05],m:'skin'},
+          {g:'cone',s:[.13,.30,.09],p:[ .22,.24,-.02],r:[0,0,-1.05],m:'skin'},
+          /* the ponytail, now behind him where it belongs */
+          {g:'taper',t0:.5,t1:.24,s:[.15,.46,.15],p:[0,.30,-.24],r:[.55,0,0],m:'hair',id:'pony'},
+          {g:'box',s:[.13,.06,.13],p:[0,.40,-.14],m:'band'}],
+    shoulderL:[{g:'sph',s:[.24,.22,.24],p:[-.02,.02,0],m:'tunic',id:'padL'}],
+    armL:[{g:'taper',t0:.5,t1:.42,s:[.21,.46,.21],p:[0,-.22,0],m:'sleeve',id:'sleeveL'}],
+    forearmL:[{g:'taper',t0:.44,t1:.5,s:[.18,.42,.18],p:[0,-.20,0],m:'skin',id:'foreL'},
+              {g:'box',s:[.21,.16,.21],p:[0,-.34,0],m:'glove',id:'cuffL'}],
+    handL:[{g:'box',s:[.16,.16,.13],p:[0,-.06,0],m:'skin',id:'handL'}],
+    thighL:[{g:'taper',t0:.5,t1:.44,s:[.23,.46,.23],p:[0,-.22,0],m:'trouser',id:'thighML'}],
+    shinL:[{g:'taper',t0:.44,t1:.40,s:[.20,.42,.20],p:[0,-.20,0],m:'trouser',id:'shinML'}],
+    footL:[{g:'box',s:[.23,.14,.34],p:[0,-.05,.06],m:'boot',id:'bootL'},
+           {g:'box',s:[.24,.10,.24],p:[0,.06,-.01],m:'bootT',id:'cuffBL'}]
+  };
+  return makeBiped(D);
+}
+const LINK_PAL={skin:0xe9c39c,tunic:0x3f7a4a,sleeve:0xe9c39c,trouser:0xc9c0ab,
+  boot:0x5a3d24,bootT:0x7a5a3a,hair:0xd9c179,hairD:0xb99f56,band:0x7a5a3a,
+  belt:0x6b4a2a,buckle:0xd8b24a,strap:0x6b4a2a,glove:0x6b4a2a,eye:0x2e4a6a};
+
+/* ================= the bokoblin family ================= */
+/* hunched, long-armed, big-headed. Stal- variants swap the palette to bone and
+   trade the belly for a ribcage, which is the whole difference between the two. */
+function bokoSpec(o){
+  o=o||{};
+  const D=humanDims();
+  D.hipY=.80; D.spineY=.18; D.chestY=.28; D.neckY=.24; D.headY=.16;
+  D.shX=.29; D.shY=.14; D.upper=.46; D.fore=.44;
+  D.thX=.17; D.thigh=.40; D.shin=.36;
+  D.spineBind=[.18,0,0];              /* the permanent hunch */
+  D.chestBind=[.10,0,0];
+  D.thighBind=[-.14,0,0]; D.shinBind=[.24,0,0]; D.footBind=[-.12,0,0];
+  const stal=!!o.stal;
+  const belly = stal
+    ? [{g:'box',s:[.50,.06,.34],p:[0,.14,.02],m:'skin'},
+       {g:'box',s:[.46,.06,.32],p:[0,.04,.02],m:'skin'},
+       {g:'box',s:[.42,.06,.30],p:[0,-.06,.02],m:'skin'},
+       {g:'box',s:[.10,.34,.14],p:[0,.04,-.10],m:'skinD'}]
+    : [{g:'sph',s:[.62,.52,.54],p:[0,.02,.04],m:'belly',id:'belly'}];
+  D.parts={
+    hips:[{g:'box',s:[.42,.24,.32],p:[0,-.02,0],m:'skin'},
+          {g:'box',s:[.46,.20,.36],p:[0,-.14,0],m:'cloth',id:'loin'},
+          {g:'box',s:[.20,.30,.06],p:[0,-.22,.19],m:'cloth'}],
+    spine:[{g:'taper',t0:.5,t1:.56,s:[.50,.24,.38],p:[0,.08,0],m:'skin'}],
+    chest:belly.concat([
+          {g:'taper',t0:.56,t1:.5,s:[.62,.34,.46],p:[0,.06,0],m:'skin',id:'torso'},
+          {g:'box',s:[.30,.12,.42],p:[0,.20,0],m:'skinD'}]),
+    neck:[{g:'cyl',s:[.20,.12,.20],p:[0,.04,0],m:'skin'}],
+    head:[{g:'sph',s:[.62,.58,.58],p:[0,.24,0],m:'skin',id:'skull'},
+          /* the snout, on the front */
+          {g:'taper',t0:.34,t1:.5,s:[.34,.40,.36],p:[0,.18,.30],r:[1.30,0,0],m:'snout',id:'snout'},
+          {g:'sph',s:[.16,.12,.12],p:[0,.16,.46],m:'skinD'},
+          {g:'box',s:[.05,.05,.05],p:[-.06,.13,.47],m:'dark'},
+          {g:'box',s:[.05,.05,.05],p:[ .06,.13,.47],m:'dark'},
+          /* tusks */
+          {g:'cone',s:[.07,.16,.07],p:[-.11,.10,.40],r:[-.3,0,.2],m:'tusk'},
+          {g:'cone',s:[.07,.16,.07],p:[ .11,.10,.40],r:[-.3,0,-.2],m:'tusk'},
+          {g:'sph',s:[.13,.13,.10],p:[-.19,.32,.22],m:'eye',b:true},
+          {g:'sph',s:[.13,.13,.10],p:[ .19,.32,.22],m:'eye',b:true},
+          {g:'box',s:[.05,.05,.04],p:[-.19,.32,.27],m:'dark',b:true},
+          {g:'box',s:[.05,.05,.04],p:[ .19,.32,.27],m:'dark',b:true},
+          /* ears back and out, plus the topknot horn */
+          {g:'cone',s:[.16,.44,.10],p:[-.32,.30,-.06],r:[-.2,0,1.35],m:'skin'},
+          {g:'cone',s:[.16,.44,.10],p:[ .32,.30,-.06],r:[-.2,0,-1.35],m:'skin'},
+          {g:'cone',s:[.14,.30,.14],p:[0,.54,-.04],r:[-.3,0,0],m:'horn'}],
+    shoulderL:[{g:'sph',s:[.26,.24,.26],p:[-.02,.02,0],m:'skin'}],
+    armL:[{g:'taper',t0:.5,t1:.4,s:[.24,.48,.24],p:[0,-.23,0],m:'skin'},
+          {g:'box',s:[.26,.10,.26],p:[0,-.06,0],m:'cloth',id:'bandL'}],
+    forearmL:[{g:'taper',t0:.42,t1:.46,s:[.21,.44,.21],p:[0,-.21,0],m:'skin'}],
+    handL:[{g:'box',s:[.20,.20,.17],p:[0,-.08,.01],m:'skin',id:'palmL'},
+           {g:'box',s:[.06,.13,.06],p:[-.06,-.18,.05],m:'skin'},
+           {g:'box',s:[.06,.13,.06],p:[ .03,-.18,.05],m:'skin'}],
+    thighL:[{g:'taper',t0:.5,t1:.44,s:[.26,.42,.26],p:[0,-.20,0],m:'skin'}],
+    shinL:[{g:'taper',t0:.44,t1:.38,s:[.22,.38,.22],p:[0,-.18,0],m:'skin'}],
+    footL:[{g:'box',s:[.24,.13,.36],p:[0,-.04,.07],m:'skinD'},
+           {g:'cone',s:[.06,.10,.06],p:[-.07,-.07,.22],r:[-1.4,0,0],m:'tusk'},
+           {g:'cone',s:[.06,.10,.06],p:[ .07,-.07,.22],r:[-1.4,0,0],m:'tusk'}]
+  };
+  return makeBiped(D);
+}
+/* ================= moblin: taller, heavier, pot-bellied, longer face ================= */
+function moblinSpec(o){
+  o=o||{};
+  const D=humanDims();
+  D.hipY=.86; D.spineY=.20; D.chestY=.30; D.neckY=.24; D.headY=.16;
+  D.shX=.36; D.shY=.14; D.upper=.50; D.fore=.48;
+  D.thX=.22; D.thigh=.42; D.shin=.38;
+  D.spineBind=[.14,0,0]; D.chestBind=[.06,0,0];
+  D.thighBind=[-.10,0,0]; D.shinBind=[.18,0,0]; D.footBind=[-.10,0,0];
+  const stal=!!o.stal;
+  D.parts={
+    hips:[{g:'box',s:[.52,.26,.38],p:[0,-.02,0],m:'skin'},
+          {g:'box',s:[.58,.24,.44],p:[0,-.16,0],m:'cloth',id:'loin'},
+          {g:'box',s:[.60,.10,.46],p:[0,-.02,0],m:'belt'}],
+    spine:[{g:'taper',t0:.5,t1:.62,s:[.58,.26,.46],p:[0,.09,0],m:'skin'}],
+    chest:(stal?[{g:'box',s:[.60,.06,.40],p:[0,.16,.02],m:'skin'},
+                 {g:'box',s:[.56,.06,.38],p:[0,.05,.02],m:'skin'},
+                 {g:'box',s:[.52,.06,.36],p:[0,-.06,.02],m:'skin'}]
+               :[{g:'sph',s:[.86,.66,.70],p:[0,-.02,.08],m:'belly',id:'belly'}]).concat([
+          {g:'taper',t0:.62,t1:.5,s:[.78,.38,.54],p:[0,.10,0],m:'skin',id:'torso'},
+          {g:'box',s:[.40,.14,.48],p:[0,.24,0],m:'skinD'}]),
+    neck:[{g:'cyl',s:[.24,.14,.24],p:[0,.05,0],m:'skin'}],
+    head:[{g:'taper',t0:.5,t1:.58,s:[.60,.52,.56],p:[0,.24,0],m:'skin',id:'skull'},
+          {g:'taper',t0:.30,t1:.5,s:[.40,.58,.42],p:[0,.14,.36],r:[1.36,0,0],m:'snout',id:'snout'},
+          {g:'sph',s:[.20,.14,.14],p:[0,.10,.58],m:'skinD'},
+          {g:'cone',s:[.10,.26,.10],p:[-.13,.06,.46],r:[-.5,0,.24],m:'tusk'},
+          {g:'cone',s:[.10,.26,.10],p:[ .13,.06,.46],r:[-.5,0,-.24],m:'tusk'},
+          {g:'sph',s:[.12,.12,.09],p:[-.19,.34,.24],m:'eye',b:true},
+          {g:'sph',s:[.12,.12,.09],p:[ .19,.34,.24],m:'eye',b:true},
+          {g:'cone',s:[.18,.52,.12],p:[-.32,.32,-.08],r:[-.2,0,1.25],m:'skin'},
+          {g:'cone',s:[.18,.52,.12],p:[ .32,.32,-.08],r:[-.2,0,-1.25],m:'skin'},
+          {g:'cone',s:[.13,.34,.13],p:[-.16,.52,0],r:[-.2,0,.35],m:'horn'},
+          {g:'cone',s:[.13,.34,.13],p:[ .16,.52,0],r:[-.2,0,-.35],m:'horn'}],
+    shoulderL:[{g:'sph',s:[.34,.30,.32],p:[-.02,.02,0],m:'skin'},
+               {g:'box',s:[.30,.12,.30],p:[-.02,-.10,0],m:'cloth'}],
+    armL:[{g:'taper',t0:.5,t1:.42,s:[.30,.52,.30],p:[0,-.25,0],m:'skin'}],
+    forearmL:[{g:'taper',t0:.42,t1:.48,s:[.26,.48,.26],p:[0,-.23,0],m:'skin'},
+              {g:'box',s:[.30,.12,.30],p:[0,-.34,0],m:'cloth'}],
+    handL:[{g:'box',s:[.24,.24,.20],p:[0,-.09,.01],m:'skin',id:'palmL'}],
+    thighL:[{g:'taper',t0:.5,t1:.44,s:[.34,.44,.34],p:[0,-.21,0],m:'skin'}],
+    shinL:[{g:'taper',t0:.44,t1:.38,s:[.28,.40,.28],p:[0,-.19,0],m:'skin'}],
+    footL:[{g:'box',s:[.30,.15,.44],p:[0,-.05,.09],m:'skinD'}]
+  };
+  return makeBiped(D);
+}
+/* ================= lizalfos: crouched, digitigrade, tailed ================= */
+function lizalSpec(o){
+  o=o||{};
+  const D=humanDims();
+  D.hipY=.86; D.spineY=.16; D.chestY=.26; D.neckY=.20; D.headY=.14;
+  D.shX=.24; D.shY=.12; D.upper=.40; D.fore=.38;
+  D.thX=.16; D.thigh=.42; D.shin=.40;
+  /* the bind pose IS the crouch — it rides under every shared clip */
+  D.hipBind=[.30,0,0]; D.spineBind=[.14,0,0]; D.chestBind=[.10,0,0];
+  D.thighBind=[-.55,0,0]; D.shinBind=[.95,0,0]; D.footBind=[-.62,0,0];
+  D.hipKids=[{n:'tail',p:[0,-.02,-.20],r:[.30,0,0],parts:[
+      {g:'taper',t0:.5,t1:.34,s:[.24,.44,.24],p:[0,0,-.20],r:[1.57,0,0],m:'skin'}],c:[
+    {n:'tail2',p:[0,0,-.40],r:[.12,0,0],parts:[
+      {g:'taper',t0:.34,t1:.22,s:[.17,.42,.17],p:[0,0,-.20],r:[1.57,0,0],m:'skin'}],c:[
+      {n:'tail3',p:[0,0,-.40],parts:[
+        {g:'taper',t0:.22,t1:.05,s:[.11,.40,.11],p:[0,0,-.20],r:[1.57,0,0],m:'skinD'}]}]}]}];
+  D.parts={
+    hips:[{g:'box',s:[.36,.24,.34],p:[0,-.02,0],m:'skin'},
+          {g:'box',s:[.30,.16,.06],p:[0,-.12,.16],m:'cloth'}],
+    spine:[{g:'taper',t0:.5,t1:.54,s:[.42,.22,.34],p:[0,.07,0],m:'skin'}],
+    chest:[{g:'taper',t0:.54,t1:.46,s:[.48,.34,.40],p:[0,.06,0],m:'skin',id:'torso'},
+           {g:'box',s:[.34,.22,.06],p:[0,.04,.19],m:'belly'},
+           /* dorsal crest */
+           {g:'cone3',s:[.06,.20,.16],p:[0,.24,-.06],r:[.3,0,0],m:'crest'},
+           {g:'cone3',s:[.06,.16,.13],p:[0,.24,-.16],r:[.5,0,0],m:'crest'}],
+    neck:[{g:'taper',t0:.5,t1:.42,s:[.20,.20,.20],p:[0,.06,.02],m:'skin'}],
+    head:[{g:'box',s:[.30,.26,.34],p:[0,.14,.04],m:'skin',id:'skull'},
+          {g:'taper',t0:.42,t1:.5,s:[.24,.40,.26],p:[0,.10,.28],r:[1.44,0,0],m:'snout',id:'snout'},
+          {g:'box',s:[.20,.05,.20],p:[0,.04,.34],m:'skinD'},
+          {g:'cone',s:[.05,.09,.05],p:[-.07,.05,.42],r:[-1.3,0,0],m:'tusk'},
+          {g:'cone',s:[.05,.09,.05],p:[ .07,.05,.42],r:[-1.3,0,0],m:'tusk'},
+          {g:'sph',s:[.13,.13,.11],p:[-.15,.22,.12],m:'eye',b:true},
+          {g:'sph',s:[.13,.13,.11],p:[ .15,.22,.12],m:'eye',b:true},
+          {g:'box',s:[.04,.07,.04],p:[-.15,.22,.17],m:'dark',b:true},
+          {g:'box',s:[.04,.07,.04],p:[ .15,.22,.17],m:'dark',b:true},
+          /* head frill */
+          {g:'cone3',s:[.07,.26,.20],p:[0,.30,-.06],r:[.36,0,0],m:'crest'},
+          {g:'cone3',s:[.06,.18,.14],p:[-.13,.26,-.06],r:[.36,0,.4],m:'crest'},
+          {g:'cone3',s:[.06,.18,.14],p:[ .13,.26,-.06],r:[.36,0,-.4],m:'crest'}],
+    shoulderL:[{g:'sph',s:[.20,.20,.20],p:[-.02,.02,0],m:'skin'}],
+    armL:[{g:'taper',t0:.5,t1:.42,s:[.17,.42,.17],p:[0,-.20,0],m:'skin'}],
+    forearmL:[{g:'taper',t0:.42,t1:.46,s:[.15,.40,.15],p:[0,-.19,0],m:'skin'}],
+    handL:[{g:'box',s:[.15,.14,.16],p:[0,-.06,.02],m:'skin',id:'palmL'},
+           {g:'cone',s:[.04,.10,.04],p:[-.05,-.12,.08],r:[-1.2,0,0],m:'tusk'},
+           {g:'cone',s:[.04,.10,.04],p:[ .04,-.12,.08],r:[-1.2,0,0],m:'tusk'}],
+    thighL:[{g:'taper',t0:.5,t1:.40,s:[.24,.44,.24],p:[0,-.21,0],m:'skin'}],
+    shinL:[{g:'taper',t0:.40,t1:.30,s:[.18,.42,.18],p:[0,-.20,0],m:'skin'}],
+    footL:[{g:'box',s:[.18,.10,.34],p:[0,-.04,.10],m:'skinD'},
+           {g:'cone',s:[.05,.12,.05],p:[-.05,-.05,.24],r:[-1.4,0,0],m:'tusk'},
+           {g:'cone',s:[.05,.12,.05],p:[ .05,-.05,.24],r:[-1.4,0,0],m:'tusk'}]
+  };
+  return makeBiped(D);
+}
+/* ================= Lynel: a horse body carrying a humanoid torso =================
+   The single worst offender in the old build — a Lynel was a bokoblin box at scale 2.6.
+   The quadruped half gets its own bones; the upper half keeps the standard names so
+   every arm pose in the clip library still drives it. */
+function lynelSpec(){
+  const D=humanDims();
+  D.hipY=1.62; D.spineY=.20; D.chestY=.32; D.neckY=.30; D.headY=.16;
+  D.shX=.40; D.shY=.16; D.upper=.52; D.fore=.50;
+  D.thX=.20; D.thY=-.10; D.thigh=.30; D.shin=.28;
+  /* front/back, left/right — the side stays last so mirrorPose() can flip these */
+  const legPair=(s,z,fb)=>{const L=s<0?'L':'R';
+    return {n:'leg'+fb+L,p:[s*.34,-.30,z],parts:[
+      {g:'taper',t0:.30,t1:.24,s:[.30,.62,.30],p:[0,-.30,0],m:'hide'}],c:[
+    {n:'leg'+fb+'2'+L,p:[0,-.60,0],parts:[
+      {g:'taper',t0:.24,t1:.18,s:[.24,.58,.24],p:[0,-.28,0],m:'hide'}],c:[
+      {n:'leg'+fb+'3'+L,p:[0,-.56,0],parts:[
+        {g:'cyl',s:[.22,.18,.26],p:[0,-.08,.02],m:'hoof'}]}]}]};};
+  D.parts={
+    /* the human half */
+    hips:[{g:'box',s:[.56,.28,.40],p:[0,0,0],m:'skin'},
+          {g:'box',s:[.62,.14,.46],p:[0,-.12,0],m:'belt'}],
+    spine:[{g:'taper',t0:.5,t1:.62,s:[.62,.26,.44],p:[0,.09,0],m:'skin'}],
+    chest:[{g:'taper',t0:.62,t1:.50,s:[.88,.42,.56],p:[0,.10,0],m:'skin',id:'torso'},
+           {g:'sph',s:[.66,.36,.40],p:[0,.06,.20],m:'belly'},
+           {g:'box',s:[.44,.16,.50],p:[0,.28,0],m:'skinD'}],
+    neck:[{g:'cyl',s:[.26,.18,.26],p:[0,.06,0],m:'skin'}],
+    head:[{g:'taper',t0:.5,t1:.56,s:[.52,.48,.50],p:[0,.22,.02],m:'skin',id:'skull'},
+          {g:'taper',t0:.34,t1:.5,s:[.34,.40,.34],p:[0,.14,.28],r:[1.36,0,0],m:'snout',id:'snout'},
+          {g:'sph',s:[.16,.12,.12],p:[0,.10,.44],m:'skinD'},
+          {g:'sph',s:[.14,.14,.11],p:[-.17,.30,.20],m:'eye',b:true},
+          {g:'sph',s:[.14,.14,.11],p:[ .17,.30,.20],m:'eye',b:true},
+          /* the horns that make the silhouette */
+          {g:'taper',t0:.16,t1:.5,s:[.16,.46,.16],p:[-.22,.50,-.02],r:[-.30,0,.55],m:'horn'},
+          {g:'taper',t0:.16,t1:.5,s:[.16,.46,.16],p:[ .22,.50,-.02],r:[-.30,0,-.55],m:'horn'},
+          {g:'cone',s:[.13,.30,.13],p:[-.34,.72,-.10],r:[-.5,0,1.05],m:'horn'},
+          {g:'cone',s:[.13,.30,.13],p:[ .34,.72,-.10],r:[-.5,0,-1.05],m:'horn'},
+          /* the mane, which is what tells you which Lynel you just woke up */
+          {g:'cone',s:[.44,.52,.30],p:[0,.42,-.24],r:[.44,0,0],m:'mane',id:'mane1'},
+          {g:'cone',s:[.36,.44,.26],p:[0,.18,-.34],r:[.90,0,0],m:'mane',id:'mane2'},
+          {g:'cone',s:[.26,.36,.20],p:[-.24,.34,-.28],r:[.55,0,.5],m:'mane',id:'mane3'},
+          {g:'cone',s:[.26,.36,.20],p:[ .24,.34,-.28],r:[.55,0,-.5],m:'mane',id:'mane4'}],
+    shoulderL:[{g:'sph',s:[.38,.34,.36],p:[-.02,.02,0],m:'skin'},
+               {g:'cone',s:[.30,.30,.24],p:[-.10,.10,-.06],r:[-.4,0,.8],m:'mane'}],
+    armL:[{g:'taper',t0:.5,t1:.42,s:[.32,.54,.32],p:[0,-.26,0],m:'skin'}],
+    forearmL:[{g:'taper',t0:.42,t1:.48,s:[.28,.50,.28],p:[0,-.24,0],m:'skin'},
+              {g:'box',s:[.32,.14,.32],p:[0,-.36,0],m:'metal'}],
+    handL:[{g:'box',s:[.26,.24,.22],p:[0,-.09,.01],m:'skin',id:'palmL'}],
+    /* the horse half hangs off the hips as a body bone with four legs and a tail */
+    thighL:[],shinL:[],footL:[]
+  };
+  D.thigh=.02; D.shin=.02;                  /* the humanoid legs are vestigial: hidden */
+  D.hipKids=[{n:'barrel',p:[0,-.10,-.30],parts:[
+      {g:'taper',t0:.62,t1:.54,s:[.92,1.30,.94],p:[0,-.02,-.50],r:[1.57,0,0],m:'hide'},
+      {g:'sph',s:[.86,.72,.80],p:[0,-.06,-.16],m:'hide'},
+      {g:'sph',s:[.78,.66,.70],p:[0,-.06,-.90],m:'hide'},
+      {g:'box',s:[.70,.34,.90],p:[0,-.28,-.52],m:'hideD'}],
+    c:[legPair(-1,-.20,'F'),legPair(1,-.20,'F'),
+       legPair(-1,-.92,'B'),legPair(1,-.92,'B'),
+       {n:'tail',p:[0,.10,-1.16],r:[.6,0,0],parts:[
+         {g:'taper',t0:.16,t1:.34,s:[.24,.70,.24],p:[0,-.32,0],m:'mane'},
+         {g:'cone',s:[.40,.52,.34],p:[0,-.62,0],r:[3.14,0,0],m:'mane'}]}]}];
+  return makeBiped(D);
+}
+/* ================= Hinox: a squat one-eyed giant ================= */
+function hinoxSpec(o){
+  o=o||{};
+  const D=humanDims();
+  D.hipY=.92; D.spineY=.16; D.chestY=.26; D.neckY=.16; D.headY=.10;
+  D.shX=.52; D.shY=.10; D.upper=.52; D.fore=.50;
+  D.thX=.28; D.thigh=.42; D.shin=.36;
+  D.spineBind=[.10,0,0];
+  D.thighBind=[-.20,0,0]; D.shinBind=[.34,0,0]; D.footBind=[-.16,0,0];
+  const stal=!!o.stal;
+  D.parts={
+    hips:[{g:'box',s:[.78,.30,.56],p:[0,-.02,0],m:'skin'},
+          {g:'box',s:[.86,.30,.62],p:[0,-.18,0],m:'cloth',id:'loin'}],
+    spine:[{g:'taper',t0:.5,t1:.66,s:[.86,.24,.62],p:[0,.08,0],m:'skin'}],
+    chest:(stal?[{g:'box',s:[.92,.08,.56],p:[0,.20,.04],m:'skin'},
+                 {g:'box',s:[.88,.08,.54],p:[0,.06,.04],m:'skin'},
+                 {g:'box',s:[.82,.08,.52],p:[0,-.08,.04],m:'skin'}]
+               :[{g:'sph',s:[1.30,.98,1.04],p:[0,-.04,.12],m:'belly',id:'belly'}]).concat([
+          {g:'taper',t0:.66,t1:.54,s:[1.08,.44,.76],p:[0,.12,0],m:'skin',id:'torso'},
+          {g:'box',s:[.60,.16,.66],p:[0,.30,0],m:'skinD'}]),
+    neck:[{g:'cyl',s:[.42,.12,.42],p:[0,.04,0],m:'skin'}],
+    head:[{g:'sph',s:[.86,.80,.82],p:[0,.30,0],m:'skin',id:'skull'},
+          /* one eye, and it is the whole fight */
+          {g:'sph',s:[.46,.46,.30],p:[0,.34,.34],m:'sclera',b:true,id:'eyeWhite'},
+          {g:'sph',s:[.22,.22,.16],p:[0,.34,.44],m:'iris',b:true,id:'iris'},
+          {g:'box',s:[.50,.10,.16],p:[0,.56,.34],m:'skinD',id:'lid'},
+          {g:'box',s:[.34,.12,.30],p:[0,.06,.30],m:'skinD'},
+          {g:'cone',s:[.20,.36,.14],p:[-.42,.30,-.10],r:[-.2,0,1.2],m:'skin'},
+          {g:'cone',s:[.20,.36,.14],p:[ .42,.30,-.10],r:[-.2,0,-1.2],m:'skin'},
+          {g:'cone',s:[.16,.26,.16],p:[-.22,.66,-.02],r:[-.3,0,.4],m:'horn'},
+          {g:'cone',s:[.16,.26,.16],p:[ .22,.66,-.02],r:[-.3,0,-.4],m:'horn'}],
+    shoulderL:[{g:'sph',s:[.48,.44,.46],p:[-.02,.02,0],m:'skin'}],
+    armL:[{g:'taper',t0:.5,t1:.44,s:[.42,.54,.42],p:[0,-.26,0],m:'skin'}],
+    forearmL:[{g:'taper',t0:.44,t1:.52,s:[.38,.50,.38],p:[0,-.24,0],m:'skin'}],
+    handL:[{g:'box',s:[.40,.34,.34],p:[0,-.14,.02],m:'skin',id:'palmL'},
+           {g:'box',s:[.10,.20,.12],p:[-.12,-.30,.06],m:'skin'},
+           {g:'box',s:[.10,.20,.12],p:[ .04,-.30,.06],m:'skin'}],
+    thighL:[{g:'taper',t0:.5,t1:.46,s:[.48,.44,.48],p:[0,-.21,0],m:'skin'}],
+    shinL:[{g:'taper',t0:.46,t1:.42,s:[.42,.38,.42],p:[0,-.18,0],m:'skin'}],
+    footL:[{g:'box',s:[.46,.18,.62],p:[0,-.06,.14],m:'skinD'},
+           {g:'cone',s:[.08,.12,.08],p:[-.14,-.10,.40],r:[-1.4,0,0],m:'tusk'},
+           {g:'cone',s:[.08,.12,.08],p:[0,-.10,.42],r:[-1.4,0,0],m:'tusk'},
+           {g:'cone',s:[.08,.12,.08],p:[ .14,-.10,.40],r:[-1.4,0,0],m:'tusk'}]
+  };
+  return makeBiped(D);
+}
+/* ================= Yiga footsoldier: lean, masked, sickle ================= */
+function yigaSpec(o){
+  o=o||{};
+  const D=humanDims();
+  D.spineBind=[.06,0,0];
+  D.parts={
+    hips:[{g:'box',s:[.38,.22,.28],p:[0,-.02,0],m:'suit'},
+          {g:'box',s:[.42,.10,.31],p:[0,.05,0],m:'sash'},
+          {g:'box',s:[.16,.44,.05],p:[0,-.22,-.15],m:'sash',id:'tail'}],
+    spine:[{g:'box',s:[.42,.26,.28],p:[0,.10,0],m:'suit'}],
+    chest:[{g:'taper',t0:.52,t1:.48,s:[.52,.36,.34],p:[0,.04,0],m:'suit',id:'torso'},
+           {g:'box',s:[.46,.16,.30],p:[0,.18,0],m:'suit'},
+           {g:'box',s:[.30,.24,.03],p:[0,.06,.18],m:'eyeMark',id:'crest'}],
+    neck:[{g:'cyl',s:[.14,.14,.14],p:[0,.05,0],m:'suit'}],
+    head:[{g:'box',s:[.40,.42,.38],p:[0,.22,0],m:'suit',id:'skull'},
+          {g:'box',s:[.42,.40,.06],p:[0,.22,.19],m:'mask',id:'mask'},
+          {g:'sph',s:[.20,.20,.05],p:[0,.24,.225],m:'eyeMark',b:true},
+          {g:'box',s:[.05,.16,.04],p:[0,.14,.225],m:'eyeMark',b:true},
+          {g:'taper',t0:.5,t1:.2,s:[.20,.50,.20],p:[0,.36,-.22],r:[.5,0,0],m:'hair'}],
+    shoulderL:[{g:'sph',s:[.20,.19,.20],p:[-.02,.02,0],m:'suit'}],
+    armL:[{g:'taper',t0:.5,t1:.42,s:[.18,.46,.18],p:[0,-.22,0],m:'suit'}],
+    forearmL:[{g:'taper',t0:.42,t1:.46,s:[.16,.42,.16],p:[0,-.20,0],m:'suit'},
+              {g:'box',s:[.19,.14,.19],p:[0,-.32,0],m:'sash'}],
+    handL:[{g:'box',s:[.14,.14,.12],p:[0,-.06,0],m:'suit',id:'palmL'}],
+    thighL:[{g:'taper',t0:.5,t1:.44,s:[.21,.46,.21],p:[0,-.22,0],m:'suit'}],
+    shinL:[{g:'taper',t0:.44,t1:.40,s:[.18,.42,.18],p:[0,-.20,0],m:'suit'}],
+    footL:[{g:'box',s:[.20,.12,.30],p:[0,-.04,.05],m:'boot'}]
+  };
+  return makeBiped(D);
+}
+/* ================= Wizzrobe: a hovering robe, no legs at all ================= */
+function wizSpec(){
+  const D=humanDims();
+  D.hipY=1.00; D.thigh=.02; D.shin=.02;
+  D.parts={
+    hips:[{g:'taper',t0:.34,t1:.92,s:[.70,1.00,.70],p:[0,-.44,0],m:'robe',id:'robe'},
+          {g:'box',s:[.46,.12,.34],p:[0,.02,0],m:'sash'}],
+    spine:[{g:'taper',t0:.5,t1:.4,s:[.44,.26,.36],p:[0,.09,0],m:'robe'}],
+    chest:[{g:'taper',t0:.48,t1:.44,s:[.52,.34,.40],p:[0,.06,0],m:'robe',id:'torso'},
+           {g:'box',s:[.62,.14,.44],p:[0,.20,0],m:'robeD'}],
+    neck:[{g:'cyl',s:[.12,.12,.12],p:[0,.04,0],m:'robeD'}],
+    head:[{g:'cone4',s:[.54,.62,.54],p:[0,.44,0],r:[0,.79,0],m:'hat',id:'hat'},
+          {g:'sph',s:[.36,.34,.34],p:[0,.18,0],m:'mask',id:'skull'},
+          /* the beaked mask */
+          {g:'cone',s:[.20,.34,.20],p:[0,.14,.22],r:[1.30,0,0],m:'beak'},
+          {g:'sph',s:[.12,.12,.08],p:[-.11,.24,.15],m:'eye',b:true},
+          {g:'sph',s:[.12,.12,.08],p:[ .11,.24,.15],m:'eye',b:true},
+          {g:'torus',s:[.50,.50,.50],p:[0,.70,0],r:[1.57,0,0],m:'gem',b:true,id:'halo'}],
+    shoulderL:[{g:'sph',s:[.20,.18,.20],p:[-.02,.02,0],m:'robeD'}],
+    armL:[{g:'taper',t0:.44,t1:.56,s:[.24,.46,.24],p:[0,-.22,0],m:'robe'}],
+    forearmL:[{g:'taper',t0:.5,t1:.62,s:[.28,.42,.28],p:[0,-.20,0],m:'robe',id:'cuffL'}],
+    handL:[{g:'box',s:[.12,.12,.12],p:[0,-.05,0],m:'mask',id:'palmL'}],
+    thighL:[],shinL:[],footL:[]
+  };
+  return makeBiped(D);
+}
+/* ================= villagers, by race ================= */
+/* Seven silhouettes where there used to be one box with a hat. */
+function npcSpec(race){
+  const D=humanDims();
+  const P={
+    hips:[{g:'box',s:[.38,.22,.26],p:[0,-.02,0],m:'trouser'},
+          {g:'taper',t0:.5,t1:.66,s:[.44,.40,.34],p:[0,-.16,0],m:'cloth',id:'skirt'},
+          {g:'box',s:[.42,.08,.29],p:[0,.06,0],m:'belt'}],
+    spine:[{g:'box',s:[.42,.26,.28],p:[0,.10,0],m:'cloth'}],
+    chest:[{g:'taper',t0:.52,t1:.48,s:[.50,.36,.34],p:[0,.04,0],m:'cloth',id:'torso'},
+           {g:'box',s:[.44,.16,.30],p:[0,.18,0],m:'cloth2'}],
+    neck:[{g:'cyl',s:[.13,.13,.13],p:[0,.05,0],m:'skin'}],
+    head:[{g:'box',s:[.40,.42,.38],p:[0,.22,0],m:'skin',id:'face'},
+          {g:'box',s:[.06,.07,.03],p:[-.09,.24,.192],m:'eye'},
+          {g:'box',s:[.06,.07,.03],p:[ .09,.24,.192],m:'eye'},
+          {g:'box',s:[.42,.18,.40],p:[0,.40,-.01],m:'hair',id:'hair'},
+          {g:'box',s:[.41,.08,.08],p:[0,.32,.18],m:'hair'}],
+    shoulderL:[{g:'sph',s:[.20,.19,.20],p:[-.02,.02,0],m:'cloth'}],
+    armL:[{g:'taper',t0:.5,t1:.44,s:[.19,.46,.19],p:[0,-.22,0],m:'cloth',id:'sleeveL'}],
+    forearmL:[{g:'taper',t0:.44,t1:.48,s:[.16,.42,.16],p:[0,-.20,0],m:'skin'}],
+    handL:[{g:'box',s:[.14,.14,.12],p:[0,-.06,0],m:'skin',id:'palmL'}],
+    thighL:[{g:'taper',t0:.5,t1:.44,s:[.21,.46,.21],p:[0,-.22,0],m:'trouser'}],
+    shinL:[{g:'taper',t0:.44,t1:.40,s:[.18,.42,.18],p:[0,-.20,0],m:'trouser'}],
+    footL:[{g:'box',s:[.20,.12,.30],p:[0,-.04,.05],m:'boot'}]
+  };
+  if(race==='goron'){
+    /* boulder shoulders, rock crust, tiny legs, no neck to speak of */
+    D.hipY=.80; D.shX=.40; D.upper=.42; D.fore=.40; D.thX=.20; D.thigh=.30; D.shin=.26;
+    D.neckY=.20;
+    P.hips=[{g:'sph',s:[.80,.52,.66],p:[0,-.04,0],m:'skin'},
+            {g:'box',s:[.52,.22,.40],p:[0,-.14,0],m:'cloth'}];
+    P.spine=[{g:'sph',s:[.86,.46,.70],p:[0,.08,0],m:'skin'}];
+    P.chest=[{g:'sph',s:[1.00,.70,.80],p:[0,.10,0],m:'skin',id:'torso'},
+             {g:'ico',s:[.34,.30,.30],p:[-.34,.28,-.16],m:'rock'},
+             {g:'ico',s:[.30,.26,.26],p:[ .30,.30,-.20],m:'rock'},
+             {g:'ico',s:[.26,.24,.24],p:[0,.34,-.28],m:'rock'}];
+    P.head=[{g:'sph',s:[.48,.44,.46],p:[0,.16,.02],m:'skin',id:'face'},
+            {g:'box',s:[.26,.10,.10],p:[0,.10,.22],m:'skinD'},
+            {g:'sph',s:[.10,.10,.07],p:[-.12,.20,.19],m:'eye',b:true},
+            {g:'sph',s:[.10,.10,.07],p:[ .12,.20,.19],m:'eye',b:true},
+            {g:'box',s:[.30,.12,.26],p:[0,.34,-.04],m:'hair',id:'hair'},
+            {g:'ico',s:[.16,.14,.14],p:[-.24,.24,-.14],m:'rock'},
+            {g:'ico',s:[.16,.14,.14],p:[ .24,.24,-.14],m:'rock'}];
+    P.armL=[{g:'taper',t0:.5,t1:.44,s:[.34,.44,.34],p:[0,-.21,0],m:'skin'}];
+    P.forearmL=[{g:'taper',t0:.44,t1:.52,s:[.32,.40,.32],p:[0,-.19,0],m:'skin'}];
+    P.handL=[{g:'box',s:[.30,.26,.26],p:[0,-.10,.01],m:'skin',id:'palmL'}];
+    P.thighL=[{g:'taper',t0:.5,t1:.46,s:[.28,.32,.28],p:[0,-.15,0],m:'skin'}];
+    P.shinL=[{g:'taper',t0:.46,t1:.44,s:[.26,.28,.26],p:[0,-.13,0],m:'skin'}];
+    P.footL=[{g:'box',s:[.30,.14,.36],p:[0,-.05,.06],m:'skinD'}];
+    P.shoulderL=[{g:'ico',s:[.42,.40,.40],p:[-.04,.04,0],m:'rock'}];
+  } else if(race==='zora'){
+    /* the head fin is the whole read, plus forearm and calf fins */
+    D.hipY=.92; D.upper=.46; D.fore=.44;
+    P.head=[{g:'taper',t0:.44,t1:.5,s:[.38,.42,.44],p:[0,.22,.02],m:'skin',id:'face'},
+            {g:'sph',s:[.13,.13,.09],p:[-.11,.26,.20],m:'eye',b:true},
+            {g:'sph',s:[.13,.13,.09],p:[ .11,.26,.20],m:'eye',b:true},
+            {g:'box',s:[.16,.05,.10],p:[0,.14,.20],m:'skinD'},
+            /* the swept head fin */
+            {g:'taper',t0:.26,t1:.06,s:[.22,.80,.30],p:[0,.42,-.34],r:[1.16,0,0],m:'fin',id:'hair'},
+            {g:'cone3',s:[.30,.26,.10],p:[-.20,.30,-.10],r:[0,0,1.2],m:'fin'},
+            {g:'cone3',s:[.30,.26,.10],p:[ .20,.30,-.10],r:[0,0,-1.2],m:'fin'}];
+    P.forearmL=[{g:'taper',t0:.44,t1:.48,s:[.16,.42,.16],p:[0,-.20,0],m:'skin'},
+                {g:'cone3',s:[.06,.30,.24],p:[-.10,-.22,-.02],r:[0,0,-.3],m:'fin'}];
+    P.shinL=[{g:'taper',t0:.44,t1:.40,s:[.18,.42,.18],p:[0,-.20,0],m:'skin'},
+             {g:'cone3',s:[.06,.26,.20],p:[-.09,-.24,-.02],r:[0,0,-.3],m:'fin'}];
+    P.chest=[{g:'taper',t0:.52,t1:.46,s:[.50,.36,.34],p:[0,.04,0],m:'skin',id:'torso'},
+             {g:'box',s:[.44,.16,.30],p:[0,.18,0],m:'cloth'},
+             {g:'box',s:[.30,.20,.04],p:[0,.06,.17],m:'cloth2'}];
+    P.hips=[{g:'box',s:[.38,.22,.26],p:[0,-.02,0],m:'skin'},
+            {g:'taper',t0:.5,t1:.60,s:[.42,.34,.32],p:[0,-.14,0],m:'cloth',id:'skirt'}];
+    P.thighL=[{g:'taper',t0:.5,t1:.44,s:[.21,.46,.21],p:[0,-.22,0],m:'skin'}];
+    P.footL=[{g:'box',s:[.20,.10,.34],p:[0,-.04,.07],m:'skinD'}];
+  } else if(race==='gerudo'){
+    D.hipY=.98; D.spineY=.22; D.chestY=.32; D.shX=.24; D.thigh=.50; D.shin=.46;
+    P.head=[{g:'box',s:[.38,.42,.36],p:[0,.22,0],m:'skin',id:'face'},
+            {g:'box',s:[.06,.07,.03],p:[-.09,.24,.182],m:'eye'},
+            {g:'box',s:[.06,.07,.03],p:[ .09,.24,.182],m:'eye'},
+            {g:'box',s:[.40,.20,.38],p:[0,.40,-.01],m:'hair',id:'hair'},
+            {g:'taper',t0:.5,t1:.3,s:[.18,.86,.18],p:[0,.20,-.26],r:[.22,0,0],m:'hair',id:'pony'},
+            {g:'box',s:[.20,.06,.20],p:[0,.44,-.14],m:'gem'},
+            {g:'box',s:[.42,.06,.40],p:[0,.44,0],m:'veil',id:'veil'}];
+    P.chest=[{g:'taper',t0:.48,t1:.44,s:[.44,.36,.30],p:[0,.04,0],m:'skin',id:'torso'},
+             {g:'box',s:[.46,.16,.32],p:[0,.16,0],m:'cloth'},
+             {g:'box',s:[.24,.12,.05],p:[0,.20,.15],m:'gem'}];
+    P.hips=[{g:'box',s:[.36,.22,.26],p:[0,-.02,0],m:'skin'},
+            {g:'taper',t0:.5,t1:.78,s:[.42,.56,.36],p:[0,-.24,0],m:'cloth',id:'skirt'},
+            {g:'box',s:[.42,.08,.29],p:[0,.06,0],m:'gem'}];
+    P.thighL=[{g:'taper',t0:.5,t1:.44,s:[.20,.52,.20],p:[0,-.25,0],m:'skin'}];
+    P.shinL=[{g:'taper',t0:.44,t1:.40,s:[.17,.48,.17],p:[0,-.23,0],m:'skin'}];
+    P.armL=[{g:'taper',t0:.5,t1:.44,s:[.17,.46,.17],p:[0,-.22,0],m:'skin'}];
+    P.footL=[{g:'box',s:[.19,.10,.28],p:[0,-.04,.05],m:'boot'},
+             {g:'cone',s:[.16,.12,.16],p:[0,.04,-.02],r:[3.14,0,0],m:'gem'}];
+  } else if(race==='rito'){
+    /* a beak and wing-arms; the feathers sit on the forearm so they swing with it */
+    D.hipY=.94;
+    P.head=[{g:'sph',s:[.40,.40,.38],p:[0,.22,0],m:'skin',id:'face'},
+            {g:'cone',s:[.18,.34,.18],p:[0,.18,.22],r:[1.40,0,0],m:'beak'},
+            {g:'sph',s:[.12,.12,.08],p:[-.13,.28,.15],m:'eye',b:true},
+            {g:'sph',s:[.12,.12,.08],p:[ .13,.28,.15],m:'eye',b:true},
+            {g:'cone3',s:[.10,.34,.26],p:[0,.46,-.06],r:[.3,0,0],m:'hair',id:'hair'},
+            {g:'cone3',s:[.08,.26,.20],p:[-.14,.42,-.10],r:[.3,0,.5],m:'hair'},
+            {g:'cone3',s:[.08,.26,.20],p:[ .14,.42,-.10],r:[.3,0,-.5],m:'hair'}];
+    P.forearmL=[{g:'taper',t0:.44,t1:.48,s:[.16,.42,.16],p:[0,-.20,0],m:'skin'},
+                {g:'plane',s:[.50,.60,1],p:[-.16,-.22,0],r:[0,1.57,.2],m:'wing',d:true,id:'wingL'},
+                {g:'cone3',s:[.10,.34,.20],p:[-.20,-.30,-.02],r:[0,0,-.4],m:'hair'}];
+    P.chest=[{g:'taper',t0:.54,t1:.48,s:[.54,.38,.38],p:[0,.04,0],m:'skin',id:'torso'},
+             {g:'box',s:[.46,.16,.32],p:[0,.18,0],m:'cloth'},
+             {g:'cone3',s:[.30,.30,.10],p:[0,.02,.20],r:[3.14,0,0],m:'cloth2'}];
+    P.footL=[{g:'box',s:[.18,.10,.26],p:[0,-.04,.04],m:'beak'},
+             {g:'cone',s:[.05,.12,.05],p:[-.05,-.05,.16],r:[-1.4,0,0],m:'beak'},
+             {g:'cone',s:[.05,.12,.05],p:[ .05,-.05,.16],r:[-1.4,0,0],m:'beak'}];
+  } else if(race==='korok'){
+    /* all mask, no face — the leaf is the character */
+    D.hipY=.70; D.spineY=.14; D.chestY=.20; D.neckY=.14; D.headY=.10;
+    D.shX=.20; D.upper=.30; D.fore=.28; D.thX=.11; D.thigh=.26; D.shin=.24;
+    P.hips=[{g:'box',s:[.28,.18,.22],p:[0,-.02,0],m:'skin'}];
+    P.spine=[{g:'box',s:[.32,.20,.24],p:[0,.08,0],m:'skin'}];
+    P.chest=[{g:'sph',s:[.40,.34,.32],p:[0,.06,0],m:'skin',id:'torso'}];
+    P.head=[{g:'sph',s:[.34,.32,.30],p:[0,.14,0],m:'skin',id:'face'},
+            /* the mask: a big leaf disc with two holes */
+            {g:'cyl',s:[.52,.05,.52],p:[0,.16,.15],r:[1.57,0,0],m:'leaf',id:'hair'},
+            {g:'cone3',s:[.30,.26,.05],p:[0,.42,.13],m:'leaf'},
+            {g:'sph',s:[.10,.14,.05],p:[-.11,.20,.20],m:'dark',b:true},
+            {g:'sph',s:[.10,.14,.05],p:[ .11,.20,.20],m:'dark',b:true},
+            {g:'box',s:[.06,.06,.05],p:[0,.10,.20],m:'dark',b:true},
+            {g:'taper',t0:.06,t1:.02,s:[.08,.24,.08],p:[0,.36,-.06],r:[-.3,0,0],m:'stem'}];
+    P.armL=[{g:'taper',t0:.4,t1:.3,s:[.13,.32,.13],p:[0,-.15,0],m:'skin'}];
+    P.forearmL=[{g:'taper',t0:.3,t1:.3,s:[.11,.30,.11],p:[0,-.14,0],m:'skin'}];
+    P.handL=[{g:'sph',s:[.13,.13,.13],p:[0,-.05,0],m:'skin',id:'palmL'}];
+    P.thighL=[{g:'taper',t0:.4,t1:.34,s:[.14,.28,.14],p:[0,-.13,0],m:'skin'}];
+    P.shinL=[{g:'taper',t0:.34,t1:.3,s:[.12,.26,.12],p:[0,-.12,0],m:'skin'}];
+    P.footL=[{g:'box',s:[.15,.09,.20],p:[0,-.03,.03],m:'skinD'}];
+    P.shoulderL=[{g:'sph',s:[.14,.13,.14],p:[-.02,.01,0],m:'skin'}];
+  }
+  D.parts=P;
+  return makeBiped(D);
+}
+</script>
+<script>
+"use strict";
+/* ================= BATCH 12D — the non-humanoids ================= */
+
+/* ---- quadrupeds: horses, boars, and a Lynel's bottom half ---- */
+function quadSpec(D){
+  const P=D.parts||{}, g=n=>P[n]||[];
+  const leg=(s,fb,z,y)=>{
+    const L=s<0?'L':'R';
+    const up=s<0?g('leg'+fb):mirrorParts(g('leg'+fb));
+    const lo=s<0?g('leg'+fb+'2'):mirrorParts(g('leg'+fb+'2'));
+    const ho=s<0?g('leg'+fb+'3'):mirrorParts(g('leg'+fb+'3'));
+    return {n:'leg'+fb+L,p:[s*D.legX,y,z],parts:up,c:[
+      {n:'leg'+fb+'2'+L,p:[0,-D.upper,0],r:D.lowerBind,parts:lo,c:[
+        {n:'leg'+fb+'3'+L,p:[0,-D.lower,0],parts:ho}]}]};
+  };
+  const chestKids=[{n:'neck',p:[0,D.neckY,D.neckZ],r:D.neckBind,parts:g('neck'),c:[
+      {n:'neck2',p:[0,D.neck2Y,D.neck2Z],r:D.neck2Bind,parts:g('neck2'),c:[
+        {n:'head',p:[0,D.headY,D.headZ],r:D.headBind,parts:g('head')}]}]},
+    leg(-1,'F',D.frontZ,D.frontY),leg(1,'F',D.frontZ,D.frontY)];
+  return {n:'root',c:[
+    {n:'hips',p:[0,D.hipY,0],parts:g('hips'),c:[
+      {n:'tail',p:[0,D.tailY,D.tailZ],r:D.tailBind,parts:g('tail'),c:[
+        {n:'tail2',p:[0,0,-D.tailL],parts:g('tail2')}]},
+      leg(-1,'B',D.backZ,D.backY),leg(1,'B',D.backZ,D.backY),
+      {n:'spine',p:[0,D.spineY,D.spineZ],parts:g('spine'),c:[
+        {n:'chest',p:[0,D.chestY,D.chestZ],parts:g('chest'),c:chestKids}]}]}]};
+}
+function horseSpec(){
+  const D={hipY:1.90,spineY:.04,spineZ:.30,chestY:.02,chestZ:.62,
+    neckY:.34,neckZ:.38,neck2Y:.34,neck2Z:.14,headY:.20,headZ:.16,
+    neckBind:[-.55,0,0],neck2Bind:[-.30,0,0],headBind:[1.05,0,0],
+    legX:.42,upper:.66,lower:.62,frontZ:.62,frontY:-.24,backZ:-.52,backY:-.24,
+    tailY:.18,tailZ:-.78,tailL:.50,tailBind:[.70,0,0],lowerBind:[.10,0,0]};
+  D.parts={
+    hips:[{g:'sph',s:[1.00,1.00,1.10],p:[0,0,-.24],m:'hide'},
+          {g:'box',s:[.86,.80,.50],p:[0,.04,-.50],m:'hide'}],
+    spine:[{g:'taper',t0:.5,t1:.52,s:[1.02,1.10,1.04],p:[0,0,.24],r:[1.57,0,0],m:'hide'},
+           {g:'box',s:[.80,.70,.40],p:[0,.20,.34],m:'saddleArea',id:'back'}],
+    chest:[{g:'sph',s:[1.06,1.06,.96],p:[0,0,.06],m:'hide'},
+           {g:'box',s:[.80,.74,.44],p:[0,-.10,.22],m:'hideD'}],
+    neck:[{g:'taper',t0:.34,t1:.5,s:[.56,.72,.66],p:[0,.18,.10],r:[.30,0,0],m:'hide'},
+          {g:'cone3',s:[.10,.60,.34],p:[0,.26,-.06],r:[.2,0,0],m:'mane'}],
+    neck2:[{g:'taper',t0:.30,t1:.36,s:[.46,.56,.52],p:[0,.16,.06],r:[.24,0,0],m:'hide'},
+           {g:'cone3',s:[.09,.48,.28],p:[0,.22,-.06],r:[.2,0,0],m:'mane'}],
+    head:[{g:'taper',t0:.34,t1:.28,s:[.36,.62,.42],p:[0,0,.22],r:[1.57,0,0],m:'hide'},
+          {g:'box',s:[.30,.24,.26],p:[0,-.02,.48],m:'hideD'},
+          {g:'sph',s:[.10,.09,.08],p:[-.10,.02,.52],m:'dark',b:true},
+          {g:'sph',s:[.10,.09,.08],p:[ .10,.02,.52],m:'dark',b:true},
+          {g:'sph',s:[.13,.13,.10],p:[-.17,.14,.14],m:'dark',b:true},
+          {g:'sph',s:[.13,.13,.10],p:[ .17,.14,.14],m:'dark',b:true},
+          {g:'cone',s:[.13,.24,.10],p:[-.13,.26,-.02],r:[-.2,0,.24],m:'hide'},
+          {g:'cone',s:[.13,.24,.10],p:[ .13,.26,-.02],r:[-.2,0,-.24],m:'hide'},
+          {g:'cone3',s:[.08,.34,.22],p:[0,.20,-.10],r:[.5,0,0],m:'mane'}],
+    tail:[{g:'taper',t0:.16,t1:.10,s:[.24,.52,.24],p:[0,0,-.26],r:[1.57,0,0],m:'mane'}],
+    tail2:[{g:'taper',t0:.20,t1:.06,s:[.30,.60,.30],p:[0,0,-.30],r:[1.57,0,0],m:'mane'}],
+    legF:[{g:'taper',t0:.34,t1:.24,s:[.36,.68,.40],p:[0,-.32,0],m:'hide'}],
+    legF2:[{g:'taper',t0:.20,t1:.15,s:[.24,.64,.24],p:[0,-.30,0],m:'hide'}],
+    legF3:[{g:'box',s:[.26,.20,.30],p:[0,-.08,.03],m:'hoof'}],
+    legB:[{g:'taper',t0:.44,t1:.26,s:[.44,.68,.48],p:[0,-.32,0],m:'hide'}],
+    legB2:[{g:'taper',t0:.20,t1:.15,s:[.24,.64,.24],p:[0,-.30,0],m:'hide'}],
+    legB3:[{g:'box',s:[.26,.20,.30],p:[0,-.08,.03],m:'hoof'}]
+  };
+  return quadSpec(D);
+}
+function boarSpec(){
+  const D={hipY:1.00,spineY:.02,spineZ:.20,chestY:.04,chestZ:.44,
+    neckY:.10,neckZ:.28,neck2Y:.02,neck2Z:.10,headY:.02,headZ:.14,
+    neckBind:[.20,0,0],neck2Bind:[.10,0,0],headBind:[0,0,0],
+    legX:.30,upper:.40,lower:.34,frontZ:.40,frontY:-.18,backZ:-.34,backY:-.18,
+    tailY:.16,tailZ:-.52,tailL:.20,tailBind:[-.6,0,0],lowerBind:[.16,0,0]};
+  D.parts={
+    hips:[{g:'sph',s:[.74,.74,.80],p:[0,0,-.18],m:'hide'}],
+    spine:[{g:'taper',t0:.5,t1:.56,s:[.80,.80,.86],p:[0,.04,.16],r:[1.57,0,0],m:'hide'},
+           {g:'cone3',s:[.08,.30,.50],p:[0,.42,.10],m:'bristle'}],
+    chest:[{g:'sph',s:[.86,.82,.74],p:[0,0,.02],m:'hide'},
+           {g:'cone3',s:[.08,.26,.40],p:[0,.40,0],m:'bristle'}],
+    neck:[{g:'taper',t0:.42,t1:.5,s:[.60,.34,.60],p:[0,0,.14],r:[1.57,0,0],m:'hide'}],
+    neck2:[{g:'box',s:[.50,.44,.30],p:[0,0,.12],m:'hide'}],
+    head:[{g:'taper',t0:.26,t1:.42,s:[.42,.52,.44],p:[0,-.02,.24],r:[1.40,0,0],m:'hideD'},
+          {g:'cyl',s:[.24,.08,.24],p:[0,-.06,.48],r:[1.57,0,0],m:'snout'},
+          {g:'sph',s:[.09,.09,.07],p:[-.14,.14,.20],m:'dark',b:true},
+          {g:'sph',s:[.09,.09,.07],p:[ .14,.14,.20],m:'dark',b:true},
+          {g:'cone',s:[.09,.22,.09],p:[-.16,-.06,.40],r:[-.9,0,.3],m:'tusk'},
+          {g:'cone',s:[.09,.22,.09],p:[ .16,-.06,.40],r:[-.9,0,-.3],m:'tusk'},
+          {g:'cone',s:[.14,.20,.08],p:[-.16,.26,.02],r:[-.3,0,.4],m:'hideD'},
+          {g:'cone',s:[.14,.20,.08],p:[ .16,.26,.02],r:[-.3,0,-.4],m:'hideD'}],
+    tail:[{g:'taper',t0:.06,t1:.04,s:[.09,.22,.09],p:[0,0,-.11],r:[1.57,0,0],m:'hideD'}],
+    tail2:[{g:'cone3',s:[.14,.16,.06],p:[0,0,-.06],m:'bristle'}],
+    legF:[{g:'taper',t0:.20,t1:.15,s:[.24,.42,.24],p:[0,-.20,0],m:'hideD'}],
+    legF2:[{g:'taper',t0:.14,t1:.11,s:[.17,.36,.17],p:[0,-.17,0],m:'hideD'}],
+    legF3:[{g:'box',s:[.18,.12,.20],p:[0,-.05,.02],m:'hoof'}],
+    legB:[{g:'taper',t0:.26,t1:.16,s:[.28,.42,.28],p:[0,-.20,0],m:'hideD'}],
+    legB2:[{g:'taper',t0:.14,t1:.11,s:[.17,.36,.17],p:[0,-.17,0],m:'hideD'}],
+    legB3:[{g:'box',s:[.18,.12,.20],p:[0,-.05,.02],m:'hoof'}]
+  };
+  return quadSpec(D);
+}
+/* ---- quadruped gaits, authored the same way ---- */
+cycleClip('qIdle',4.4,
+  { hips:[0,0,0,0,0,0],spine:[.01,0,0],chest:[0,0,0],neck:[.03,.04,0],neck2:[.02,.03,0],head:[.02,.05,0],
+    tail:[.04,.06,0],tail2:[0,.10,0],
+    legFL:[.02,0,0],legBL:[-.02,0,0] },
+  { hips:[0,0,0,0,.010,0],spine:[-.01,0,0],chest:[0,0,0],neck:[-.02,-.02,0],neck2:[-.02,-.02,0],head:[-.02,-.03,0],
+    tail:[-.03,-.05,0],tail2:[0,-.08,0],
+    legFL:[-.01,0,0],legBL:[.01,0,0] });
+cycleClip('qGraze',5.0,
+  { neck:[.95,.05,0],neck2:[.55,.04,0],head:[.30,.06,0],hips:[0,0,0,0,-.02,0],
+    tail:[.06,.10,0],tail2:[0,.14,0],legFL:[-.10,0,0],legF2L:[.06,0,0] },
+  { neck:[1.02,-.05,0],neck2:[.60,-.04,0],head:[.36,-.06,0],hips:[0,0,0,0,-.03,0],
+    tail:[-.04,-.09,0],tail2:[0,-.12,0],legFL:[-.06,0,0],legF2L:[.03,0,0] });
+/* a four-beat walk: the diagonal pairs are a quarter-cycle apart */
+cycleClip('qWalk',1.30,
+  { hips:[.01,.03,0,0,-.020,0],spine:[.01,-.02,0],chest:[0,-.02,0],
+    neck:[.04,.03,0],neck2:[.02,.02,0],head:[.02,.02,0],tail:[.05,.05,0],
+    legFL:[-.42,0,0],legF2L:[.16,0,0],legF3L:[.14,0,0],
+    legFR:[ .34,0,0],legF2R:[.30,0,0],legF3R:[-.16,0,0],
+    legBL:[ .34,0,0],legB2L:[.34,0,0],legB3L:[-.18,0,0],
+    legBR:[-.36,0,0],legB2R:[.22,0,0],legB3R:[.16,0,0] },
+  { hips:[.01,0,.02,0,.016,0],spine:[.01,0,0],chest:[0,0,0],
+    neck:[.02,0,0],neck2:[.01,0,0],head:[.01,0,0],tail:[-.03,0,0],
+    legFL:[-.10,0,0],legF2L:[.08,0,0],legF3L:[.02,0,0],
+    legFR:[-.02,0,0],legF2R:[.50,0,0],legF3R:[-.26,0,0],
+    legBL:[-.04,0,0],legB2L:[.54,0,0],legB3L:[-.28,0,0],
+    legBR:[-.12,0,0],legB2R:[.14,0,0],legB3R:[.04,0,0] });
+/* a two-beat trot: diagonal pairs move together, with real suspension */
+cycleClip('qTrot',.76,
+  { hips:[.02,0,0,0,-.030,0],spine:[.02,0,0],chest:[.01,0,0],
+    neck:[.02,0,0],neck2:[.01,0,0],head:[.01,0,0],tail:[.10,0,0],
+    legFL:[-.62,0,0],legF2L:[.22,0,0],legF3L:[.22,0,0],
+    legFR:[ .48,0,0],legF2R:[.44,0,0],legF3R:[-.24,0,0],
+    legBL:[ .50,0,0],legB2L:[.46,0,0],legB3L:[-.26,0,0],
+    legBR:[-.54,0,0],legB2R:[.30,0,0],legB3R:[.20,0,0] },
+  { hips:[.02,0,0,0,.046,0],spine:[.02,0,0],chest:[.01,0,0],
+    neck:[.01,0,0],neck2:[0,0,0],head:[0,0,0],tail:[.04,0,0],
+    legFL:[-.16,0,0],legF2L:[.12,0,0],legF3L:[.04,0,0],
+    legFR:[-.06,0,0],legF2R:[.80,0,0],legF3R:[-.38,0,0],
+    legBL:[-.08,0,0],legB2L:[.84,0,0],legB3L:[-.40,0,0],
+    legBR:[-.18,0,0],legB2R:[.20,0,0],legB3R:[.06,0,0] });
+/* the gallop is not symmetric, so it is authored as a full cycle */
+defClip('qGallop',{d:.62,k:[
+  {t:0,   p:{hips:[.10,0,0,0,-.05,0],spine:[.10,0,0],chest:[.06,0,0],neck:[-.16,0,0],neck2:[-.10,0,0],head:[.10,0,0],tail:[-.24,0,0],
+             legFL:[-.90,0,0],legF2L:[.30,0,0],legF3L:[.28,0,0],
+             legFR:[-.55,0,0],legF2R:[.22,0,0],legF3R:[.20,0,0],
+             legBL:[ .78,0,0],legB2L:[.60,0,0],legB3L:[-.30,0,0],
+             legBR:[ .95,0,0],legB2R:[.70,0,0],legB3R:[-.34,0,0]}},
+  {t:.16, p:{hips:[-.06,0,0,0,.02,0],spine:[-.06,0,0],chest:[-.04,0,0],neck:[-.05,0,0],neck2:[-.04,0,0],head:[.04,0,0],tail:[-.34,0,0],
+             legFL:[-.20,0,0],legF2L:[.16,0,0],legF3L:[.06,0,0],
+             legFR:[ .30,0,0],legF2R:[.30,0,0],legF3R:[-.14,0,0],
+             legBL:[ .10,0,0],legB2L:[1.05,0,0],legB3L:[-.44,0,0],
+             legBR:[ .34,0,0],legB2R:[1.15,0,0],legB3R:[-.48,0,0]}},
+  {t:.32, p:{hips:[-.14,0,0,0,.10,0],spine:[-.14,0,0],chest:[-.08,0,0],neck:[.06,0,0],neck2:[.04,0,0],head:[-.06,0,0],tail:[-.44,0,0],
+             legFL:[ .55,0,0],legF2L:[.34,0,0],legF3L:[-.20,0,0],
+             legFR:[ .70,0,0],legF2R:[.40,0,0],legF3R:[-.24,0,0],
+             legBL:[-.60,0,0],legB2L:[1.30,0,0],legB3L:[-.52,0,0],
+             legBR:[-.42,0,0],legB2R:[1.20,0,0],legB3R:[-.50,0,0]}},
+  {t:.48, p:{hips:[.06,0,0,0,-.02,0],spine:[.06,0,0],chest:[.04,0,0],neck:[-.10,0,0],neck2:[-.06,0,0],head:[.08,0,0],tail:[-.30,0,0],
+             legFL:[-1.05,0,0],legF2L:[.26,0,0],legF3L:[.32,0,0],
+             legFR:[-.80,0,0],legF2R:[.24,0,0],legF3R:[.28,0,0],
+             legBL:[ .40,0,0],legB2L:[.40,0,0],legB3L:[-.18,0,0],
+             legBR:[ .62,0,0],legB2R:[.50,0,0],legB3R:[-.24,0,0]}},
+  {t:.62, p:{hips:[.10,0,0,0,-.05,0],spine:[.10,0,0],chest:[.06,0,0],neck:[-.16,0,0],neck2:[-.10,0,0],head:[.10,0,0],tail:[-.24,0,0],
+             legFL:[-.90,0,0],legF2L:[.30,0,0],legF3L:[.28,0,0],
+             legFR:[-.55,0,0],legF2R:[.22,0,0],legF3R:[.20,0,0],
+             legBL:[ .78,0,0],legB2L:[.60,0,0],legB3L:[-.30,0,0],
+             legBR:[ .95,0,0],legB2R:[.70,0,0],legB3R:[-.34,0,0]}}
+]});
+defClip('qRear',{d:1.1,loop:false,k:[
+  {t:0,  p:{hips:[0,0,0],neck:[0,0,0],legFL:[0,0,0],legFR:[0,0,0]}},
+  {t:.4, p:{hips:[-.85,0,0,0,.30,0],spine:[-.20,0,0],chest:[-.14,0,0],neck:[.40,0,0],neck2:[.24,0,0],head:[-.30,0,0],tail:[-.50,0,0],
+            legFL:[-1.70,0,.16],legF2L:[1.10,0,0],legFR:[-1.45,0,-.16],legF2R:[.90,0,0],
+            legBL:[.30,0,0],legB2L:[.24,0,0],legBR:[.26,0,0],legB2R:[.20,0,0]}},
+  {t:1.1,p:{hips:[0,0,0],spine:[0,0,0],chest:[0,0,0],neck:[0,0,0],neck2:[0,0,0],head:[0,0,0],tail:[0,0,0],
+            legFL:[0,0,0],legF2L:[0,0,0],legFR:[0,0,0],legF2R:[0,0,0],
+            legBL:[0,0,0],legB2L:[0,0,0],legBR:[0,0,0],legB2R:[0,0,0]}}
+]});
+
+/* ---- Talus: a walking outcrop with an ore seam on its back ---- */
+function talusSpec(){
+  const D=humanDims();
+  D.hipY=1.06; D.spineY=.14; D.chestY=.24; D.neckY=.26; D.headY=.10;
+  D.shX=.62; D.shY=.06; D.upper=.52; D.fore=.48;
+  D.thX=.32; D.thigh=.34; D.shin=.28;
+  D.spineBind=[.14,0,0]; D.thighBind=[-.18,0,0]; D.shinBind=[.30,0,0];
+  const chunk=(x,y,z,s,r)=>({g:'dodec',s:[s,s*.9,s],p:[x,y,z],r:r||[x,y,z],m:'rock'});
+  D.parts={
+    hips:[chunk(0,0,0,1.10),chunk(-.42,-.10,.26,.52),chunk(.40,-.12,-.24,.56)],
+    spine:[chunk(0,.06,0,1.20),chunk(.34,.14,.34,.60),chunk(-.36,.10,-.30,.62)],
+    chest:[chunk(0,.14,0,1.50,[.4,.9,.2]),chunk(-.60,.20,.20,.70),chunk(.62,.16,-.18,.74),
+           chunk(0,.44,-.30,.80,[.9,.2,.5]),
+           /* the ore on the back: the whole reason you climb one */
+           {g:'ico',s:[.46,.46,.46],p:[0,.62,-.34],m:'ore',id:'ore'},
+           {g:'ico',s:[.26,.26,.26],p:[-.28,.52,-.40],m:'ore',id:'ore2'},
+           {g:'ico',s:[.22,.22,.22],p:[ .26,.50,-.42],m:'ore',id:'ore3'}],
+    neck:[],
+    head:[chunk(0,.10,.20,.86,[.2,.4,.9]),
+          {g:'sph',s:[.20,.20,.14],p:[-.20,.14,.54],m:'eye',b:true},
+          {g:'sph',s:[.20,.20,.14],p:[ .20,.14,.54],m:'eye',b:true},
+          {g:'box',s:[.06,.10,.06],p:[-.20,.14,.60],m:'dark',b:true},
+          {g:'box',s:[.06,.10,.06],p:[ .20,.14,.60],m:'dark',b:true}],
+    shoulderL:[chunk(-.10,0,0,.86)],
+    armL:[chunk(0,-.26,0,.72),chunk(-.10,-.44,.06,.52)],
+    forearmL:[chunk(0,-.24,0,.68)],
+    handL:[chunk(0,-.22,.06,.94,[.5,.2,.8])],
+    thighL:[chunk(0,-.18,0,.66)],
+    shinL:[chunk(0,-.16,0,.58)],
+    footL:[chunk(0,-.10,.10,.82,[.1,.7,.3])]
+  };
+  return makeBiped(D);
+}
+/* ---- Guardians: a dome on six legs, and the floating scouts ---- */
+function guardianSpec(walker){
+  const legs=[];
+  for(let i=0;i<6;i++){
+    const a=(i/6)*TAU+Math.PI/6;
+    const cx=Math.cos(a),cz=Math.sin(a);
+    legs.push({n:'gleg'+i,p:[cx*.72,-.10,cz*.72],r:[0,-a+Math.PI/2,0],parts:[
+        {g:'taper',t0:.14,t1:.10,s:[.20,.86,.20],p:[0,-.30,.24],r:[-.70,0,0],m:'metal'}],c:[
+      {n:'gleg'+i+'b',p:[0,-.60,.62],parts:[
+        {g:'taper',t0:.10,t1:.06,s:[.15,.90,.15],p:[0,-.40,.10],r:[.36,0,0],m:'metal'},
+        {g:'cone',s:[.12,.18,.12],p:[0,-.82,.24],r:[3.14,0,0],m:'metalD'}]}]});
+  }
+  const body={n:'hips',p:[0,walker?1.55:1.20,0],parts:[
+      {g:'hemi',s:[2.20,1.30,2.20],p:[0,0,0],m:'shell',id:'shell'},
+      {g:'cyl',s:[2.10,.24,2.10],p:[0,-.04,0],m:'shellD'},
+      {g:'torus',s:[2.30,2.30,2.30],p:[0,.06,0],r:[1.57,0,0],m:'rune',b:true,id:'rune'},
+      {g:'sph',s:[.60,.50,.60],p:[0,.58,0],m:'shellD'}],
+    c:legs.concat([
+      {n:'chest',p:[0,.30,0],parts:[],c:[
+        {n:'neck',p:[0,.22,0],parts:[
+          {g:'cyl',s:[.34,.34,.34],p:[0,0,0],m:'metal'}],c:[
+          {n:'head',p:[0,.18,0],parts:[
+            {g:'sph',s:[.74,.68,.74],p:[0,.06,0],m:'shell'},
+            {g:'sph',s:[.40,.40,.30],p:[0,.06,.30],m:'eye',b:true,id:'eye'},
+            {g:'sph',s:[.16,.16,.14],p:[0,.06,.42],m:'pupil',b:true,id:'pupil'},
+            {g:'cone3',s:[.22,.26,.10],p:[0,.40,.14],r:[.3,0,0],m:'rune',b:true}]}]}]}])};
+  return {n:'root',c:[body]};
+}
+function scoutSpec(){
+  const arms=[];
+  for(let i=0;i<3;i++){
+    const a=(i/3)*TAU;
+    const cx=Math.cos(a),cz=Math.sin(a);
+    arms.push({n:'sarm'+i,p:[cx*.52,-.10,cz*.52],r:[0,-a+Math.PI/2,0],parts:[
+      {g:'taper',t0:.10,t1:.07,s:[.16,.62,.16],p:[0,-.26,.10],r:[-.4,0,0],m:'metal'},
+      {g:'box',s:[.12,.26,.12],p:[0,-.48,.28],m:'metalD'}]});
+  }
+  return {n:'root',c:[{n:'hips',p:[0,1.10,0],parts:[
+      {g:'sph',s:[1.00,.94,1.00],p:[0,0,0],m:'shell',id:'shell'},
+      {g:'torus',s:[1.16,1.16,1.16],p:[0,0,0],r:[1.57,0,0],m:'rune',b:true,id:'rune'},
+      {g:'sph',s:[.40,.40,.26],p:[0,.06,.44],m:'eye',b:true,id:'eye'},
+      {g:'sph',s:[.16,.16,.12],p:[0,.06,.54],m:'pupil',b:true,id:'pupil'}],
+    c:arms.concat([{n:'head',p:[0,.50,0],parts:[
+      {g:'cone',s:[.34,.40,.34],p:[0,.10,0],m:'shellD'}]}])}]};
+}
+defClip('gWalk',{d:1.1,k:(function(){
+  /* six legs on an alternating tripod, which is what makes them read as machines */
+  const K=[];
+  for(let s=0;s<=4;s++){
+    const t=s/4, p={};
+    for(let i=0;i<6;i++){
+      const ph=(t+(i%2?.5:0))*TAU;
+      p['gleg'+i]=[Math.sin(ph)*.30,0,0];
+      p['gleg'+i+'b']=[Math.max(0,Math.cos(ph))*.34,0,0];
+    }
+    p.hips=[0,0,0,0,Math.sin(t*TAU*2)*.05,0];
+    K.push({t:t*1.1,p:p});
+  }
+  return K;
+})()});
+defClip('gIdle',{d:3.0,k:[
+  {t:0,  p:{hips:[0,.04,0,0,0,0],head:[0,.14,0]}},
+  {t:1.5,p:{hips:[0,-.04,0,0,-.03,0],head:[0,-.16,0]}},
+  {t:3.0,p:{hips:[0,.04,0,0,0,0],head:[0,.14,0]}}
+]});
+defClip('gAim',{d:.8,k:[
+  {t:0,  p:{hips:[0,0,0,0,.04,0],head:[-.10,0,0]}},
+  {t:.4, p:{hips:[0,0,0,0,.06,0],head:[-.14,0,0]}},
+  {t:.8, p:{hips:[0,0,0,0,.04,0],head:[-.10,0,0]}}
+]});
+/* ---- Keese: a bat with membranes stretched on arm bones ---- */
+function keeseSpec(){
+  const wing=(s)=>{
+    const L=s<0?'L':'R';
+    return {n:'wing'+L,p:[s*.26,.06,0],parts:[
+      {g:'taper',t0:.08,t1:.05,s:[.10,.62,.10],p:[s*.30,0,0],r:[0,0,s*1.57],m:'bone2'},
+      {g:'plane',s:[.66,.52,1],p:[s*.34,-.06,0],r:[1.57,0,0],m:'membrane',d:true}],c:[
+      {n:'wing'+L+'2',p:[s*.60,0,0],parts:[
+        {g:'taper',t0:.05,t1:.03,s:[.07,.58,.07],p:[s*.28,0,0],r:[0,0,s*1.57],m:'bone2'},
+        {g:'plane',s:[.60,.44,1],p:[s*.28,-.08,0],r:[1.57,0,0],m:'membrane',d:true}]}]};
+  };
+  return {n:'root',c:[{n:'hips',p:[0,0,0],parts:[
+      {g:'sph',s:[.46,.44,.52],p:[0,0,0],m:'fur',id:'body'},
+      {g:'sph',s:[.34,.30,.30],p:[0,.12,.22],m:'fur'},
+      {g:'sph',s:[.14,.14,.10],p:[-.10,.16,.34],m:'eye',b:true,id:'eye'},
+      {g:'sph',s:[.14,.14,.10],p:[ .10,.16,.34],m:'eye',b:true,id:'eye2'},
+      {g:'cone',s:[.14,.26,.08],p:[-.12,.32,.16],r:[-.2,0,.4],m:'fur'},
+      {g:'cone',s:[.14,.26,.08],p:[ .12,.32,.16],r:[-.2,0,-.4],m:'fur'},
+      {g:'cone',s:[.05,.09,.05],p:[-.05,.06,.40],r:[-1.4,0,0],m:'tusk'},
+      {g:'cone',s:[.05,.09,.05],p:[ .05,.06,.40],r:[-1.4,0,0],m:'tusk'},
+      {g:'taper',t0:.06,t1:.02,s:[.09,.30,.09],p:[0,-.10,-.28],r:[-1.1,0,0],m:'fur'}],
+    c:[wing(-1),wing(1)]}]};
+}
+defClip('flap',{d:.30,k:[
+  {t:0,   p:{wingL:[0,0,.62],wingL2:[0,0,.46],wingR:[0,0,-.62],wingR2:[0,0,-.46],hips:[0,0,0,0,.03,0]}},
+  {t:.14, p:{wingL:[0,0,-.44],wingL2:[0,0,-.30],wingR:[0,0,.44],wingR2:[0,0,.30],hips:[.10,0,0,0,-.03,0]}},
+  {t:.30, p:{wingL:[0,0,.62],wingL2:[0,0,.46],wingR:[0,0,-.62],wingR2:[0,0,-.46],hips:[0,0,0,0,.03,0]}}
+]});
+defClip('flapGlide',{d:1.6,k:[
+  {t:0,  p:{wingL:[0,0,.18],wingL2:[0,0,-.10],wingR:[0,0,-.18],wingR2:[0,0,.10]}},
+  {t:.8, p:{wingL:[0,0,.04],wingL2:[0,0,.06],wingR:[0,0,-.04],wingR2:[0,0,-.06]}},
+  {t:1.6,p:{wingL:[0,0,.18],wingL2:[0,0,-.10],wingR:[0,0,-.18],wingR2:[0,0,.10]}}
+]});
+/* ---- Chuchu: a blob, so the whole rig is squash ---- */
+function chuchuSpec(){
+  return {n:'root',c:[{n:'hips',p:[0,.50,0],parts:[
+      {g:'sphHi',s:[1.20,1.10,1.20],p:[0,0,0],m:'jelly',id:'body'},
+      {g:'sph',s:[.24,.24,.16],p:[-.22,.10,.50],m:'eye',b:true},
+      {g:'sph',s:[.24,.24,.16],p:[ .22,.10,.50],m:'eye',b:true},
+      {g:'box',s:[.09,.13,.05],p:[-.22,.10,.58],m:'dark',b:true},
+      {g:'box',s:[.09,.13,.05],p:[ .22,.10,.58],m:'dark',b:true}],
+    c:[{n:'chest',p:[0,.30,0],parts:[
+      {g:'sphHi',s:[.86,.70,.86],p:[0,.04,0],m:'jelly',id:'cap'}],c:[
+      {n:'head',p:[0,.24,0],parts:[
+        {g:'sph',s:[.40,.34,.40],p:[0,0,0],m:'jelly',id:'top'}]}]}]}]};
+}
+defClip('blob',{d:1.8,k:[
+  {t:0,  p:{hips:[0,0,0,0,0,0, .10,-.16,.10],chest:[0,0,0,0,-.04,0, -.06,.10,-.06],head:[0,0,0,0,-.02,0]}},
+  {t:.5, p:{hips:[0,0,0,0,.06,0, -.12,.22,-.12],chest:[0,0,0,0,.05,0, .08,-.10,.08],head:[0,0,0,0,.04,0]}},
+  {t:1.1,p:{hips:[0,0,0,0,-.02,0, .06,-.09,.06],chest:[0,0,0,0,-.02,0, -.03,.05,-.03],head:[0,0,0,0,-.01,0]}},
+  {t:1.8,p:{hips:[0,0,0,0,0,0, .10,-.16,.10],chest:[0,0,0,0,-.04,0, -.06,.10,-.06],head:[0,0,0,0,-.02,0]}}
+]});
+defClip('blobHop',{d:.72,k:[
+  {t:0,  p:{hips:[0,0,0,0,-.10,0, .30,-.34,.30],chest:[0,0,0,0,-.06,0, .14,-.16,.14]}},
+  {t:.20,p:{hips:[0,0,0,0,.34,0, -.22,.40,-.22],chest:[0,0,0,0,.10,0, -.14,.22,-.14]}},
+  {t:.46,p:{hips:[0,0,0,0,.06,0, .04,-.06,.04],chest:[0,0,0,0,0,0, .02,-.03,.02]}},
+  {t:.72,p:{hips:[0,0,0,0,-.10,0, .30,-.34,.30],chest:[0,0,0,0,-.06,0, .14,-.16,.14]}}
+]});
+/* ---- Octorok: a rock that turns out to have a siphon ---- */
+function octoSpec(){
+  return {n:'root',c:[{n:'hips',p:[0,.44,0],parts:[
+      {g:'sph',s:[1.00,.80,1.00],p:[0,0,0],m:'skin',id:'body'},
+      {g:'dodec',s:[.50,.40,.50],p:[-.34,.16,-.20],m:'camo'},
+      {g:'dodec',s:[.42,.34,.42],p:[ .32,.20,-.26],m:'camo'},
+      {g:'sph',s:[.24,.24,.18],p:[-.20,.24,.40],m:'eye',b:true},
+      {g:'sph',s:[.24,.24,.18],p:[ .20,.24,.40],m:'eye',b:true},
+      {g:'box',s:[.07,.12,.06],p:[-.20,.24,.48],m:'dark',b:true},
+      {g:'box',s:[.07,.12,.06],p:[ .20,.24,.48],m:'dark',b:true}],
+    c:[{n:'chest',p:[0,.30,.16],r:[-.5,0,0],parts:[
+      {g:'taper',t0:.30,t1:.16,s:[.44,.52,.44],p:[0,.22,0],m:'skin',id:'siphon'},
+      {g:'cyl',s:[.22,.10,.22],p:[0,.48,0],m:'dark'}],c:[
+      {n:'head',p:[0,.48,0],parts:[]}]}]}]};
+}
+defClip('octoIdle',{d:2.6,k:[
+  {t:0,  p:{hips:[0,.10,0,0,0,0, .04,-.04,.04],chest:[-.06,0,0]}},
+  {t:1.3,p:{hips:[0,-.10,0,0,.02,0, -.03,.05,-.03],chest:[.06,0,0]}},
+  {t:2.6,p:{hips:[0,.10,0,0,0,0, .04,-.04,.04],chest:[-.06,0,0]}}
+]});
+defClip('octoFire',{d:.5,loop:false,k:[
+  {t:0,  p:{chest:[.34,0,0],hips:[0,0,0,0,-.05,0, .16,-.14,.16]}},
+  {t:.16,p:{chest:[-.50,0,0],hips:[0,0,0,0,.04,0, -.12,.16,-.12]}},
+  {t:.5, p:{chest:[-.06,0,0],hips:[0,0,0,0,0,0, 0,0,0]}}
+]});
+/* ---- the birds that circle the world ---- */
+function birdSpec(){
+  return {n:'root',c:[{n:'hips',p:[0,0,0],parts:[
+      {g:'taper',t0:.28,t1:.16,s:[.34,.90,.36],p:[0,0,0],r:[1.57,0,0],m:'feather',id:'body'},
+      {g:'sph',s:[.26,.24,.26],p:[0,.06,.44],m:'feather'},
+      {g:'cone',s:[.10,.22,.10],p:[0,.02,.60],r:[1.45,0,0],m:'beak'},
+      {g:'cone3',s:[.34,.34,.10],p:[0,.02,-.50],r:[0,0,0],m:'featherD'}],
+    c:[{n:'wingL',p:[-.14,.06,.06],parts:[
+        {g:'plane',s:[1.30,.66,1],p:[-.62,0,0],r:[1.57,0,0],m:'feather',d:true}]},
+       {n:'wingR',p:[.14,.06,.06],parts:[
+        {g:'plane',s:[1.30,.66,1],p:[ .62,0,0],r:[1.57,0,0],m:'feather',d:true}]}]}]};
+}
+defClip('birdFlap',{d:.9,k:[
+  {t:0,  p:{wingL:[0,0,.55],wingR:[0,0,-.55],hips:[0,0,0,0,.04,0]}},
+  {t:.4, p:{wingL:[0,0,-.42],wingR:[0,0,.42],hips:[0,0,0,0,-.04,0]}},
+  {t:.9, p:{wingL:[0,0,.55],wingR:[0,0,-.55],hips:[0,0,0,0,.04,0]}}
+]});
+defClip('birdSoar',{d:3.0,k:[
+  {t:0,  p:{wingL:[0,0,.14],wingR:[0,0,-.14]}},
+  {t:1.5,p:{wingL:[0,0,.02],wingR:[0,0,-.02]}},
+  {t:3.0,p:{wingL:[0,0,.14],wingR:[0,0,-.14]}}
+]});
+/* ---- Molduga: only the back and fin ever break the sand ---- */
+function moldugaSpec(){
+  return {n:'root',c:[{n:'hips',p:[0,0,0],parts:[
+      {g:'taper',t0:.40,t1:.22,s:[1.60,2.60,1.30],p:[0,0,-1.10],r:[1.57,0,0],m:'hide'}],
+    c:[{n:'spine',p:[0,0,-.30],parts:[
+        {g:'sph',s:[1.80,1.50,2.20],p:[0,0,0],m:'hide'},
+        {g:'cone3',s:[.20,1.30,1.60],p:[0,.90,-.20],m:'fin',id:'fin'}],
+      c:[{n:'chest',p:[0,0,1.10],parts:[
+          {g:'taper',t0:.5,t1:.40,s:[1.60,1.20,1.50],p:[0,0,.30],r:[1.57,0,0],m:'hide'}],
+        c:[{n:'neck',p:[0,0,.70],parts:[],c:[
+          {n:'head',p:[0,0,.30],parts:[
+            {g:'taper',t0:.40,t1:.5,s:[1.40,1.10,1.30],p:[0,-.10,.40],r:[1.44,0,0],m:'hideD'},
+            {g:'sph',s:[.30,.30,.22],p:[-.42,.34,.50],m:'eye',b:true},
+            {g:'sph',s:[.30,.30,.22],p:[ .42,.34,.50],m:'eye',b:true},
+            {g:'cone',s:[.16,.40,.16],p:[-.30,-.20,.80],r:[-1.2,0,.2],m:'tusk'},
+            {g:'cone',s:[.16,.40,.16],p:[ .30,-.20,.80],r:[-1.2,0,-.2],m:'tusk'},
+            {g:'cone',s:[.16,.40,.16],p:[0,-.26,.86],r:[-1.2,0,0],m:'tusk'}]}]}]}]}]}]};
+}
+defClip('swimSand',{d:2.2,k:[
+  {t:0,  p:{hips:[0,.14,0],spine:[0,-.10,0],chest:[0,-.12,0],neck:[0,-.08,0],head:[0,-.06,0]}},
+  {t:1.1,p:{hips:[0,-.14,0],spine:[0,.10,0],chest:[0,.12,0],neck:[0,.08,0],head:[0,.06,0]}},
+  {t:2.2,p:{hips:[0,.14,0],spine:[0,-.10,0],chest:[0,-.12,0],neck:[0,-.08,0],head:[0,-.06,0]}}
+]});
+defClip('lunge',{d:1.2,loop:false,k:[
+  {t:0,  p:{hips:[.3,0,0],spine:[.2,0,0],chest:[.2,0,0],head:[.3,0,0]}},
+  {t:.35,p:{hips:[-.55,0,0],spine:[-.30,0,0],chest:[-.34,0,0],neck:[-.20,0,0],head:[-.40,0,0]}},
+  {t:1.2,p:{hips:[.3,0,0],spine:[.2,0,0],chest:[.2,0,0],head:[.3,0,0]}}
+]});
+</script>
+<script>
+"use strict";
+/* ================= BATCH 12E — species palettes and the creature factory ================= */
+function shade(c,f){
+  const r=Math.min(255,Math.round(((c>>16)&255)*f)),
+        g=Math.min(255,Math.round(((c>>8)&255)*f)),
+        b=Math.min(255,Math.round((c&255)*f));
+  return (r<<16)|(g<<8)|b;
+}
+function mixc(a,b,t){
+  const ar=(a>>16)&255,ag=(a>>8)&255,ab=a&255,br=(b>>16)&255,bg=(b>>8)&255,bb=b&255;
+  return (Math.round(ar+(br-ar)*t)<<16)|(Math.round(ag+(bg-ag)*t)<<8)|Math.round(ab+(bb-ab)*t);
+}
+const ELCOL={fire:0xff7a2a,ice:0x8fd0e8,shock:0xffe45a};
+/* which model an enemy type wears */
+function enemyShape(type,T){
+  if(T.jelly) return 'chuchu';
+  if(T.fly) return 'keese';
+  if(T.ranged) return 'octorok';
+  if(T.talus||type==='pebblit') return 'talus';
+  if(T.guardian) return T.beam?'guardian':'scout';
+  if(T.caster) return 'wizzrobe';
+  if(T.sand) return 'molduga';
+  if(T.charge) return 'lynel';
+  if(type.indexOf('Hinox')>=0||type==='stalnox') return 'hinox';
+  if(type.indexOf('Moblin')>=0) return 'moblin';
+  if(type.indexOf('Liz')>=0) return 'lizal';
+  if(type.indexOf('yiga')>=0) return 'yiga';
+  return 'boko';
+}
+/* per-shape scale factor and spec height, so a Lynel is Lynel-sized rather than
+   a bokoblin at 2.6x, and the health bar sits above the model it belongs to */
+const SHAPE={
+  boko  :{k:1.00,h:2.50},moblin:{k:0.65,h:2.40},lizal :{k:1.00,h:2.10},
+  lynel :{k:0.48,h:3.60},hinox :{k:0.72,h:2.30},yiga  :{k:0.85,h:2.40},
+  wizzrobe:{k:0.75,h:2.66},talus:{k:0.46,h:2.40},guardian:{k:0.50,h:2.80},
+  scout :{k:0.79,h:2.00},keese :{k:2.80,h:0.60},chuchu:{k:1.00,h:1.25},
+  octorok:{k:1.00,h:1.20},molduga:{k:0.50,h:2.00}
+};
+const SPEC_CACHE={};
+function creatureSpec(shape,T){
+  const key=shape+(T.stal?'_s':'');
+  if(!SPEC_CACHE[key]){
+    const o={stal:!!T.stal};
+    SPEC_CACHE[key]=
+      shape==='boko'    ? bokoSpec(o)   : shape==='moblin'  ? moblinSpec(o)  :
+      shape==='lizal'   ? lizalSpec(o)  : shape==='lynel'   ? lynelSpec()    :
+      shape==='hinox'   ? hinoxSpec(o)  : shape==='yiga'    ? yigaSpec(o)    :
+      shape==='wizzrobe'? wizSpec()     : shape==='talus'   ? talusSpec()    :
+      shape==='guardian'? guardianSpec(true) : shape==='scout' ? scoutSpec() :
+      shape==='keese'   ? keeseSpec()   : shape==='chuchu'  ? chuchuSpec()   :
+      shape==='octorok' ? octoSpec()    : shape==='molduga' ? moldugaSpec()  : bokoSpec(o);
+  }
+  return SPEC_CACHE[key];
+}
+function enemyPal(type,T,shape){
+  const c=T.col, stal=!!T.stal, el=T.el?ELCOL[T.el]:0;
+  const P={skin:c,skinD:shade(c,.76),belly:mixc(c,0xfff0d8,.34),snout:shade(c,.88),
+    cloth:0x6f5334,belt:0x4f3a24,sash:0x2a2028,horn:0xcfc7ad,tusk:0xf2ecd8,
+    eye:stal?0xff6a3a:0xffe08a,dark:0x161210,crest:shade(c,.68),
+    mane:shade(c,.62),hide:c,hideD:shade(c,.80),hoof:0x332d26,
+    metal:0x8f96a0,metalD:0x5f6670,sclera:0xf6f0e0,iris:0xc4462a,
+    rock:c,ore:0xd8b24a,leaf:0x4f8442,stem:0x6b4a2a,fur:c,
+    membrane:shade(c,.66),bone2:0xd8d2bc,jelly:c,camo:shade(c,.82),
+    robe:c,robeD:shade(c,.72),hat:shade(c,.86),mask:0xd8cfae,beak:0xd8b06a,
+    gem:el||0x63d6e2,shell:c,shellD:shade(c,.78),rune:0xff6a2a,pupil:0x2a1008,
+    suit:c,eyeMark:0xd8452a,boot:0x2a2028,hair:0x1a1614,fin:shade(c,.7),
+    saddleArea:shade(c,.9),bristle:shade(c,.6),feather:c,featherD:shade(c,.8)};
+  if(stal){
+    P.skin=0xe4dcc4; P.skinD=0xc7bfa4; P.snout=0xd9d1b6; P.belly=0xeee6cf;
+    P.eye=0xff6a3a; P.horn=0xf0e8d0; P.crest=0xcfc7ad; P.mane=0xcfc7ad;
+  }
+  if(shape==='lynel'){ P.skin=mixc(c,0x8a4a3a,.55); P.hide=mixc(c,0x7a4034,.62);
+    P.hideD=shade(P.hide,.8); P.mane=c; P.belly=mixc(P.skin,0xfff0d8,.4); P.snout=shade(P.skin,.88); }
+  if(shape==='chuchu'){ P.jelly=c; }
+  if(shape==='guardian'||shape==='scout'){ P.shell=c; P.eye=0xff8a2a; P.rune=0xff6a2a; }
+  if(shape==='talus'){ P.rock=c; P.ore=T.el==='fire'?0xff8a3a:T.el==='ice'?0xbfe9f2:0xd8b24a; }
+  if(shape==='octorok'){ P.camo=shade(c,.8); }
+  if(shape==='wizzrobe'){ P.robe=c; P.gem=el||0xc4462a; P.eye=el||0xffe08a; }
+  if(shape==='yiga'){ P.suit=c; P.mask=0xe6dcc4; P.eyeMark=0xc4302a; P.hair=0x241a16; }
+  if(shape==='keese'){ P.fur=c; P.membrane=shade(c,.62); }
+  if(T.el&&(shape==='chuchu'||shape==='keese')) P.jelly=P.fur=c;
+  return P;
+}
+/* the clip each shape uses for a given situation — one place, so behaviour code
+   never has to know what species it is looking at */
+const GAIT={
+  chuchu  :{idle:'blob',   walk:'blobHop', run:'blobHop', alert:'blob'},
+  keese   :{idle:'flapGlide',walk:'flap',  run:'flap',    alert:'flap'},
+  octorok :{idle:'octoIdle',walk:'octoIdle',run:'octoIdle',alert:'octoIdle'},
+  guardian:{idle:'gIdle',  walk:'gWalk',   run:'gWalk',   alert:'gAim'},
+  scout   :{idle:'gIdle',  walk:'gIdle',   run:'gIdle',   alert:'gAim'},
+  molduga :{idle:'swimSand',walk:'swimSand',run:'swimSand',alert:'swimSand'},
+  lynel   :{idle:'qIdle',  walk:'qWalk',   run:'qGallop', alert:'qTrot'},
+  moblin  :{idle:'idle',   walk:'lumber',  run:'lumber',  alert:'alert'},
+  hinox   :{idle:'idle',   walk:'lumber',  run:'lumber',  alert:'alert'},
+  talus   :{idle:'idle',   walk:'lumber',  run:'lumber',  alert:'alert'},
+  lizal   :{idle:'idle',   walk:'creep',   run:'run',     alert:'creep'},
+  _       :{idle:'idle',   walk:'walk',    run:'run',     alert:'alert'}
+};
+function gaitOf(shape){ return GAIT[shape]||GAIT._; }
+/* does this shape have the standard arms/legs the combat clips drive? */
+const BIPED={boko:1,moblin:1,lizal:1,yiga:1,hinox:1,talus:1,wizzrobe:1,lynel:1};
+function buildCreature(type,T){
+  const shape=enemyShape(type,T);
+  const S=SHAPE[shape]||SHAPE.boko;
+  const scale=T.s*S.k;
+  const rig=buildRig(creatureSpec(shape,T),enemyPal(type,T,shape),scale);
+  const A=makeAnim(rig,gaitOf(shape).idle);
+  return {rig:rig,anim:A,shape:shape,scale:scale,top:S.h*scale};
+}
+/* a weapon in the hand, not welded to the upper arm */
+function giveWeapon(E,name){
+  const rig=E.rig; if(!rig||!rig.bones.handR) return;
+  const W=WEAPONS[name]||{col:0x7a5a34,len:1.1};
+  const sc=E.cscale||1;
+  const m=new THREE.Mesh(BOX,new THREE.MeshLambertMaterial({color:W.col,flatShading:true}));
+  m.scale.set(.15*sc,W.len*sc,.15*sc);
+  m.position.set(0,-W.len*.42*sc,.06*sc);
+  m.rotation.x=-.30;
+  m.castShadow=true;
+  rig.bones.handR.add(m);
+  E.wmesh=m;
+}
+/* ---------- Link's armour, actually visible ----------
+   The old build had three body colours and three leg colours. Every set now has a
+   palette, so what you are wearing reads at a glance. */
+const SETCOL={
+  climb:{c:0x6b4a8a,t:0x8a5aa8},stealth:{c:0x2a2a4a,t:0x3f3f6a},zora:{c:0x2f7f9a,t:0x4aa8c4},
+  gerudo:{c:0xd8b878,t:0xe8ce96},voe:{c:0x6ab8d8,t:0x8fd0e8},flamebreaker:{c:0x8a3a1a,t:0xc4593a},
+  snowquill:{c:0x9a2a3a,t:0xc4453a},radiant:{c:0x2a2a2a,t:0xd8d2bc},rubber:{c:0xd8c84a,t:0xe8dc7a},
+  barbarian:{c:0x5a3a2a,t:0x8a5a3a},ancient:{c:0x3a4a4a,t:0x63d6e2},wild:{c:0x2f6a3a,t:0x4a9a52},
+  dark:{c:0x1a1a24,t:0x2f2f3f},salvager:{c:0x7a6a4a,t:0x9a8a5a},tingle:{c:0x2f8a3a,t:0x4aba52},
+  phantom:{c:0x3a3a44,t:0x5a5a66},royalguard:{c:0x2a3a6a,t:0xd8b24a},
+  phantomganon:{c:0x2a1a2a,t:0x6a2a4a},time:{c:0x3a6a4a,t:0x5a9a6a},
+  wind:{c:0x3a7a6a,t:0x5aaa8a},twilight:{c:0x2a3a5a,t:0x4a6a9a},sky:{c:0x4a7aaa,t:0x6aa8d8},
+  hero:{c:0x2f7a4a,t:0x4aa86a},deity:{c:0xd8d2bc,t:0x8a9ab0}
+};
+const NAMECOL={
+  'Old Shirt':0xc9c0ab,'Warm Doublet':0x3f6a8c,'Well-Worn Trousers':0xb9a681,
+  'Archaic Warm Greaves':0x6a5a44,'Hylian Tunic':0x3f7a4a,'Hylian Trousers':0x8a7a5a,
+  "Soldier's Armor":0x5a6a7a,"Soldier's Greaves":0x4a5a6a,'Champion’s Tunic':0x2f6ab0,
+  'Tunic of the Wild':0x2f6a3a,'Trousers of the Wild':0x2f6a3a
+};
+function armourColor(name,slot){
+  if(!name||name==='None') return slot==='body'?0xe9c39c:slot==='legs'?0xe9c39c:0;
+  if(NAMECOL[name]!==undefined) return NAMECOL[name];
+  const A=ARMOR[name];
+  if(A&&A.set&&SETCOL[A.set]) return slot==='body'?SETCOL[A.set].t:SETCOL[A.set].c;
+  if(A&&A.def>=10) return 0x2a3a6a;
+  return slot==='body'?0x8a7a5a:slot==='legs'?0x6a5a44:0x7a6a58;
+}
+/* push the worn armour onto the rig; called only when the loadout changes */
+function refreshArmour(){
+  const bodyC=armourColor(P.armor.body,'body'), legC=armourColor(P.armor.legs,'legs');
+  const headN=P.armor.head, hasHead=headN&&headN!=='None';
+  const sleeveC=P.armor.body&&P.armor.body!=='None'?shade(bodyC,.88):0xe9c39c;
+  for(const id of ['torso','yoke','waist','skirt','skirtFL','skirtFR','skirtBL','skirtBR','padL','padR'])
+    rigSkin(linkRig,id,bodyC);
+  rigSkin(linkRig,'sleeveL',sleeveC); rigSkin(linkRig,'sleeveR',sleeveC);
+  for(const id of ['thighML','thighMR','shinML','shinMR']) rigSkin(linkRig,id,legC);
+  if(hasHead){
+    const hc=armourColor(headN,'head');
+    rigSkin(linkRig,'hair',hc); rigSkin(linkRig,'fringe',hc);
+    rigShow(linkRig,'pony',ARMOR[headN]&&ARMOR[headN].slot==='head'&&/Circlet|Earrings/.test(headN));
+  } else {
+    rigSkin(linkRig,'hair',LINK_PAL.hair); rigSkin(linkRig,'fringe',LINK_PAL.hair);
+    rigShow(linkRig,'pony',true);
+  }
+}
+</script>
+<script>
+"use strict";
 /* burnable, choppable vegetation: each tree is tracked so fire can spread */
 const trees=[], grassTufts=[];
 function scatterVeg(){
@@ -1450,23 +3237,22 @@ function placeForage(){
 placeForage();
 /* wildlife: boars and birds, which flee — the plateau's meat supply */
 const critters=[];
+let BOARSPEC=null, BIRDSPEC=null;
 function addCritter(kind,x,z){
   const g=new THREE.Group(); const y=groundAt(x,z);
+  let rig;
   if(kind==='boar'){
-    box(g,1.5,1.0,2.4,0,1.0,0,new THREE.MeshLambertMaterial({color:0x6b543c}));
-    const hd=box(g,.8,.8,.9,0,1.05,-1.5,new THREE.MeshLambertMaterial({color:0x5a4632}));
-    for(const s of[-1,1])for(const f of[-1,1]) box(g,.24,.9,.24,s*.5,.45,f*.8,MAT.wood);
-    for(const s of[-1,1]){const t=new THREE.Mesh(new THREE.ConeGeometry(.08,.4,5),MAT.bone);
-      t.position.set(s*.24,.95,-1.9);t.rotation.x=-.6;g.add(t);}
+    if(!BOARSPEC) BOARSPEC=boarSpec();
+    rig=buildRig(BOARSPEC,{hide:0x6b543c,hideD:0x5a4632,snout:0x8a7060,hoof:0x2e2822,
+      tusk:0xf0ead6,dark:0x141010,bristle:0x3a2e22},.86);
   } else {
-    box(g,.5,.45,.8,0,.4,0,new THREE.MeshLambertMaterial({color:0xa8a29a}));
-    const hd=box(g,.3,.3,.3,0,.62,-.45,new THREE.MeshLambertMaterial({color:0xb8b2aa}));
-    for(const s of[-1,1]){const w=new THREE.Mesh(new THREE.PlaneGeometry(.8,.4),
-      new THREE.MeshLambertMaterial({color:0x9a948c,side:THREE.DoubleSide}));
-      w.position.set(s*.42,.45,0);g.add(w);}
+    if(!BIRDSPEC) BIRDSPEC=birdSpec();
+    rig=buildRig(BIRDSPEC,{feather:0xa8a29a,featherD:0x8a847c,beak:0xd8a24a},.42);
   }
-  g.position.set(x,y,z); g.traverse(o=>{if(o.isMesh)o.castShadow=true;}); scene.add(g);
+  g.add(rig.root);
+  g.position.set(x,y,z); scene.add(g);
   critters.push({kind,g,pos:g.position,hp:kind==='boar'?8:1,flee:0,yaw:rnd()*TAU,wt:0,alive:true,
+    rig:rig,anim:makeAnim(rig,kind==='boar'?'qIdle':'birdSoar'),
     drop:kind==='boar'?'Raw Meat':'Raw Bird Drumstick'});
 }
 for(let i=0;i<26;i++){
@@ -1926,30 +3712,28 @@ const LEGMAT={'None':new THREE.MeshLambertMaterial({color:0xe9c39c}),
   'Well-Worn Trousers':new THREE.MeshLambertMaterial({color:0xb9a681}),
   "Archaic Warm Greaves":new THREE.MeshLambertMaterial({color:0x6a5a44})};
 const player=new THREE.Group(); const rig={};
+const linkRig=buildRig(linkSpec(),LINK_PAL,1.0);
+const linkAnim=makeAnim(linkRig,'idle');
 (function(){
-  rig.torso=box(player,.78,1.0,.46,0,1.26,0,BODYMAT['None']);
-  rig.head=new THREE.Mesh(new THREE.BoxGeometry(.48,.52,.46),SKIN);
-  rig.head.position.set(0,2.04,0); rig.head.castShadow=true; player.add(rig.head);
-  const hair=new THREE.Mesh(new THREE.BoxGeometry(.55,.32,.53),HAIR); hair.position.set(0,2.24,.02); player.add(hair);
-  const pony=new THREE.Mesh(new THREE.BoxGeometry(.17,.55,.17),HAIR); pony.position.set(0,2.0,.32); player.add(pony);
-  for(const s of[-1,1]){const ear=new THREE.Mesh(new THREE.ConeGeometry(.1,.32,4),SKIN);
-    ear.position.set(s*.27,2.06,0); ear.rotation.z=-s*.9; player.add(ear);}
-  rig.armL=new THREE.Group(); rig.armL.position.set(-.49,1.72,0); player.add(rig.armL);
-  rig.armLm=box(rig.armL,.23,.84,.23,0,-.42,0,SKIN);
-  rig.armR=new THREE.Group(); rig.armR.position.set(.49,1.72,0); player.add(rig.armR);
-  rig.armRm=box(rig.armR,.23,.84,.23,0,-.42,0,SKIN);
-  rig.legL=new THREE.Group(); rig.legL.position.set(-.21,.78,0); player.add(rig.legL);
-  rig.legLm=box(rig.legL,.27,.66,.27,0,-.33,0,LEGMAT['None']); box(rig.legL,.31,.2,.36,0,-.72,.03,BOOT);
-  rig.legR=new THREE.Group(); rig.legR.position.set(.21,.78,0); player.add(rig.legR);
-  rig.legRm=box(rig.legR,.27,.66,.27,0,-.33,0,LEGMAT['None']); box(rig.legR,.31,.2,.36,0,-.72,.03,BOOT);
-  rig.hand=new THREE.Group(); rig.hand.position.set(0,-.84,0); rig.armR.add(rig.hand);
-  rig.offhand=new THREE.Group(); rig.offhand.position.set(0,-.84,0); rig.armL.add(rig.offhand);
-  rig.back=new THREE.Group(); rig.back.position.set(0,1.5,.28); player.add(rig.back);
-  rig.glider=new THREE.Group(); rig.glider.visible=false; player.add(rig.glider);
-  const sail=new THREE.Mesh(new THREE.CylinderGeometry(2.6,2.6,.14,18,1,true,0,Math.PI),
-    new THREE.MeshLambertMaterial({color:0x4a6f8c,side:THREE.DoubleSide}));
-  sail.position.set(0,3.6,0); sail.rotation.set(Math.PI/2,0,0); sail.scale.set(1,1,.9); rig.glider.add(sail);
-  for(const s of[-1,1]){const r=cyl(rig.glider,.035,1.8,s*1.7,2.7,0,MAT.wood); r.rotation.z=s*.34;}
+  player.add(linkRig.root);
+  const B=linkRig.bones;
+  rig.bones=B; rig.parts=linkRig.parts;
+  /* the attachment points the rest of the game already talks to, moved onto real
+     hand bones so a sword follows the wrist instead of the shoulder */
+  rig.hand=new THREE.Group();    rig.hand.position.set(0,-.12,.03);    B.handR.add(rig.hand);
+  rig.offhand=new THREE.Group(); rig.offhand.position.set(0,-.12,.05); B.handL.add(rig.offhand);
+  rig.back=new THREE.Group();    rig.back.position.set(0,.14,-.24);    B.chest.add(rig.back);
+  rig.glider=new THREE.Group();  rig.glider.visible=false; player.add(rig.glider);
+  const sailM=new THREE.MeshLambertMaterial({color:0x4a6f8c,side:THREE.DoubleSide,flatShading:true});
+  const sail=new THREE.Mesh(new THREE.CylinderGeometry(2.5,2.5,.14,18,1,true,0,Math.PI),sailM);
+  sail.position.set(0,3.30,.10); sail.rotation.set(Math.PI/2,0,0); sail.scale.set(1,1,.9);
+  rig.glider.add(sail);
+  const trim=new THREE.MeshLambertMaterial({color:0xd8b24a,flatShading:true});
+  for(const sx of[-1,1]){
+    const r=cyl(rig.glider,.035,1.8,sx*1.65,2.62,.10,MAT.wood); r.rotation.z=sx*.34;
+    const t=cyl(rig.glider,.05,.30,sx*2.42,3.16,.10,trim); t.rotation.z=sx*1.20;
+  }
+  const bar=cyl(rig.glider,.05,1.9,0,2.42,.42,MAT.wood); bar.rotation.z=Math.PI/2;
   player.traverse(o=>{if(o.isMesh)o.castShadow=true;});
   scene.add(player);
 })();
@@ -2186,29 +3970,70 @@ function nearestShore(){
   }
   return new THREE.Vector3(LM.temple.x,groundAt(LM.temple.x,LM.temple.z),LM.temple.z);
 }
+/* upper-body poses that need to mix with whatever the legs are doing, rather than
+   overwrite it the way the old if-chain did */
+POSE.guardUp={chest:[.06,.20,0],neck:[-.06,-.14,0],head:[-.08,-.18,0],
+  shoulderL:[0,0,.28],armL:[-1.42,-.42,.50],forearmL:[-1.30,0,0],
+  shoulderR:[0,0,-.10],armR:[-.42,.10,-.28],forearmR:[-.70,0,0]};
+POSE.aimUp={chest:[0,.34,0],neck:[0,-.32,0],head:[-.04,-.40,0],
+  shoulderL:[0,0,.26],armL:[-1.56,-.62,.26],forearmL:[-.10,0,0],
+  shoulderR:[0,0,-.24],armR:[-1.48,.30,-.62],forearmR:[-1.80,0,0]};
+const ATKCLIPS=['attack1','attack2','attack3'];
+let prevSwingT=0, prevSpinT=0, wasAir=false, landT=0, armourKey='';
 function animate(dt,moving,speed){
-  const t=performance.now()/1000;
+  const A=linkAnim;
   rig.glider.visible=P.gliding;
-  rig.torso.material=BODYMAT[P.armor.body]||BODYMAT['None'];
-  rig.legLm.material=rig.legRm.material=LEGMAT[P.armor.legs]||LEGMAT['None'];
-  if(P.gliding){rig.armL.rotation.x=-2.6;rig.armR.rotation.x=-2.6;rig.legL.rotation.x=.25;rig.legR.rotation.x=-.15;}
-  else if(P.surfing){rig.legL.rotation.x=-.5;rig.legR.rotation.x=.35;rig.armL.rotation.x=-.9;rig.armR.rotation.x=-.5;}
-  else if(P.climbing){const c=Math.sin(t*6)*.8;
-    rig.armL.rotation.x=-2.3+c*.4;rig.armR.rotation.x=-2.3-c*.4;
-    rig.legL.rotation.x=c*.4;rig.legR.rotation.x=-c*.4;}
-  else if(P.swimming){const c=Math.sin(t*5);
-    rig.armL.rotation.x=-1.4+c;rig.armR.rotation.x=-1.4-c;rig.legL.rotation.x=c*.5;rig.legR.rotation.x=-c*.5;}
-  else if(speed>.4){const f=Math.sin(t*(speed>8?13:9))*(speed>8?1:.7)*(P.crouch?.5:1);
-    rig.armL.rotation.x=f;rig.armR.rotation.x=-f;rig.legL.rotation.x=-f;rig.legR.rotation.x=f;}
-  else {rig.armL.rotation.x*=.85;rig.legL.rotation.x*=.85;rig.legR.rotation.x*=.85;
-    rig.armR.rotation.x=lerp(rig.armR.rotation.x,0,.2);}
-  if(P.swingT>0){const k=1-P.swingT/.34;
-    rig.armR.rotation.x=-2.4+k*3.6; rig.armR.rotation.z=Math.sin(k*Math.PI)*-.8;}
-  else rig.armR.rotation.z*=.8;
-  if(P.spinT>0){ player.rotation.y += (1-P.spinT/.5)*TAU*dt*4; rig.armR.rotation.x=-1.6; }
-  if(P.chargeT>.25){ rig.armR.rotation.x=-2.2+Math.sin(t*22)*.08; }
-  if(aiming){rig.armL.rotation.x=-1.55;rig.armR.rotation.x=-1.5;}
-  if(P.guard){rig.armL.rotation.x=-1.4;rig.armL.rotation.z=.5;} else rig.armL.rotation.z*=.8;
+  /* armour is a material swap, so only touch it when the loadout actually changes */
+  const ak=P.armor.head+'|'+P.armor.body+'|'+P.armor.legs;
+  if(ak!==armourKey){ armourKey=ak; refreshArmour(); }
+
+  const newSwing=P.swingT>prevSwingT+1e-6, newSpin=P.spinT>prevSpinT+1e-6;
+  prevSwingT=P.swingT; prevSpinT=P.spinT;
+
+  /* ---- one locomotion track, picked by state ---- */
+  let want='idle';
+  if(P.mount)          want='idle';
+  else if(P.gliding)   want='glide';
+  else if(P.surfing)   want='surf';
+  else if(P.climbing)  want='climb';
+  else if(P.swimming)  want=speed>.6?'swim':'tread';
+  else if(!P.onGround) want=P.vel.y>1.0?'jump':'fall';
+  else if(speed>9.5)   want='sprint';
+  else if(speed>4.2)   want='run';
+  else if(speed>.4)    want=P.crouch?'creep':'walk';
+  else if(P.guard)     want='guard';
+  else if(aiming)      want='aim';
+
+  if(P.onGround&&wasAir&&!P.swimming&&!P.climbing){ playClip(A,'land',.07,true); landT=.30; }
+  wasAir=!P.onGround&&!P.climbing&&!P.swimming;
+  if(landT>0){ landT-=dt; if(speed<3.2) want='land'; }
+
+  /* attacks take the track outright, and restart on each new swing */
+  if(P.spinT>0){ want='spin'; if(newSpin) playClip(A,'spin',.05,true); }
+  else if(P.swingT>0){ want=ATKCLIPS[P.comboI%3]; if(newSwing) playClip(A,want,.05,true); }
+  else if(P.chargeT>.25) want='charge';
+  playClip(A,want,.16);
+
+  /* play the gait at the speed he is actually travelling */
+  A.spd = want==='walk'   ? Math.max(.60,speed/3.4)
+        : want==='run'    ? Math.max(.75,speed/6.6)
+        : want==='sprint' ? Math.max(.85,speed/10.5)
+        : want==='creep'  ? Math.max(.55,speed/2.2)
+        : want==='climb'  ? Math.max(.5,speed/2.6) : 1;
+
+  /* ---- layers: what used to be six ifs fighting over rotation.x ---- */
+  if(P.mount)                        layer(A,POSE.ride,1,'set');
+  if(P.guard&&want!=='guard'&&P.swingT<=0&&P.spinT<=0) layer(A,POSE.guardUp,.9,'set');
+  if(aiming&&want!=='aim'&&P.swingT<=0)                layer(A,POSE.aimUp,.9,'set');
+  if(P.crouch&&P.onGround&&speed<=.4&&!P.guard)        layer(A,POSE.crouch,.8);
+  if(P.torchLit&&P.swingT<=0)        layer(A,POSE.torch,.55);
+  if(P.invuln>.3)                    layer(A,POSE.flinch,Math.min(1,(P.invuln-.3)/.35)*.8);
+  if(P.burnT>0)                      layer(A,POSE.burn,Math.min(1,P.burnT)*.55);
+  if(P.shockT>0)                     layer(A,POSE.shock,Math.min(1,P.shockT)*.7);
+  if(P.coldT>3)                      layer(A,POSE.freeze,Math.min(1,(P.coldT-3)/3)*.6);
+  stepAnim(A,dt);
+
+  if(P.spinT>0) player.rotation.y+=(1-P.spinT/.5)*TAU*dt*4;
   rig.offhand.visible=!!curS();
 }
 </script>
@@ -2520,57 +4345,35 @@ function makeEnemy(sp){
   if(P.master&&UPGRADE[type]&&!ETYPE[type].stal) type=UPGRADE[type];
   const T=ETYPE[type], s=T.s;
   const g=new THREE.Group();
-  const col=new THREE.MeshLambertMaterial({color:T.col,flatShading:true});
-  if(T.jelly){
-    const b=new THREE.Mesh(new THREE.SphereGeometry(.95,14,10),
-      new THREE.MeshLambertMaterial({color:T.col,transparent:true,opacity:.85}));
-    b.position.y=.9; g.add(b); g.userData.body=b;
-    if(T.el) b.material.emissive=new THREE.Color(T.col);
-  } else if(T.fly){
-    const b=new THREE.Mesh(new THREE.SphereGeometry(.46,10,8),col); g.add(b);
-    for(const d of[-1,1]){const w=new THREE.Mesh(new THREE.PlaneGeometry(1.2,.65),
-      new THREE.MeshLambertMaterial({color:T.col,side:THREE.DoubleSide}));
-      w.position.set(d*.75,.05,0); g.add(w); g.userData['w'+(d>0?'R':'L')]=w;}
-    const e=new THREE.Mesh(new THREE.SphereGeometry(.1,6,5),new THREE.MeshBasicMaterial({color:0xff5a3a}));
-    e.position.set(0,.13,-.38); g.add(e);
-    if(T.el) col.emissive=new THREE.Color(T.col);
-  } else {
-    box(g,.9*s,1.05*s,.62*s,0,1.2*s,0,col);
-    const hd=new THREE.Mesh(new THREE.SphereGeometry(.48*s,10,8),col);
-    hd.position.y=2.0*s; g.add(hd); g.userData.head=hd;
-    const sn=new THREE.Mesh(new THREE.ConeGeometry(.21*s,.55*s,6),col);
-    sn.position.set(0,1.94*s,-.48*s); sn.rotation.x=-Math.PI/2; g.add(sn);
-    for(const d of[-1,1]){
-      const ear=new THREE.Mesh(new THREE.ConeGeometry(.14*s,.58*s,5),col);
-      ear.position.set(d*.47*s,2.18*s,0); ear.rotation.z=-d*1.1; g.add(ear);
-      const eye=new THREE.Mesh(new THREE.SphereGeometry(.1*s,6,5),
-        new THREE.MeshBasicMaterial({color:T.stal?0xff6a3a:0xffe08a}));
-      eye.position.set(d*.18*s,2.06*s,-.4*s); g.add(eye);
-      const arm=new THREE.Group(); arm.position.set(d*.58*s,1.66*s,0); g.add(arm);
-      box(arm,.21*s,.78*s,.21*s,0,-.38*s,0,col); g.userData['arm'+(d>0?'R':'L')]=arm;
-      const leg=new THREE.Group(); leg.position.set(d*.25*s,.7*s,0); g.add(leg);
-      box(leg,.25*s,.72*s,.25*s,0,-.36*s,0,col); g.userData['leg'+(d>0?'R':'L')]=leg;
-    }
-  }
+  /* the whole body is a rig now — a Lynel is a Lynel, not a bokoblin at 2.6x */
+  const C=buildCreature(type,T);
+  g.add(C.rig.root);
+  g.userData.rig=C.rig; g.userData.anim=C.anim;
+  g.userData.armR=C.rig.bones.handR||null;
+  g.userData.head=C.rig.bones.head||null;
+  g.userData.body=C.rig.parts.body||null;
   const bg=new THREE.Sprite(barBG), fg=new THREE.Sprite(barFG);
-  bg.scale.set(1.7,.17,1); fg.scale.set(1.62,.11,1);
-  bg.position.y=fg.position.y=2.9*s; bg.renderOrder=fg.renderOrder=10;
+  /* the bar is sized and placed from the model it belongs to, so a Lynel's does not
+     float six metres over its head the way 2.9*s used to */
+  const bw=Math.min(9,Math.max(1.7,C.top*.72));
+  bg.scale.set(bw,bw*.10,1); fg.scale.set(bw*.95,bw*.065,1);
+  bg.position.y=fg.position.y=C.top*1.12; bg.renderOrder=fg.renderOrder=10;
   bg.visible=fg.visible=false; g.add(bg,fg);
   const y=groundAt(sp.x,sp.z);
   g.position.set(sp.x,y+(T.fly?5:0),sp.z);
-  g.traverse(o=>{if(o.isMesh)o.castShadow=true;});
   scene.add(g);
   const E={t:type,T,g,hp:T.hp,hpMax:T.hp,s,pos:g.position,vel:new THREE.Vector3(),
     home:new THREE.Vector3(sp.x,y,sp.z), camp:sp.camp, yaw:rnd()*TAU,
     state:'idle',alert:0,aggroT:0,cd:0,atkT:0,hurtT:0,stun:0,stunEl:null,burn:0,shock:0,
     wander:new THREE.Vector3(),wt:0,bg,fg,alive:true,night:!!(T.night||sp.night),
-    weapon:T.wep||null, asleep:false, tower:false};
-  if(E.weapon&&g.userData.armR){
-    const W=WEAPONS[E.weapon]||{col:0x7a5a34,len:1.1};
-    const wm=box(g.userData.armR,.14,.14,W.len,0,-.74*s,-W.len*.4,
-      new THREE.MeshLambertMaterial({color:W.col}));
-    wm.rotation.x=.4; E.wmesh=wm;
-  }
+    weapon:T.wep||null, asleep:false, tower:false,
+    rig:C.rig, anim:C.anim, shape:C.shape, cscale:C.scale, top:C.top,
+    gait:gaitOf(C.shape), biped:!!BIPED[C.shape], atkTok:0, lastAtk:0};
+  /* a lynel gallops on its horse half while its arms swing a sword — the layered
+     animator is what makes that a two-line problem instead of a special case */
+  E.quad = C.shape==='lynel';
+  if(E.weapon) giveWeapon(E,E.weapon);
+  E.barW=bw*.95;
   enemies.push(E); return E;
 }
 SPAWNS.forEach(sp=>{const e=makeEnemy(sp); if(e.night){e.dormant=true;e.g.visible=false;}});
@@ -2592,6 +4395,53 @@ function canSee(E){
   if(E.asleep) return d<4 && P.noise>.5;
   return da<1.25 || d<6*(1+P.noise);
 }
+/* sample a clip into a pose so it can be used as a LAYER rather than a track —
+   this is what lets a Lynel gallop and swing a sword in the same frame */
+const _POSEPOOL=[{},{},{},{}];
+function clipPose(name,t,slot){
+  const c=CLIPS[name]; if(!c) return null;
+  const o=_POSEPOOL[slot||0];
+  for(const k in o) delete o[k];
+  sampleClip(c,t,o); return o;
+}
+/* one driver for every enemy in the game, whatever shape it is wearing */
+function driveEnemy(E,dt,chasing,d,speed){
+  const A=E.anim; if(!A) return;
+  /* Ganon and the Dark Beast replace their body with g.clear(); their rig is detached */
+  if(!E.rig||!E.rig.root.parent) return;
+  /* far away, the animation is invisible — skip the work and the draw calls */
+  if(d>230){ if(E.rig.root.visible) E.rig.root.visible=false; return; }
+  if(!E.rig.root.visible) E.rig.root.visible=true;
+  const G=E.gait;
+  const newAtk=E.atkT>(E._patk||0)+1e-6; E._patk=E.atkT;
+  let want;
+  if(E.collapsed)        want='die';
+  else if(E.asleep)      want=E.biped?'sleep':G.idle;
+  else if(speed>.35)     want=(chasing||speed>3.4)?G.run:G.walk;
+  else                   want=chasing?G.alert:G.idle;
+  /* bipeds swing on the main track; quadrupeds keep galloping and swing as a layer */
+  const attacking=E.atkT>0&&E.biped&&!E.quad;
+  if(attacking){
+    want=ATKCLIPS[(E._atki||0)%3];
+    if(newAtk){ E._atki=((E._atki||0)+1)%3; want=ATKCLIPS[E._atki]; playClip(A,want,.05,true); }
+  }
+  playClip(A,want,.16);
+  A.spd = want===G.run  ? Math.max(.65,speed/(E.quad?7.0:6.0))
+        : want===G.walk ? Math.max(.55,speed/(E.quad?3.2:2.8)) : 1;
+  /* layers */
+  if(E.quad&&E.rig.bones.armR){
+    const t=E.atkT>0?(.36-E.atkT):0;
+    layer(A,clipPose(E.atkT>0?'attack1':'alert',E.atkT>0?t:performance.now()/700,0),
+          E.atkT>0?1:.85,'set');
+  }
+  if(E.hurtT>0)  layer(A,POSE.flinch,Math.min(1,E.hurtT/.3)*.85);
+  if(E.stun>0)   layer(A,POSE.freeze,.7);
+  if(E.burn>0)   layer(A,POSE.burn,.5);
+  if(E.shock>0)  layer(A,POSE.shock,.7);
+  if(chasing&&d<34&&E.biped&&!attacking&&E.rig.bones.neck)
+    lookAt(A,E.yaw,P.pos.x,P.pos.z,E.pos.x,E.pos.z,.7);
+  stepAnim(A,dt);
+}
 function updateEnemies(dt){
   const night=isNight();
   let anySeen=0;
@@ -2600,7 +4450,8 @@ function updateEnemies(dt){
       E.rebuildT-=dt;
       if(isNight()===false){ E.collapsed=false; E.g.visible=false; E.dormant=true; continue; }
       if(E.rebuildT<=0){ E.collapsed=false; E.alive=true; E.hp=E.hpMax;
-        E.g.rotation.z=0; E.g.visible=true; sfx('open'); }
+        E.g.visible=true; playClip(E.anim,'rebuild',.10,true); sfx('open'); }
+      else driveEnemy(E,dt,false,999,0);
       continue;
     }
     if(!E.alive) continue;
@@ -2619,7 +4470,7 @@ function updateEnemies(dt){
     if(E.burn>0){E.burn-=dt; E.hp-=dt*6; if(E.hp<=0){killEnemy(E);continue;}}
     if(E.shock>0){E.shock-=dt;}
     const dx=P.pos.x-E.pos.x, dz=P.pos.z-E.pos.z, d=Math.hypot(dx,dz);
-    if(E.stun>0||E.asleep){ if(E.asleep) E.g.rotation.z=1.35; continue; } else E.g.rotation.z=0;
+    if(E.stun>0||E.asleep){ driveEnemy(E,dt,false,d,0); continue; }
     if(canSee(E)){ E.alert=Math.min(1,E.alert+dt*1.6); if(E.alert>=1) E.aggroT=10; }
     else E.alert=Math.max(0,E.alert-dt*.5);
     if(E.aggroT>0) anySeen=Math.max(anySeen,1); else if(E.alert>0) anySeen=Math.max(anySeen,E.alert*.9);
@@ -2636,9 +4487,7 @@ function updateEnemies(dt){
           E.yaw=aLerp(E.yaw,Math.atan2(dir.x,dir.z),1-Math.pow(.001,dt));
           if(bd<1.8){ E.weapon=best.d.w; scene.remove(best.mesh);
             pickups.splice(pickups.indexOf(best),1);
-            const W=WEAPONS[E.weapon]||{col:0x7a5a34,len:1.1};
-            if(E.g.userData.armR){const wm=box(E.g.userData.armR,.14,.14,W.len,0,-.74*E.s,-W.len*.4,
-              new THREE.MeshLambertMaterial({color:W.col})); wm.rotation.x=.4; E.wmesh=wm;}
+            giveWeapon(E,E.weapon);
             toast(E.T.n+' grabbed a weapon','bad');
           }
           continue;
@@ -2686,18 +4535,16 @@ function updateEnemies(dt){
     else { const pf=platformUnder(E.pos.x,E.pos.z,E.pos.y);
       E.pos.y=pf?pf.top:Math.max(gy,waterAt(E.pos.x,E.pos.z)-.6); }
     E.g.rotation.y=E.yaw;
-    const t=performance.now()/1000;
-    if(E.g.userData.legL){
-      const mv=chasing?1:.4, f=Math.sin(t*8)*mv*.6;
-      E.g.userData.legL.rotation.x=f; E.g.userData.legR.rotation.x=-f;
-      E.g.userData.armL.rotation.x=-f*.7;
-      E.g.userData.armR.rotation.x=E.atkT>0?-2.2+(1-E.atkT/.5)*2.8:f*.7;
-    }
-    if(E.g.userData.wL){const f=Math.sin(t*16)*.9; E.g.userData.wL.rotation.z=f; E.g.userData.wR.rotation.z=-f;}
-    if(E.g.userData.body){const s2=1+Math.sin(t*4)*.12; E.g.userData.body.scale.set(1/s2,s2,1/s2);}
+    /* how fast it is actually travelling, so the gait matches the ground */
+    const mvx=E.pos.x-(E._px===undefined?E.pos.x:E._px), mvz=E.pos.z-(E._pz===undefined?E.pos.z:E._pz);
+    E._px=E.pos.x; E._pz=E.pos.z;
+    const espd=dt>0?Math.hypot(mvx,mvz)/dt:0;
+    E.spdSm=(E.spdSm||0)*.7+espd*.3;
+    driveEnemy(E,dt,chasing,d,E.spdSm);
     const show=E.hp<E.hpMax&&d<40;
     E.bg.visible=E.fg.visible=show;
-    if(show){const f=E.hp/E.hpMax; E.fg.scale.x=1.62*f; E.fg.position.x=-(1.62*(1-f))/2;}
+    if(show){const f=E.hp/E.hpMax, W=E.barW||1.62;
+      E.fg.scale.x=W*f; E.fg.position.x=-(W*(1-f))/2;}
   }
   P.seen=anySeen;
   const st=$('#stealth');
@@ -3222,7 +5069,7 @@ function giveMat(n,c){ if(!MATS[n]){toast('Got '+n);return;}
   P.mats[n]=(P.mats[n]||0)+c; toast('Got '+n+(c>1?' ×'+c:'')); updateGear(); }
 function killEnemy(E){
   if(E.T.stal&&!E.finished){          // it only falls apart; it will pull itself together
-    E.alive=false; E.collapsed=true; E.rebuildT=5; E.g.rotation.z=1.5;
+    E.alive=false; E.collapsed=true; E.rebuildT=5; playClip(E.anim,'die',.12,true);
     E.bg.visible=E.fg.visible=false; sfx('break');
     toast('The Stalkoblin collapses — finish it, or it rebuilds','bad');
     return;
@@ -3255,6 +5102,19 @@ function updateCritters(dt){
     const gy=groundAt(C.pos.x,C.pos.z);
     C.pos.y=C.kind==='bird'&&C.flee>0? lerp(C.pos.y,gy+8,1-Math.pow(.02,dt)) : Math.max(gy,WATER);
     C.g.rotation.y=C.yaw;
+    /* boars trot and bolt; the ground birds flap when startled */
+    const mvx=C.pos.x-(C._px===undefined?C.pos.x:C._px), mvz=C.pos.z-(C._pz===undefined?C.pos.z:C._pz);
+    C._px=C.pos.x; C._pz=C.pos.z;
+    const csp=dt>0?Math.hypot(mvx,mvz)/dt:0;
+    C.spdSm=(C.spdSm||0)*.7+csp*.3;
+    if(C.kind==='boar'){
+      playClip(C.anim, C.flee>0?'qGallop':(C.spdSm>.35?'qWalk':(C.wt>1.5?'qGraze':'qIdle')),.22);
+      C.anim.spd=C.flee>0?1.2:Math.max(.6,C.spdSm/2.4);
+    } else {
+      playClip(C.anim, C.flee>0?'birdFlap':'birdSoar',.18);
+      C.anim.spd=C.flee>0?1.4:1;
+    }
+    stepAnim(C.anim,dt);
   }
 }
 function updateForage(dt){
@@ -3910,38 +5770,331 @@ function sfx(k){
     case 'voice': tone(520,.09,'triangle',.03,440); break;
   }
 }
-/* --- an original score: a slow modal piano figure that drifts with the time of day --- */
-const SCALE=[0,2,3,5,7,8,10,12];          // aeolian, the wandering-ruins mood
-let musT=0, musStep=0, musKey=57;          // A3
+/* ================= BATCH 25B — the score =================
+   Roadmap #3. A real multi-instrument score: eight synthesised instruments, a
+   look-ahead scheduler running on the audio clock rather than the frame clock,
+   and a distinct theme for every region — key, mode, tempo, chord progression,
+   melody and instrumentation all change when you cross a border.              */
+const MODE={
+  ionian:[0,2,4,5,7,9,11], aeolian:[0,2,3,5,7,8,10], dorian:[0,2,3,5,7,9,10],
+  mixo:[0,2,4,5,7,9,10],   lydian:[0,2,4,6,7,9,11],  phryg:[0,1,3,5,7,8,10],
+  pentMaj:[0,2,4,7,9],     pentMin:[0,3,5,7,10],     hira:[0,2,3,7,8],
+  harmMin:[0,2,3,5,7,8,11]
+};
+const mtof=m=>440*Math.pow(2,(m-69)/12);
+function degToMidi(root,mode,deg){
+  const sc=MODE[mode]||MODE.aeolian, n=sc.length;
+  const oct=Math.floor(deg/n), i=((deg%n)+n)%n;
+  return root+oct*12+sc[i];
+}
+/* ---------- the instruments ---------- */
+let musBus=null, musLP=null;
+function musDest(){
+  if(!musBus){
+    const c=ac();
+    musLP=c.createBiquadFilter(); musLP.type='lowpass'; musLP.frequency.value=7000;
+    musBus=c.createGain(); musBus.gain.value=1;
+    musBus.connect(musLP); musLP.connect(musGain());
+  }
+  return musBus;
+}
+function musGain(){ ac(); return musicGain; }
+function osc(c,type,f,t){ const o=c.createOscillator(); o.type=type; o.frequency.setValueAtTime(f,t); return o; }
+function adsr(c,t,a,d,sus,rel,dur,peak){
+  const g=c.createGain(); const p=Math.max(.0001,peak);
+  g.gain.setValueAtTime(.0001,t);
+  g.gain.exponentialRampToValueAtTime(p,t+a);
+  g.gain.exponentialRampToValueAtTime(Math.max(.0001,p*sus),t+a+d);
+  g.gain.setValueAtTime(Math.max(.0001,p*sus),t+Math.max(a+d,dur));
+  g.gain.exponentialRampToValueAtTime(.0001,t+Math.max(a+d,dur)+rel);
+  return g;
+}
+const INSTR={
+  piano(c,t,f,dur,v){
+    const d=musDest(), lp=c.createBiquadFilter(); lp.type='lowpass';
+    lp.frequency.setValueAtTime(3200,t); lp.frequency.exponentialRampToValueAtTime(700,t+dur*.9);
+    const g=c.createGain();
+    g.gain.setValueAtTime(.0001,t);
+    g.gain.exponentialRampToValueAtTime(v,t+.006);
+    g.gain.exponentialRampToValueAtTime(.0001,t+dur);
+    for(const [mul,det,amp,ty] of [[1,0,1,'triangle'],[1,4,.55,'triangle'],[2,0,.20,'sine'],[3,0,.07,'sine']]){
+      const o=osc(c,ty,f*mul,t); o.detune.setValueAtTime(det,t);
+      const gg=c.createGain(); gg.gain.value=amp;
+      o.connect(gg); gg.connect(lp); o.start(t); o.stop(t+dur+.05);
+    }
+    lp.connect(g); g.connect(d);
+  },
+  harp(c,t,f,dur,v){
+    const d=musDest(), g=c.createGain();
+    g.gain.setValueAtTime(.0001,t);
+    g.gain.exponentialRampToValueAtTime(v,t+.004);
+    g.gain.exponentialRampToValueAtTime(.0001,t+dur*.9);
+    const o=osc(c,'triangle',f,t), o2=osc(c,'sine',f*2,t);
+    const g2=c.createGain(); g2.gain.value=.22;
+    o.connect(g); o2.connect(g2); g2.connect(g); g.connect(d);
+    o.start(t); o.stop(t+dur); o2.start(t); o2.stop(t+dur*.6);
+  },
+  pad(c,t,f,dur,v){
+    const d=musDest(), lp=c.createBiquadFilter(); lp.type='lowpass';
+    lp.frequency.setValueAtTime(500,t);
+    lp.frequency.linearRampToValueAtTime(1500,t+dur*.5);
+    lp.frequency.linearRampToValueAtTime(600,t+dur);
+    const g=adsr(c,t,.45,.30,.75,.90,dur,v);
+    for(const det of [-7,7]){
+      const o=osc(c,'sawtooth',f,t); o.detune.setValueAtTime(det,t);
+      o.connect(lp); o.start(t); o.stop(t+dur+1.0);
+    }
+    lp.connect(g); g.connect(d);
+  },
+  strings(c,t,f,dur,v){
+    const d=musDest(), lp=c.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=2200;
+    const g=adsr(c,t,.18,.20,.80,.55,dur,v);
+    for(const det of [-9,0,9]){
+      const o=osc(c,'sawtooth',f,t); o.detune.setValueAtTime(det,t);
+      const gg=c.createGain(); gg.gain.value=.42;
+      o.connect(gg); gg.connect(lp); o.start(t); o.stop(t+dur+.7);
+    }
+    lp.connect(g); g.connect(d);
+  },
+  flute(c,t,f,dur,v){
+    const d=musDest(), g=adsr(c,t,.11,.10,.86,.22,dur,v);
+    const o=osc(c,'sine',f,t);
+    const h=osc(c,'triangle',f*2,t), hg=c.createGain(); hg.gain.value=.06;
+    /* a little vibrato, delayed, the way a player would */
+    const lfo=osc(c,'sine',5.2,t), lg=c.createGain();
+    lg.gain.setValueAtTime(0,t); lg.gain.linearRampToValueAtTime(5,t+.22);
+    lfo.connect(lg); lg.connect(o.detune);
+    o.connect(g); h.connect(hg); hg.connect(g); g.connect(d);
+    o.start(t); o.stop(t+dur+.3); h.start(t); h.stop(t+dur+.3); lfo.start(t); lfo.stop(t+dur+.3);
+  },
+  horn(c,t,f,dur,v){
+    const d=musDest(), lp=c.createBiquadFilter(); lp.type='lowpass';
+    lp.frequency.setValueAtTime(700,t); lp.frequency.linearRampToValueAtTime(1700,t+.12);
+    const g=adsr(c,t,.07,.14,.78,.30,dur,v);
+    const o=osc(c,'sawtooth',f,t), o2=osc(c,'square',f,t);
+    const g2=c.createGain(); g2.gain.value=.28;
+    o.connect(lp); o2.connect(g2); g2.connect(lp); lp.connect(g); g.connect(d);
+    o.start(t); o.stop(t+dur+.4); o2.start(t); o2.stop(t+dur+.4);
+  },
+  bass(c,t,f,dur,v){
+    const d=musDest(), lp=c.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=420;
+    const g=adsr(c,t,.02,.18,.62,.22,dur,v);
+    const o=osc(c,'sine',f,t), o2=osc(c,'triangle',f,t);
+    const g2=c.createGain(); g2.gain.value=.40;
+    o.connect(lp); o2.connect(g2); g2.connect(lp); lp.connect(g); g.connect(d);
+    o.start(t); o.stop(t+dur+.3); o2.start(t); o2.stop(t+dur+.3);
+  },
+  bell(c,t,f,dur,v){
+    const d=musDest();
+    for(const [mul,amp,dd] of [[1,1,dur],[2.76,.36,dur*.6],[5.40,.16,dur*.35]]){
+      const o=osc(c,'sine',f*mul,t), g=c.createGain();
+      g.gain.setValueAtTime(.0001,t);
+      g.gain.exponentialRampToValueAtTime(v*amp,t+.005);
+      g.gain.exponentialRampToValueAtTime(.0001,t+dd);
+      o.connect(g); g.connect(d); o.start(t); o.stop(t+dd+.05);
+    }
+  },
+  pluck(c,t,f,dur,v){
+    const d=musDest(), lp=c.createBiquadFilter(); lp.type='lowpass';
+    lp.frequency.setValueAtTime(2600,t); lp.frequency.exponentialRampToValueAtTime(400,t+dur*.7);
+    const g=c.createGain();
+    g.gain.setValueAtTime(.0001,t);
+    g.gain.exponentialRampToValueAtTime(v,t+.004);
+    g.gain.exponentialRampToValueAtTime(.0001,t+dur*.8);
+    const o=osc(c,'square',f,t);
+    o.connect(lp); lp.connect(g); g.connect(d);
+    o.start(t); o.stop(t+dur);
+  }
+};
+let NOISEBUF=null;
+function noiseBuf(c){
+  if(!NOISEBUF){
+    NOISEBUF=c.createBuffer(1,c.sampleRate*1.2,c.sampleRate);
+    const dd=NOISEBUF.getChannelData(0);
+    for(let i=0;i<dd.length;i++) dd[i]=Math.random()*2-1;
+  }
+  return NOISEBUF;
+}
+function drum(c,t,kind,v){
+  const d=musDest();
+  if(kind==='k'){
+    const o=osc(c,'sine',110,t);
+    o.frequency.exponentialRampToValueAtTime(38,t+.14);
+    const g=c.createGain();
+    g.gain.setValueAtTime(v,t); g.gain.exponentialRampToValueAtTime(.0001,t+.22);
+    o.connect(g); g.connect(d); o.start(t); o.stop(t+.24);
+  } else {
+    const n=c.createBufferSource(); n.buffer=noiseBuf(c);
+    const f=c.createBiquadFilter();
+    f.type = kind==='h' ? 'highpass' : 'bandpass';
+    f.frequency.value = kind==='h' ? 7000 : 1900; f.Q.value=1.2;
+    const g=c.createGain();
+    const dur = kind==='h' ? .05 : .18;
+    g.gain.setValueAtTime(v,t); g.gain.exponentialRampToValueAtTime(.0001,t+dur);
+    n.connect(f); f.connect(g); g.connect(d);
+    n.start(t); n.stop(t+dur+.02);
+  }
+}
+/* ---------- melodic material ---------- */
+/* [scale degree, length in eighths]; null degree is a rest */
+const MOTIF={
+  wander : [[0,4],[2,2],[4,2],[null,2],[3,4],[2,2],[0,6],[null,4],
+            [4,2],[5,2],[4,4],[2,4],[0,8],[null,4]],
+  open   : [[4,3],[5,1],[7,4],[6,2],[4,2],[2,4],[null,2],
+            [2,2],[4,2],[5,4],[4,4],[2,2],[0,6],[null,2]],
+  lilt   : [[0,2],[2,1],[4,1],[5,2],[4,2],[2,2],[0,2],[2,4],
+            [4,2],[2,1],[0,1],[-1,2],[0,6],[null,2]],
+  still  : [[7,6],[6,2],[4,8],[null,4],[5,4],[4,2],[2,10],[null,4]],
+  sinuous: [[0,2],[1,2],[0,2],[-2,2],[0,4],[3,4],[2,2],[1,2],[0,4],
+            [-1,2],[0,10],[null,4]],
+  flow   : [[0,1],[2,1],[4,1],[6,1],[7,2],[6,1],[4,1],[2,2],[4,2],
+            [7,1],[6,1],[4,1],[2,1],[0,4],[null,2]],
+  play   : [[0,1],[2,1],[4,2],[2,1],[0,1],[4,2],[7,2],[4,2],
+            [2,1],[0,1],[2,2],[4,4],[null,2]],
+  heavy  : [[0,2],[0,1],[-1,1],[0,4],[3,2],[2,2],[0,4],
+            [-2,2],[0,2],[3,4],[2,4],[0,4]],
+  grim   : [[0,4],[-1,2],[0,2],[3,4],[2,4],[4,2],[3,2],[2,4],[0,8]],
+  march  : [[0,2],[4,2],[3,2],[2,2],[0,2],[4,2],[5,4],[4,2],[3,2],[2,4],[0,4]],
+  chase  : [[0,1],[0,1],[3,1],[0,1],[4,1],[3,1],[0,2],
+            [2,1],[2,1],[4,1],[2,1],[5,1],[4,1],[2,2]],
+  hymn   : [[4,4],[5,2],[7,6],[6,4],[4,4],[2,8],[null,4]],
+  spark  : [[7,1],[9,1],[11,2],[9,1],[7,1],[9,4],[7,2],[4,2],[7,8]],
+  stark  : [[0,6],[3,2],[2,8],[null,6],[4,4],[2,4],[0,12]]
+};
+/* ---------- the themes ---------- */
+/* root is a MIDI note; prog is chord roots as scale degrees */
+const THEMES={
+  plateau  :{root:57,mode:'aeolian', bpm:64, prog:[0,5,3,4], mot:'wander', lead:'piano',  bed:'pad',     bass:1,perc:0,lvel:.16},
+  field    :{root:55,mode:'ionian',  bpm:78, prog:[0,4,5,3], mot:'open',   lead:'flute',  bed:'strings', bass:1,perc:0,lvel:.15},
+  central  :{root:55,mode:'mixo',    bpm:84, prog:[0,3,4,0], mot:'open',   lead:'horn',   bed:'strings', bass:1,perc:1,lvel:.14},
+  castle   :{root:50,mode:'harmMin', bpm:72, prog:[0,5,6,4], mot:'grim',   lead:'strings',bed:'pad',     bass:1,perc:1,lvel:.15},
+  ridge    :{root:57,mode:'dorian',  bpm:74, prog:[0,3,5,4], mot:'open',   lead:'flute',  bed:'pad',     bass:1,perc:0,lvel:.15},
+  tabantha :{root:59,mode:'pentMin', bpm:60, prog:[0,4,3,0], mot:'still',  lead:'flute',  bed:'pad',     bass:0,perc:0,lvel:.16},
+  rito     :{root:62,mode:'pentMaj', bpm:70, prog:[0,4,5,4], mot:'spark',  lead:'harp',   bed:'strings', bass:1,perc:0,lvel:.15},
+  hebra    :{root:60,mode:'pentMin', bpm:54, prog:[0,5,3,5], mot:'still',  lead:'bell',   bed:'pad',     bass:0,perc:0,lvel:.14},
+  gerudo   :{root:57,mode:'phryg',   bpm:88, prog:[0,1,0,4], mot:'sinuous',lead:'pluck',  bed:'pad',     bass:1,perc:1,lvel:.15},
+  gerudoTown:{root:57,mode:'phryg',  bpm:96, prog:[0,1,4,1], mot:'sinuous',lead:'harp',   bed:'strings', bass:1,perc:1,lvel:.15},
+  wasteland:{root:53,mode:'phryg',   bpm:58, prog:[0,1,0,0], mot:'stark',  lead:'pluck',  bed:'pad',     bass:1,perc:0,lvel:.13},
+  hylia    :{root:64,mode:'lydian',  bpm:66, prog:[0,3,4,3], mot:'flow',   lead:'harp',   bed:'pad',     bass:1,perc:0,lvel:.15},
+  faron    :{root:62,mode:'dorian',  bpm:80, prog:[0,3,6,4], mot:'play',   lead:'flute',  bed:'strings', bass:1,perc:1,lvel:.14},
+  lurelin  :{root:60,mode:'mixo',    bpm:92, prog:[0,4,5,4], mot:'lilt',   lead:'harp',   bed:'strings', bass:1,perc:1,lvel:.15},
+  duel     :{root:55,mode:'aeolian', bpm:76, prog:[0,5,3,4], mot:'march',  lead:'horn',   bed:'pad',     bass:1,perc:1,lvel:.14},
+  kakariko :{root:62,mode:'hira',    bpm:62, prog:[0,3,0,4], mot:'lilt',   lead:'pluck',  bed:'pad',     bass:1,perc:0,lvel:.16},
+  hateno   :{root:60,mode:'ionian',  bpm:86, prog:[0,4,5,3], mot:'lilt',   lead:'piano',  bed:'strings', bass:1,perc:1,lvel:.15},
+  lanayru  :{root:57,mode:'dorian',  bpm:70, prog:[0,4,3,5], mot:'flow',   lead:'flute',  bed:'pad',     bass:1,perc:0,lvel:.15},
+  zora     :{root:64,mode:'lydian',  bpm:64, prog:[0,3,4,5], mot:'flow',   lead:'bell',   bed:'pad',     bass:1,perc:0,lvel:.15},
+  akkala   :{root:55,mode:'aeolian', bpm:68, prog:[0,3,5,4], mot:'grim',   lead:'strings',bed:'pad',     bass:1,perc:0,lvel:.15},
+  eldin    :{root:48,mode:'phryg',   bpm:82, prog:[0,1,0,3], mot:'heavy',  lead:'horn',   bed:'pad',     bass:1,perc:1,lvel:.16},
+  woodland :{root:62,mode:'lydian',  bpm:72, prog:[0,4,3,4], mot:'play',   lead:'flute',  bed:'pad',     bass:1,perc:0,lvel:.14},
+  korok    :{root:64,mode:'pentMaj', bpm:88, prog:[0,4,5,4], mot:'play',   lead:'harp',   bed:'strings', bass:1,perc:1,lvel:.16},
+  /* contexts, which beat the region theme */
+  combat   :{root:52,mode:'phryg',   bpm:150,prog:[0,0,1,0], mot:'chase',  lead:'horn',   bed:'strings', bass:1,perc:2,lvel:.15},
+  boss     :{root:45,mode:'harmMin', bpm:132,prog:[0,6,5,0], mot:'heavy',  lead:'horn',   bed:'strings', bass:1,perc:2,lvel:.17},
+  shrine   :{root:69,mode:'pentMin', bpm:50, prog:[0,3,0,4], mot:'still',  lead:'bell',   bed:'pad',     bass:0,perc:0,lvel:.15},
+  night    :{root:53,mode:'aeolian', bpm:56, prog:[0,5,3,4], mot:'stark',  lead:'piano',  bed:'pad',     bass:1,perc:0,lvel:.13},
+  rain     :{root:57,mode:'dorian',  bpm:60, prog:[0,3,4,3], mot:'wander', lead:'piano',  bed:'pad',     bass:1,perc:0,lvel:.13}
+};
+function regionKeyAt(x,z){
+  let best=null,bd=1e9;
+  for(const k in REGIONS){
+    const R=REGIONS[k], d=Math.hypot(x-R.x,z-R.z);
+    if(d<R.r){ const nd=d/R.r; if(nd<bd){bd=nd;best=k;} }
+  }
+  return best;
+}
+function wantTheme(){
+  if(P.inShrine||P.inRes) return 'shrine';
+  if(typeof ganon!=='undefined'&&ganon&&ganon.awake&&ganon.alive&&
+     ganon.pos.distanceTo(P.pos)<160) return 'boss';
+  for(let i=0;i<enemies.length;i++){
+    const E=enemies[i];
+    if(E.alive&&!E.dormant&&E.T.boss&&E.aggroT>0&&E.pos.distanceTo(P.pos)<70) return 'boss';
+  }
+  if(P.seen>=.99) return 'combat';
+  const rk=regionKeyAt(P.pos.x,P.pos.z);
+  if(rk&&THEMES[rk]) {
+    if(isNight()&&!/kakariko|hateno|lurelin|zora|rito|korok|gerudoTown/.test(rk)) return 'night';
+    return rk;
+  }
+  if(typeof raining!=='undefined'&&raining) return 'rain';
+  if(isNight()) return 'night';
+  return 'field';
+}
+/* ---------- the scheduler ---------- */
+let musTheme='plateau', musNext=0, musStep=0, musWait=0, musMi=0, musFade=1, musSwap=null;
+function musThemeGain(){ return .16*musFade; }
+function scheduleStep(step,t){
+  const c=AC, TH=THEMES[musTheme]||THEMES.field;
+  const spb=60/TH.bpm, dur8=spb/2;            /* one step = an eighth note */
+  const bar=Math.floor(step/8), beat=step%8;
+  const chordDeg=TH.prog[bar%TH.prog.length];
+  const rootMidi=TH.root;
+  const v=musThemeGain();
+  /* harmony on the downbeat: a triad, held for the bar */
+  if(beat===0){
+    const barLen=spb*4;
+    for(const off of [0,2,4]){
+      const m=degToMidi(rootMidi,TH.mode,chordDeg+off);
+      INSTR[TH.bed](c,t,mtof(m),barLen*.98,v*(off===0?.36:.26));
+    }
+    if(bar%4===0) INSTR[TH.bed](c,t,mtof(degToMidi(rootMidi,TH.mode,chordDeg)-12),barLen*1.9,v*.20);
+  }
+  /* bass */
+  if(TH.bass&&(beat===0||beat===4)){
+    const m=degToMidi(rootMidi,TH.mode,chordDeg)-12;
+    INSTR.bass(c,t,mtof(beat===0?m:m+((bar%2)?7:0)),spb*.85,v*.52);
+  }
+  /* percussion */
+  if(TH.perc){
+    if(beat===0||beat===4) drum(c,t,'k',v*(TH.perc>1?.60:.34));
+    if(beat===2||beat===6) drum(c,t,'s',v*(TH.perc>1?.34:.18));
+    if(TH.perc>1&&beat%1===0&&beat%2===1) drum(c,t,'h',v*.13);
+  }
+  /* melody: walk the motif, one note at a time */
+  if(musWait<=0){
+    const mot=MOTIF[TH.mot]||MOTIF.wander;
+    const note=mot[musMi%mot.length]; musMi++;
+    musWait=note[1];
+    if(note[0]!==null){
+      /* fold the lead into a singable register — some modes and chord degrees
+         would otherwise put the melody two octaves above where it belongs */
+      let m=degToMidi(rootMidi,TH.mode,note[0]+chordDeg)+12;
+      while(m>84) m-=12;
+      while(m<57) m+=12;
+      INSTR[TH.lead](c,t,mtof(m),dur8*note[1]*.94,TH.lvel*musFade*1.1);
+      /* a soft octave doubling on long notes gives the lead some body */
+      if(note[1]>=6&&TH.lead!=='bell')
+        INSTR[TH.lead](c,t+.02,mtof(m-12),dur8*note[1]*.7,TH.lvel*musFade*.34);
+    }
+  }
+  musWait--;
+}
 function updateMusic(dt){
   if(!musicOn||!AC) return;
-  musT-=dt;
-  if(musT>0) return;
-  const night=isNight(), danger=P.seen>=.99;
-  musT=danger?.34:(night?1.5:1.1);
-  musStep++;
-  const root=danger?musKey+5:(night?musKey-5:musKey);
-  const deg=SCALE[(musStep*3)%SCALE.length];
-  const f=440*Math.pow(2,(root+deg-69)/12);
-  const dur=danger?.4:2.4;
-  try{
-    const c=ac();
-    for(const [mul,vol] of [[1,.09],[2,.035],[3,.016]]){
-      const o=c.createOscillator(), g=c.createGain();
-      o.type=danger?'sawtooth':'triangle'; o.frequency.value=f*mul;
-      g.gain.setValueAtTime(0,c.currentTime);
-      g.gain.linearRampToValueAtTime(vol,c.currentTime+.04);
-      g.gain.exponentialRampToValueAtTime(.0001,c.currentTime+dur);
-      o.connect(g); g.connect(musicGain); o.start(); o.stop(c.currentTime+dur);
-    }
-    if(musStep%4===0){                     // a low drone under every fourth note
-      const o=c.createOscillator(), g=c.createGain();
-      o.type='sine'; o.frequency.value=f/4;
-      g.gain.setValueAtTime(.06,c.currentTime);
-      g.gain.exponentialRampToValueAtTime(.0001,c.currentTime+dur*2);
-      o.connect(g); g.connect(musicGain); o.start(); o.stop(c.currentTime+dur*2);
-    }
-  }catch(e){}
+  const c=AC;
+  /* segue when the situation changes: fast into combat, gentle across a border */
+  const want=wantTheme();
+  if(want!==musTheme&&!musSwap){
+    musSwap={to:want,t:(want==='combat'||want==='boss'||musTheme==='combat'||musTheme==='boss')?.35:1.1,d:0};
+  }
+  if(musSwap){
+    musSwap.d+=dt;
+    const h=musSwap.t;
+    if(musSwap.d<h) musFade=Math.max(0,1-musSwap.d/h);
+    else if(musSwap.d<h*2){
+      if(musTheme!==musSwap.to){ musTheme=musSwap.to; musStep=0; musWait=0; musMi=0; musNext=c.currentTime+.05; }
+      musFade=Math.min(1,(musSwap.d-h)/h);
+    } else { musFade=1; musSwap=null; }
+  }
+  const TH=THEMES[musTheme]||THEMES.field;
+  const dur8=(60/TH.bpm)/2;
+  if(musNext<c.currentTime) musNext=c.currentTime+.06;
+  /* look ahead a quarter second so the beat never depends on the frame rate */
+  let guard=0;
+  while(musNext<c.currentTime+.25&&guard++<32){
+    try{ scheduleStep(musStep,musNext); }catch(e){}
+    musStep++; musNext+=dur8;
+  }
 }
 /* ================= BATCH 26 — day/night, weather, input, boot, loop ================= */
 let raining=false, storming=false, weatherT=60+rnd()*120, rainMesh=null;
@@ -4531,11 +6684,198 @@ TOWERS.forEach(buildSheikahTower);
 })();
 
 /* ---- villages ---- */
-function hut(g,x,z,w,h,d,matW,matR,ry,cone){
+/* ================= ART PASS 2: buildings =================
+   A house used to be a box with a cone on it. Each region now has an architecture:
+   timber and shingle in Hateno, pagoda eaves in Kakariko, thatch on stilts in Lurelin,
+   adobe and arches in Gerudo Town, stone shells in Zora's Domain.
+   Everything here is derived from position, never from rnd(), so the world scatter
+   draws exactly the same sequence it did before. */
+function hsh(x,z,k){
+  let n=Math.sin((x*12.9898+z*78.233+(k||0)*37.719))*43758.5453;
+  return n-Math.floor(n);
+}
+const BMAT={};
+function bmat(c,flat){
+  const k=c+'|'+(flat?1:0);
+  return BMAT[k]||(BMAT[k]=new THREE.MeshPhongMaterial({color:c,
+    flatShading:flat!==false,shininess:0,specular:0x0a0a0a}));
+}
+/* a plank roof made of overlapping slabs, which is what reads as "shingles" at distance */
+function shingleRoof(g,x,y,z,w,d,h,ry,mat){
+  const n=4;
+  for(let i=0;i<n;i++){
+    const t=i/n, ww=w*(1-t*.86), dd=d*(1-t*.86);
+    box(g,ww,h/n*1.5,dd,x,y+h*t+h/(n*2),z,mat,ry);
+  }
+}
+function door(g,x,y,z,w,h,ry,mat,frameMat){
+  box(g,w,h,.35,x,y+h/2,z,mat,ry);
+  box(g,w*1.22,.3,.5,x,y+h+.15,z,frameMat,ry);
+  box(g,.3,h,.5,x-w*.55,y+h/2,z,frameMat,ry);
+  box(g,.3,h,.5,x+w*.55,y+h/2,z,frameMat,ry);
+}
+function window2(g,x,y,z,w,h,ry,glass,frame){
+  box(g,w,h,.3,x,y,z,glass,ry);
+  box(g,w*1.18,.22,.42,x,y+h*.5,z,frame,ry);
+  box(g,w*1.18,.22,.42,x,y-h*.5,z,frame,ry);
+  box(g,.18,h,.42,x,y,z,frame,ry);
+}
+function hut(g,x,z,w,h,d,matW,matR,ry,cone,style){
+  const c=Math.cos(ry||0), sn=Math.sin(ry||0);
+  const fx=(ox,oz)=>[x+ox*c+oz*sn, z-ox*sn+oz*c];   /* local -> village space */
+  const beam=bmat(0x4a3524), dark=bmat(0x3a2c1e), glass=bmat(0xffd88a), stone=bmat(0x8a8175);
+  style=style||'hylian';
+  if(style==='desert'){
+    /* adobe: flat roof, parapet, arched doorway, cloth awning */
+    box(g,w,h,d,x,h/2,z,matW,ry);
+    box(g,w*1.06,.7,d*1.06,x,h+.35,z,matR,ry);
+    box(g,w*.5,.5,d*.5,x,h+1.0,z,matW,ry);
+    const [dx,dz]=fx(0,d/2+.1);
+    door(g,dx,0,dz,w*.30,h*.62,ry,dark,matR);
+    const [ax,az]=fx(0,d/2+1.5);
+    box(g,w*.7,.22,3.0,ax,h*.72,az,bmat(0xc4a06a),ry);
+    for(const sx of[-1,1]){ const [px,pz]=fx(sx*w*.30,d/2+2.8);
+      cyl(g,.16,h*.72,px,h*.36,pz,beam); }
+    for(const sx of[-1,1]){ const [wx,wz]=fx(sx*w*.30,d/2+.08);
+      window2(g,wx,h*.72,wz,w*.16,h*.20,ry,glass,matR); }
+    return;
+  }
+  if(style==='pagoda'){
+    /* Kakariko: dark timber, white plaster, two stacked hip roofs with deep eaves */
+    box(g,w,h,d,x,h/2,z,matW,ry);
+    for(const sx of[-1,1]){ const [px,pz]=fx(sx*w/2,d/2);
+      box(g,.42,h,.42,px,h/2,pz,beam);
+      const [qx,qz]=fx(sx*w/2,-d/2); box(g,.42,h,.42,qx,h/2,qz,beam); }
+    box(g,w*1.02,.34,d*1.02,x,h*.56,z,beam,ry);
+    for(let i=0;i<2;i++){
+      const yy=h+i*h*.42, ww=w*(1.5-i*.42), dd=d*(1.5-i*.42);
+      box(g,ww,.34,dd,x,yy,z,matR,ry);
+      const r=new THREE.Mesh(new THREE.ConeGeometry(ww*.62,h*.34,4),matR);
+      r.position.set(x,yy+h*.17,z); r.rotation.y=(ry||0)+Math.PI/4; r.castShadow=true; g.add(r);
+    }
+    const [dx,dz]=fx(0,d/2+.12); door(g,dx,0,dz,w*.34,h*.66,ry,dark,beam);
+    for(const sx of[-1,1]){ const [wx,wz]=fx(sx*w*.32,d/2+.1);
+      window2(g,wx,h*.66,wz,w*.20,h*.26,ry,glass,beam); }
+    return;
+  }
+  if(style==='thatch'){
+    /* Lurelin: stilts over the sand, palm thatch, an open porch */
+    const st=1.6;
+    for(const sx of[-1,1])for(const sz of[-1,1]){ const [px,pz]=fx(sx*w*.40,sz*d*.40);
+      cyl(g,.22,st,px,st/2,pz,beam); }
+    box(g,w,.34,d,x,st,z,bmat(0x8a6a48),ry);
+    box(g,w*.86,h,d*.86,x,st+h/2,z,matW,ry);
+    for(let i=0;i<3;i++){
+      const t=i/3, r=new THREE.Mesh(new THREE.ConeGeometry(w*(.82-t*.22),h*.5,7),matR);
+      r.position.set(x,st+h+h*.22+t*h*.26,z); r.rotation.y=(ry||0)+t*.5; r.castShadow=true; g.add(r);
+    }
+    const [dx,dz]=fx(0,d*.43+.1); door(g,dx,st,dz,w*.28,h*.6,ry,dark,beam);
+    const [lx,lz]=fx(0,d*.43+1.4); box(g,w*.6,.2,2.2,lx,st,lz,bmat(0x8a6a48),ry);
+    return;
+  }
+  if(style==='shell'){
+    /* Zora: pale stone, a curved shell roof and a luminous ring */
+    cyl(g,w*.52,h,x,h/2,z,matW);
+    const dome=new THREE.Mesh(GEO.hemi,matR);
+    dome.scale.set(w*1.06,h*.72,d*1.06); dome.position.set(x,h,z); dome.castShadow=true; g.add(dome);
+    for(let i=0;i<6;i++){ const a=i/6*TAU;
+      const fin=new THREE.Mesh(GEO.cone3,matR);
+      fin.scale.set(.4,h*.7,w*.5);
+      fin.position.set(x+Math.cos(a)*w*.42,h+h*.26,z+Math.sin(a)*w*.42);
+      fin.rotation.y=-a; fin.castShadow=true; g.add(fin); }
+    const ring=new THREE.Mesh(GEO.torus,bmat(0x63d6e2,false));
+    ring.scale.setScalar(w*.9); ring.position.set(x,h*.82,z); ring.rotation.x=Math.PI/2; g.add(ring);
+    const [dx,dz]=fx(0,w*.52+.05); door(g,dx,0,dz,w*.26,h*.66,ry,bmat(0x2f5f6a),matR);
+    return;
+  }
+  if(style==='round'){
+    /* Rito: a wooden roundhouse with a tall shingle cone */
+    cyl(g,w*.5,h,x,h/2,z,matW);
+    for(let i=0;i<8;i++){ const a=i/8*TAU;
+      cyl(g,.16,h,x+Math.cos(a)*w*.5,h/2,z+Math.sin(a)*w*.5,beam); }
+    for(let i=0;i<3;i++){ const t=i/3;
+      const r=new THREE.Mesh(new THREE.ConeGeometry(w*(.72-t*.20),h*.44,8),matR);
+      r.position.set(x,h+h*.20+t*h*.24,z); r.castShadow=true; g.add(r); }
+    const [dx,dz]=fx(0,w*.5+.05); door(g,dx,0,dz,w*.26,h*.62,ry,dark,beam);
+    for(const sx of[-1,1]){ const [wx,wz]=fx(sx*w*.34,w*.36);
+      window2(g,wx,h*.66,wz,w*.16,h*.22,ry,glass,beam); }
+    return;
+  }
+  if(style==='stump'){
+    /* Korok Forest: a hollowed stump under a leaf canopy */
+    cyl(g,w*.5,h,x,h/2,z,bmat(0x5b4126));
+    cyl(g,w*.54,.5,x,h*.08,z,bmat(0x4a3520));
+    for(let i=0;i<3;i++){ const t=i/3;
+      const cap=new THREE.Mesh(GEO.hemi,matR);
+      cap.scale.set(w*(1.30-t*.30),h*(.44-t*.10),d*(1.30-t*.30));
+      cap.position.set(x,h+t*h*.30,z); cap.castShadow=true; g.add(cap); }
+    const [dx,dz]=fx(0,w*.5+.05);
+    box(g,w*.28,h*.5,.4,dx,h*.25,dz,bmat(0x241a10),ry);
+    return;
+  }
+  if(style==='dome'){
+    /* Goron City: rough stone shells cut into the rock */
+    const sh=new THREE.Mesh(GEO.hemi,matW);
+    sh.scale.set(w*1.1,h*1.1,d*1.1); sh.position.set(x,0,z); sh.castShadow=true; g.add(sh);
+    for(let i=0;i<4;i++){ const a=i/4*TAU+.6;
+      const k=new THREE.Mesh(GEO.ico,stone);
+      k.scale.setScalar(w*.30); k.position.set(x+Math.cos(a)*w*.52,h*.22,z+Math.sin(a)*w*.52);
+      k.castShadow=true; g.add(k); }
+    const [dx,dz]=fx(0,w*.55);
+    box(g,w*.34,h*.52,.5,dx,h*.26,dz,bmat(0x2a1c14),ry);
+    box(g,w*.44,.4,.7,dx,h*.54,dz,stone,ry);
+    return;
+  }
+  /* ---- default: a Hateno timber house ---- */
   box(g,w,h,d,x,h/2,z,matW,ry);
-  const r=cone? new THREE.Mesh(new THREE.ConeGeometry(w*0.8,h*0.6,cone),matR)
-              : new THREE.Mesh(new THREE.ConeGeometry(w*0.85,h*0.5,4),matR);
-  r.position.set(x,h+h*0.25,z); r.rotation.y=(ry||0)+Math.PI/4; r.castShadow=true; g.add(r);
+  /* corner posts and a mid rail, so the walls read as framed timber */
+  for(const sx of[-1,1])for(const sz of[-1,1]){ const [px,pz]=fx(sx*w/2,sz*d/2);
+    box(g,.38,h,.38,px,h/2,pz,beam); }
+  box(g,w*1.01,.28,d*1.01,x,h*.60,z,beam,ry);
+  /* gable roof with a real overhang and a ridge beam */
+  const rh=h*.62;
+  shingleRoof(g,x,h,z,w*1.22,d*1.22,rh,ry,matR);
+  box(g,w*1.26,.26,.5,x,h+rh*.98,z,beam,ry);
+  const [dx,dz]=fx(0,d/2+.1);
+  door(g,dx,0,dz,w*.28,h*.60,ry,dark,beam);
+  for(const sx of[-1,1]){ const [wx,wz]=fx(sx*w*.30,d/2+.08);
+    window2(g,wx,h*.66,wz,w*.18,h*.24,ry,glass,beam); }
+  const [sx2,sz2]=fx(w*.28,-d*.22);
+  if(hsh(x,z,3)>.45){
+    box(g,1.1,h*.75,1.1,sx2,h+rh*.4,sz2,stone,ry);
+    box(g,1.35,.3,1.35,sx2,h+rh*.78,sz2,bmat(0x6f6a60),ry);
+  }
+}
+/* the small stuff that makes a place look lived in */
+function villageProps(g,style,spread,n){
+  const wood=bmat(0x6b4a2a), rope=bmat(0x8a7a58), lamp=bmat(0xffd88a,false);
+  for(let i=0;i<n;i++){
+    const a=(i/n)*TAU+.9, r=spread*(.72+hsh(i,spread,1)*.5);
+    const px=Math.cos(a)*r, pz=Math.sin(a)*r, k=hsh(px,pz,2);
+    if(k<.30){                                   /* a lantern on a post */
+      cyl(g,.13,3.0,px,1.5,pz,wood);
+      box(g,.55,.7,.55,px,3.2,pz,lamp);
+      box(g,.75,.16,.75,px,3.62,pz,wood);
+    } else if(k<.55){                            /* crates and a barrel */
+      box(g,1.3,1.3,1.3,px,.65,pz,wood,a);
+      box(g,1.0,1.0,1.0,px+1.3,.5,pz+.4,wood,a*1.7);
+      cyl(g,.62,1.5,px-1.2,.75,pz+.6,bmat(0x7a5a34));
+    } else if(k<.75){                            /* a run of fence */
+      for(let f=-2;f<=2;f++){
+        const fx2=px+Math.cos(a+1.57)*f*2.0, fz2=pz+Math.sin(a+1.57)*f*2.0;
+        cyl(g,.13,2.0,fx2,1.0,fz2,wood);
+      }
+      box(g,8.4,.18,.18,px,1.5,pz,wood,-a+1.57);
+      box(g,8.4,.18,.18,px,.9,pz,wood,-a+1.57);
+    } else if(k<.88){                            /* a drying rack / market stall */
+      for(const sx of[-1,1]) cyl(g,.14,2.6,px+sx*1.6,1.3,pz,wood);
+      box(g,3.8,.2,2.4,px,2.7,pz,rope,a);
+      box(g,3.4,.7,1.8,px,.35,pz,wood,a);
+    } else {                                     /* a signpost */
+      cyl(g,.15,3.2,px,1.6,pz,wood);
+      box(g,2.2,.7,.2,px,2.9,pz,bmat(0x8a6a48),a);
+    }
+  }
 }
 function buildVillage(key,opts){
   const R=REGIONS[key]; if(!R) return;
@@ -4548,31 +6888,32 @@ function buildVillage(key,opts){
     const hx=Math.cos(a)*r, hz=Math.sin(a)*r;
     const gy=groundAt(R.x+hx,R.z+hz)-y;
     const gg=new THREE.Group(); gg.position.y=gy; g.add(gg);
-    hut(gg,hx,hz,7+rnd()*4,5+rnd()*3,7+rnd()*3,wallM,roofM,a,opts.cone);
+    hut(gg,hx,hz,7+rnd()*4,5+rnd()*3,7+rnd()*3,wallM,roofM,a,opts.cone,opts.style);
   }
+  if(opts.props) villageProps(g,opts.style,opts.spread,opts.props);
   if(opts.landmark) opts.landmark(g,wallM,roofM);
   addFire(R.x,R.z,true,key);
   IA({kind:'village',name:R.n,x:R.x,z:R.z,y:y+2,r:opts.spread+16,label:R.n});
   addStruct({x:R.x,z:R.z,r:8,base:y,top:y+8,plat:6});
 }
-buildVillage('kakariko',{wall:0x6a5a48,roof:0x3f5a6a,n:11,spread:80,cone:4});
-buildVillage('hateno',  {wall:0x8a6a48,roof:0x7a4a3a,n:14,spread:110,cone:4});
-buildVillage('lurelin', {wall:0x9a7a52,roof:0x8a7a48,n:9, spread:70, cone:6});
-buildVillage('gerudoTown',{wall:0xd8b878,roof:0xc49a5a,n:13,spread:100,cone:4,
+buildVillage('kakariko',{wall:0xd8cfb8,roof:0x3f5a6a,n:11,spread:80,cone:4,style:'pagoda',props:9});
+buildVillage('hateno',  {wall:0xc9b48a,roof:0x7a4a3a,n:14,spread:110,cone:4,style:'hylian',props:12});
+buildVillage('lurelin', {wall:0x9a7a52,roof:0xb8a468,n:9, spread:70, cone:6,style:'thatch',props:8});
+buildVillage('gerudoTown',{wall:0xd8b878,roof:0xc49a5a,n:13,spread:100,cone:4,style:'desert',props:10,
   landmark:(g,w)=>{ for(let i=0;i<16;i++){const a=i/16*TAU;
     box(g,10,16,4,Math.cos(a)*120,8,Math.sin(a)*120,w,-a);} }});
-buildVillage('zora',{wall:0x9ab8c4,roof:0x5a8a9a,n:10,spread:80,cone:6,
+buildVillage('zora',{wall:0x9ab8c4,roof:0x5a8a9a,n:10,spread:80,cone:6,style:'shell',props:7,
   landmark:(g,w,r)=>{ cyl(g,14,40,0,20,0,w);
     const dome=new THREE.Mesh(new THREE.SphereGeometry(18,16,10,0,TAU,0,Math.PI*.5),r);
     dome.position.y=40; dome.castShadow=true; g.add(dome);
     const lum=new THREE.PointLight(0x63d6e2,2.2,90); lum.position.y=44; g.add(lum); }});
-buildVillage('rito',{wall:0x8a6a4a,roof:0x9a5a3a,n:8,spread:60,cone:6,
+buildVillage('rito',{wall:0x8a6a4a,roof:0x9a5a3a,n:8,spread:60,cone:6,style:'round',props:7,
   landmark:(g,w,r)=>{ cyl(g,10,180,0,90,0,new THREE.MeshLambertMaterial({color:0x7a6a58}));
     for(let i=0;i<7;i++){ const a=i*1.1, rr=16;
       box(g,10,3,10,Math.cos(a)*rr,26+i*20,Math.sin(a)*rr,w,-a);
       const c=new THREE.Mesh(new THREE.ConeGeometry(7,7,6),r);
       c.position.set(Math.cos(a)*rr,32+i*20,Math.sin(a)*rr); c.castShadow=true; g.add(c); } }});
-buildVillage('korok',{wall:0x5a7a3a,roof:0x3f6a2a,n:7,spread:60,cone:6,
+buildVillage('korok',{wall:0x5a7a3a,roof:0x3f6a2a,n:7,spread:60,cone:6,style:'stump',props:6,
   landmark:(g,w,r)=>{ cyl(g,16,50,0,25,0,new THREE.MeshLambertMaterial({color:0x5b4126}));
     const crown=new THREE.Mesh(new THREE.SphereGeometry(46,14,10),
       new THREE.MeshLambertMaterial({color:0x2f6a2f})); crown.position.y=76; crown.castShadow=true; g.add(crown);
@@ -4586,6 +6927,15 @@ buildVillage('korok',{wall:0x5a7a3a,roof:0x3f6a2a,n:7,spread:60,cone:6,
   for(let i=0;i<12;i++){ const a=i/12*TAU,r=40+rnd()*40;
     const d=new THREE.Mesh(new THREE.DodecahedronGeometry(7+rnd()*5,0),rockM);
     d.position.set(Math.cos(a)*r,4,Math.sin(a)*r); d.castShadow=true; g.add(d); }
+  /* Goron dwellings: stone shells cut into the mountain (hsh, not rnd, so the
+     placement sequence for stables and NPCs downstream is untouched) */
+  const gWall=bmat(0x7a5648), gRoof=bmat(0x5f4438);
+  for(let i=0;i<9;i++){
+    const a=i/9*TAU+.35, r=52+hsh(i,7,5)*26;
+    hut(g,Math.cos(a)*r,Math.sin(a)*r,9+hsh(i,3,6)*4,6+hsh(i,9,7)*2.5,9+hsh(i,5,8)*3,
+        gWall,gRoof,-a,4,'dome');
+  }
+  villageProps(g,'dome',64,7);
   for(let i=0;i<5;i++){ const a=i/5*TAU;
     const lv=new THREE.Mesh(new THREE.SphereGeometry(5,10,8),
       new THREE.MeshBasicMaterial({color:0xff6a20}));
@@ -5799,10 +8149,15 @@ updateEnemies=function(dt){
     if(!E.alive&&!E.collapsed) continue;
     const dx=E.pos.x-P.pos.x, dz=E.pos.z-P.pos.z;
     E.__far = (dx*dx+dz*dz)>C2;
+    if(E.rig){ const want=!E.__far;
+      if(E.rig.root.visible!==want) E.rig.root.visible=want; }
     if(E.__far && E.g.visible && !P.inShrine && !P.inRes) E.g.visible=false;
     else if(!E.__far && !E.dormant && E.alive && !P.inShrine && !P.inRes) E.g.visible=true;
   }
-  const all=enemies;
+  const all=enemies.slice();          /* a copy: `const all=enemies` aliased the live
+                                         array, so the restore below put back an array
+                                         it had already emptied and every enemy in
+                                         Hyrule stopped updating after the first frame */
   const near=all.filter(E=>!E.__far);
   enemies.length=0; near.forEach(E=>enemies.push(E));
   try{ _updateEnemies(dt); } finally { enemies.length=0; all.forEach(E=>enemies.push(E)); }
@@ -6371,27 +8726,34 @@ const SHOP_STOCK={
   water  :[['Zora Helm',300],['Zora Armor',300],['Zora Greaves',300]]
 };
 const npcs=[];
+/* seven races, seven silhouettes — and arms that actually move, which the old
+   welded-box villagers never did */
+const NPCRACE={villager:'hylian',gerudo:'gerudo',zora:'zora',rito:'rito',korok:'korok',goron:'goron'};
+const NPCK={hylian:1,gerudo:1,zora:1,rito:1,korok:1.35,goron:.78};
+const NPCSPEC={};
+function npcPal(race,cfg){
+  const skin=cfg.skin||(race==='goron'?0xb06a4a:race==='zora'?0x8fd0e8:0xe9c39c);
+  const cloth=cfg.cloth||0x8a6a4a;
+  return {skin:skin,skinD:shade(skin,.82),cloth:cloth,cloth2:shade(cloth,.84),
+    trouser:cfg.trouser||shade(cloth,.72),belt:0x5a4028,boot:0x4a3524,
+    hair:cfg.hair||0x4a3a2a,eye:0x2e2620,dark:0x141010,
+    rock:shade(skin,.72),beak:0xd8a24a,wing:shade(cloth,.9),
+    fin:mixc(skin,0x2f7f9a,.45),leaf:0x4f8442,stem:0x6b4a2a,
+    gem:0xd8b24a,veil:mixc(cloth,0xffffff,.28)};
+}
 function makeNPC(cfg){
   const g=new THREE.Group();
-  const skin=new THREE.MeshLambertMaterial({color:cfg.skin||0xe9c39c});
-  const cloth=new THREE.MeshLambertMaterial({color:cfg.cloth||0x8a6a4a});
-  const s=cfg.scale||1;
-  box(g,.72*s,.95*s,.44*s,0,1.22*s,0,cloth);
-  const head=new THREE.Mesh(new THREE.BoxGeometry(.46*s,.5*s,.44*s),skin);
-  head.position.y=1.98*s; head.castShadow=true; g.add(head);
-  const hair=new THREE.Mesh(new THREE.BoxGeometry(.52*s,.3*s,.5*s),
-    new THREE.MeshLambertMaterial({color:cfg.hair||0x4a3a2a}));
-  hair.position.y=2.18*s; g.add(hair);
-  for(const d of[-1,1]){
-    const arm=box(g,.2*s,.8*s,.2*s,d*.46*s,1.3*s,0,skin);
-    const leg=box(g,.24*s,.66*s,.24*s,d*.2*s,.42*s,0,cloth);
-  }
-  g.traverse(o=>{if(o.isMesh)o.castShadow=true;});
+  const race=NPCRACE[cfg.kind]||'hylian';
+  if(!NPCSPEC[race]) NPCSPEC[race]=npcSpec(race);
+  const sc=(cfg.scale||1)*(NPCK[race]||1);
+  const rig=buildRig(NPCSPEC[race],npcPal(race,cfg),sc);
+  g.add(rig.root);
   const y=groundAt(cfg.x,cfg.z);
   g.position.set(cfg.x,y,cfg.z); world.add(g);
   const N={g,pos:g.position,home:new THREE.Vector3(cfg.x,y,cfg.z),
     name:cfg.name,kind:cfg.kind,shop:cfg.shop,lines:NPC_LINES[cfg.kind]||NPC_LINES.villager,
-    yaw:rnd()*TAU,wt:0,li:0};
+    yaw:rnd()*TAU,wt:0,li:0,
+    rig:rig,anim:makeAnim(rig,'idle'),race:race,phase:rnd()*6};
   npcs.push(N);
   IA({kind:'npc',npc:N,x:cfg.x,z:cfg.z,y:y+1.5,r:5,label:cfg.name});
   return N;
@@ -6433,7 +8795,10 @@ function makeNPC(cfg){
 function updateNPCs(dt){
   if(P.inShrine||P.inRes) return;
   for(const N of npcs){
-    if(Math.hypot(N.pos.x-P.pos.x,N.pos.z-P.pos.z)>320) continue;
+    const ndist=Math.hypot(N.pos.x-P.pos.x,N.pos.z-P.pos.z);
+    if(ndist>200&&N.rig.root.visible) N.rig.root.visible=false;
+    else if(ndist<=200&&!N.rig.root.visible) N.rig.root.visible=true;
+    if(ndist>320) continue;
     N.wt-=dt;
     if(N.wt<=0){ N.wt=3+rnd()*5; N.tx=N.home.x+(rnd()-.5)*26; N.tz=N.home.z+(rnd()-.5)*26; }
     if(N.tx!==undefined){
@@ -6446,6 +8811,19 @@ function updateNPCs(dt){
     /* they turn to look at you when you get close */
     const pd=Math.hypot(P.pos.x-N.pos.x,P.pos.z-N.pos.z);
     if(pd<7) N.g.rotation.y=aLerp(N.g.rotation.y,Math.atan2(P.pos.x-N.pos.x,P.pos.z-N.pos.z),1-Math.pow(.001,dt));
+    if(pd>200) continue;
+    /* animation: walking between waypoints, minding the shop, or talking to you */
+    const mvx=N.pos.x-(N._px===undefined?N.pos.x:N._px), mvz=N.pos.z-(N._pz===undefined?N.pos.z:N._pz);
+    N._px=N.pos.x; N._pz=N.pos.z;
+    const sp=dt>0?Math.hypot(mvx,mvz)/dt:0;
+    N.spdSm=(N.spdSm||0)*.7+sp*.3;
+    const A=N.anim;
+    let want = N.spdSm>.35 ? 'walk' : (pd<7 ? 'talk' : (N.shop ? 'work' : 'idle'));
+    playClip(A,want,.22);
+    A.spd = want==='walk' ? Math.max(.6,N.spdSm/1.6) : (.85+((N.phase*7)%1)*.3);
+    A.t += N.phase*0;
+    if(pd<9&&N.rig.bones.neck) lookAt(A,N.g.rotation.y,P.pos.x,P.pos.z,N.pos.x,N.pos.z,.8);
+    stepAnim(A,dt);
   }
 }
 /* talking */
@@ -6524,20 +8902,18 @@ updateGear=function(){
 "use strict";
 /* ================= BATCH G — horses ================= */
 const horses=[];
+let HORSESPEC=null;
 function makeHorse(x,z,coat,wild){
   const y=groundAt(x,z), g=new THREE.Group(); g.position.set(x,y,z); world.add(g);
-  const hide=new THREE.MeshLambertMaterial({color:coat});
-  const mane=new THREE.MeshLambertMaterial({color:0x2a2018});
-  box(g,1.5,1.5,3.4,0,1.9,0,hide);
-  const neck=box(g,1.0,1.6,1.0,0,2.6,-1.7,hide); neck.rotation.x=-.5;
-  const head=box(g,.8,.8,1.5,0,3.3,-2.5,hide); head.rotation.x=.3;
-  box(g,.9,.7,.2,0,3.5,-1.9,mane);
-  for(const s of[-1,1])for(const f of[-1,1]){
-    const leg=cyl(g,.22,2.0,s*.55,1.0,f*1.2,hide); g.userData['leg'+s+f]=leg; }
-  const tail=box(g,.3,1.4,.3,0,2.4,1.8,mane); tail.rotation.x=.6;
-  g.traverse(o=>{if(o.isMesh)o.castShadow=true;});
+  /* a real equine skeleton: neck, three-segment legs and a tail, with walk,
+     trot and gallop rather than four cylinders spinning about their middles */
+  if(!HORSESPEC) HORSESPEC=horseSpec();
+  const rig=buildRig(HORSESPEC,{hide:coat,hideD:shade(coat,.80),mane:0x2a2018,
+    hoof:0x2e2822,dark:0x141010,saddleArea:shade(coat,.90)},1.0);
+  g.add(rig.root);
   const H={g,pos:g.position,yaw:rnd()*TAU,wild:!!wild,tamed:false,bond:0,
-    spd:0,maxSpd:wild?15:17,wt:0,home:new THREE.Vector3(x,y,z),name:'Horse'};
+    spd:0,maxSpd:wild?15:17,wt:0,home:new THREE.Vector3(x,y,z),name:'Horse',
+    rig:rig,anim:makeAnim(rig,'qIdle'),graze:0};
   horses.push(H);
   IA({kind:'horse',horse:H,x,z,y:y+2,r:5,label:'Horse'});
   return H;
@@ -6578,16 +8954,26 @@ function dismount(){
 function updateHorses(dt){
   for(const H of horses){
     if(H===P.mount) continue;
-    if(Math.hypot(H.pos.x-P.pos.x,H.pos.z-P.pos.z)>340) continue;
+    const hdist=Math.hypot(H.pos.x-P.pos.x,H.pos.z-P.pos.z);
+    if(hdist>230&&H.rig.root.visible) H.rig.root.visible=false;
+    else if(hdist<=230&&!H.rig.root.visible) H.rig.root.visible=true;
+    if(hdist>340) continue;
     H.spooked=Math.max(0,(H.spooked||0)-dt);
     H.wt-=dt;
     if(H.spooked>0){
       const d=H.pos.clone().sub(P.pos).setY(0).normalize();
       H.pos.addScaledVector(d,12*dt); H.yaw=Math.atan2(d.x,d.z);
-    } else if(H.wt<=0){ H.wt=3+rnd()*6; H.yaw=rnd()*TAU; }
+    } else if(H.wt<=0){ H.wt=3+rnd()*6; H.yaw=rnd()*TAU; H.graze=rnd()<.45?3+rnd()*4:0; }
+    else if(H.graze>0){ H.graze-=dt; }
     else { H.pos.x+=Math.sin(H.yaw)*1.6*dt; H.pos.z+=Math.cos(H.yaw)*1.6*dt; }
     H.pos.y=groundAt(H.pos.x,H.pos.z);
     H.g.rotation.y=H.yaw;
+    if(hdist>230) continue;
+    /* loose horses graze, wander and bolt — they used to slide with locked legs */
+    const wsp=H.spooked>0?12:(H.graze>0?0:1.6);
+    playClip(H.anim, H.spooked>0?'qGallop':(H.graze>0?'qGraze':(wsp>.3?'qWalk':'qIdle')), .25);
+    H.anim.spd = H.spooked>0?1.25:1;
+    stepAnim(H.anim,dt);
   }
   const H=P.mount; if(!H) return;
   /* riding */
@@ -6608,13 +8994,15 @@ function updateHorses(dt){
     H.pos.z-=Math.cos(H.yaw)*H.spd*dt*1.2;
     H.spd*=.3;
   }
-  P.pos.set(H.pos.x,H.pos.y+2.6,H.pos.z);
+  P.pos.set(H.pos.x,H.pos.y+2.18,H.pos.z);
   P.vel.set(0,0,0); P.onGround=true;
   player.position.copy(P.pos);
   player.rotation.y=H.yaw;
-  const t=performance.now()/1000;
-  for(const k in H.g.userData){ const leg=H.g.userData[k];
-    if(leg&&leg.rotation) leg.rotation.x=Math.sin(t*H.spd*1.2+(k.length))*.5; }
+  /* under saddle: the gait follows the actual speed */
+  const sp=Math.abs(H.spd);
+  playClip(H.anim, sp<.4?'qIdle':sp<5?'qWalk':sp<10?'qTrot':'qGallop', .22);
+  H.anim.spd = sp<.4?1:sp<5?Math.max(.6,sp/3.2):sp<10?Math.max(.7,sp/7.5):Math.max(.8,sp/13);
+  stepAnim(H.anim,dt);
 }
 
 /* ================= BATCH H — Great Fairies and armour upgrading ================= */
@@ -7364,12 +9752,11 @@ const clouds=[];
 /* birds over the fields, and bats at night */
 const birds=[];
 (function buildBirds(){
-  const wing=new THREE.PlaneGeometry(3.4,1.1);
-  const mat=new THREE.MeshLambertMaterial({color:0x2a2620,side:THREE.DoubleSide});
+  const spec=birdSpec();
   for(let i=0;i<26;i++){
     const g=new THREE.Group();
-    for(const s of[-1,1]){ const w=new THREE.Mesh(wing,mat);
-      w.position.x=s*1.8; g.add(w); g.userData['w'+s]=w; }
+    const rig=buildRig(spec,{feather:0x2a2620,featherD:0x1a1614,beak:0xd8a24a},1.5);
+    g.add(rig.root); g.userData.rig=rig; g.userData.anim=makeAnim(rig,'birdSoar');
     const R=[REGIONS.central,REGIONS.faron,REGIONS.hateno,REGIONS.woodland,REGIONS.ridge][i%5];
     g.position.set(R.x+(rnd()-.5)*900, groundAt(R.x,R.z)+90+rnd()*120, R.z+(rnd()-.5)*900);
     scene.add(g);
@@ -7403,10 +9790,10 @@ function updateArt(dt){
   for(const b of birds){
     b.a+=b.sp*dt;
     b.g.position.set(b.cx+Math.cos(b.a)*b.r, b.base+Math.sin(t*.4+b.a)*14, b.cz+Math.sin(b.a)*b.r);
-    b.g.rotation.y=-b.a+Math.PI/2;
-    const f=Math.sin(t*7+b.a*3)*.7;
-    if(b.g.userData['w-1']) b.g.userData['w-1'].rotation.z=f;
-    if(b.g.userData['w1'])  b.g.userData['w1'].rotation.z=-f;
+    b.g.rotation.y=-b.a;
+    const A=b.g.userData.anim;
+    if(A){ playClip(A,(Math.sin(t*.3+b.a)>.4)?'birdFlap':'birdSoar',.5);
+           A.spd=.9+((b.r*7)%1)*.4; stepAnim(A,dt); }
   }
   /* the sun and moon ride the same arc as the light */
   const S=window.__sky;
