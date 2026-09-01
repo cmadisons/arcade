@@ -1,4 +1,4 @@
-# Great Plateau
+# Zelda BOTW
 
 An open-world action game built from scratch in one HTML file, in the shape of
 *Breath of the Wild*'s Hyrule. Everything here — terrain, models, sounds and
