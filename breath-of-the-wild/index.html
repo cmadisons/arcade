@@ -926,8 +926,12 @@ function hyruleAt(x,z){
   const i=Math.floor(gx), j=Math.floor(gz);
   if(i<0||j<0||i>=HGRID-1||j>=HGRID-1) return HWATER-90;
   const fx=gx-i, fz=gz-j;
-  return lerp(lerp(HHM[j*HGRID+i],HHM[j*HGRID+i+1],fx),
-              lerp(HHM[(j+1)*HGRID+i],HHM[(j+1)*HGRID+i+1],fx),fz);
+  /* same triangle read as groundAt - it matters more out here, where the
+     cells are 25m wide and the twist across a mountain cell is metres. */
+  const a=HHM[j*HGRID+i], b=HHM[(j+1)*HGRID+i],
+        c=HHM[(j+1)*HGRID+i+1], d=HHM[j*HGRID+i+1];
+  return (fx+fz<=1) ? a+(d-a)*fx+(b-a)*fz
+                    : c+(b-c)*(1-fx)+(d-c)*(1-fz);
 }
 
 
@@ -1125,12 +1129,21 @@ for(let j=0;j<GRID;j++)for(let i=0;i<GRID;i++)
     HM[k]=(T[k]*4+T[k-1]+T[k+1]+T[k-GRID]+T[k+GRID])/8;
   }
 }
+/* Sample the two triangles the terrain is actually drawn from.
+   PlaneGeometry cuts every cell along its b-d diagonal, so reading the cell as
+   a bilinear patch lands (a+c-b-d)/4 away from the surface you can see: Link
+   hovered over every dip and sank into every rise, and the error changed with
+   each cell he crossed, which is what made walking bob up and down. */
+function triAt(H,W,i,j,fx,fz){
+  const a=H[j*W+i], b=H[(j+1)*W+i], c=H[(j+1)*W+i+1], d=H[j*W+i+1];
+  return (fx+fz<=1) ? a+(d-a)*fx+(b-a)*fz
+                    : c+(b-c)*(1-fx)+(d-c)*(1-fz);
+}
 function groundAt(x,z){
   const gx=(x+HALF)/CELL, gz=(z+HALF)/CELL;
   const i=Math.floor(gx), j=Math.floor(gz);
   if(i<0||j<0||i>=GRID-1||j>=GRID-1) return hyruleAt(x,z);
-  const fx=gx-i, fz=gz-j;
-  return lerp(lerp(HM[j*GRID+i],HM[j*GRID+i+1],fx), lerp(HM[(j+1)*GRID+i],HM[(j+1)*GRID+i+1],fx), fz);
+  return triAt(HM,GRID,i,j,gx-i,gz-j);
 }
 function slopeAt(x,z){const e=2.2;
   const dx=(groundAt(x+e,z)-groundAt(x-e,z))/(2*e), dz=(groundAt(x,z+e)-groundAt(x,z-e))/(2*e);
@@ -1982,6 +1995,9 @@ function sneakBonus(){ return 1-armourHas('sneak')*.15-(hasSet('stealth')?.2:0);
 
 /* ================= BATCH 13 — movement, real stamina economy ================= */
 const GRAV=-30, WALK=6.0, RUN=11.0, SNEAK=2.6, JUMP=11.6, CLIMB_SPD=1.35, SWIM_SPD=4.2, SURF_SPD=17;
+/* How high a ledge Link can walk straight up onto. This used to be 2.8 - taller
+   than Link himself - so brushing past anything with a roof lifted him onto it. */
+const STEP_UP=0.7;
 const keys={}, mouse={l:false,r:false};
 let pointerLocked=false, aiming=false, bulletTime=1, magnetHold=null, magnetDist=8, liveBomb=null;
 const fwd=new THREE.Vector3(), rgt=new THREE.Vector3(), tv=new THREE.Vector3(), nrm=new THREE.Vector3();
@@ -1989,6 +2005,7 @@ function drain(u){ P.stam=Math.max(0,P.stam-u); P.stamRegenT=STAM.regenDelay; }
 function stamFactor(){ return P.stam < maxStam()*.25 ? STAM.lowFactor : 1; }
 
 function updatePlayer(dt){
+  const prevY=P.pos.y;                 // needed for the swept roof test below
   const g=groundAt(P.pos.x,P.pos.z), sl=slopeAt(P.pos.x,P.pos.z);
   const indoors=!!(P.inShrine||P.inRes);
   const WL=waterAt(P.pos.x,P.pos.z);
@@ -2104,9 +2121,21 @@ function updatePlayer(dt){
     } else P.onGround=false;
     P.jumpCd=Math.max(0,(P.jumpCd||0)-dt);
   }
+  /* Push out of walls again now that the frame's movement has been applied.
+     The call at the top of updatePlayer resolves last frame's overlap, which
+     left Link inside a wall for a whole frame - long enough at a run to cross
+     a thin one and be pushed out the far side. */
+  if(!P.inShrine&&!P.inRes) structPush(P.pos);
   /* platforms */
-  const pf=platformUnder(P.pos.x,P.pos.z,P.pos.y);
-  if(pf&&P.pos.y<=pf.top+.06&&P.pos.y>pf.top-2.8){P.pos.y=pf.top;if(P.vel.y<0)P.vel.y=0;P.onGround=true;}
+  const pf=platformUnder(P.pos.x,P.pos.z,Math.max(P.pos.y,prevY));
+  if(pf){
+    /* swept: he was on or above the roof and is now under it, so he crossed it
+       this frame however fast he was falling. Without this a fast enough drop
+       stepped straight through the roof between two frames. */
+    const fell = prevY>=pf.top-.02 && P.pos.y<pf.top;
+    const step = P.pos.y<=pf.top+.06 && P.pos.y>pf.top-STEP_UP && P.vel.y<=.1;
+    if(fell||step){ P.pos.y=pf.top; if(P.vel.y<0)P.vel.y=0; P.onGround=true; }
+  }
   /* shrine / resurrection bounds */
   if(P.inShrine){const r=P.inShrine;
     P.pos.x=clamp(P.pos.x,r.rx-r.W/2+1.2,r.rx+r.W/2-1.2);
