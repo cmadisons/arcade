@@ -328,6 +328,10 @@ const STAM={sprint:200, climb:100, climbJump:200, glide:143, swim:150, charge:12
             regen:400, regenDelay:.45, lowFactor:.5};
 
 /* ================= landmarks (real relative geography) ================= */
+/* The world now uses Breath of the Wild's own coordinates:
+   game X is east, game Y is north (so our z is -Y), game Z is altitude.
+   The Great Plateau therefore sits at (-870, 1954), not at the origin. */
+const PCX=-870, PCZ=1954;
 const LM={
   resurrection:{x:-188,z:-516,n:'Shrine of Resurrection'},
   temple      :{x:-148,z:106, n:'Temple of Time'},
@@ -342,15 +346,16 @@ const LM={
   gatehouse   :{x:126, z:452, n:'Southern Gatehouse'},
   oldman      :{x:236, z:-360,n:"Old Man's camp"}
 };
+for(const k in LM){ LM[k].x+=PCX; LM[k].z+=PCZ; }   // shift the plateau into place
 /* ================= the four shrines ================= */
 const SHRINES=[
-  {id:'oman',  name:'Oman Au Shrine',   trial:'Magnesis Trial', rune:'magnesis', x:-92, z:-326, where:'Forest of Spirits',
+  {id:'oman',  name:'Oman Au Shrine',   trial:'Magnesis Trial', rune:'magnesis', x:-672, z:1514, where:'Forest of Spirits',
    monk:'Oman Au', chest:"Traveler's Bow"},
-  {id:'jabaij',name:'Ja Baij Shrine',   trial:'Bomb Trial',     rune:'bomb',     x:476, z:20,  where:'Eastern Abbey',
+  {id:'jabaij',name:'Ja Baij Shrine',   trial:'Bomb Trial',     rune:'bomb',     x:-448, z:1990, where:'Eastern Abbey',
    monk:'Ja Baij', chest:"Traveler's Sword"},
-  {id:'owa',   name:'Owa Daim Shrine',  trial:'Stasis Trial',   rune:'stasis',   x:-360,z:356, where:'Mount Hylia',
+  {id:'owa',   name:'Owa Daim Shrine',  trial:'Stasis Trial',   rune:'stasis',   x:-925,z:2320, where:'Mount Hylia',
    monk:'Owa Daim', chest:'Kite Shield'},
-  {id:'keh',   name:'Keh Namut Shrine', trial:'Cryonis Trial',  rune:'cryonis',  x:-436,z:-316,where:'River of the Dead',
+  {id:'keh',   name:'Keh Namut Shrine', trial:'Cryonis Trial',  rune:'cryonis',  x:-1435,z:1991,where:'River of the Dead',
    monk:'Keh Namut', chest:"Traveler's Shield"}
 ];
 const RUNES={
@@ -616,34 +621,222 @@ function seg(px,pz,ax,az,bx,bz){const vx=bx-ax,vz=bz-az,wx=px-ax,wz=pz-az;
    its detail and its cliffs now fall into real Hyrule Field, not the void.
    100 sculpting passes, listed in order.
    ========================================================================== */
+/* ==========================================================================
+   The 136 real shrines: name, trial, and Breath of the Wild's own
+   coordinates. Game X is east, game Y is north (our z is -Y), game Z is
+   altitude. These double as elevation anchors for the terrain.
+   ========================================================================== */
+const SHRINE_REAL=[
+["Ja Baij","Bomb Trial",-448,-1990,193,"plateau"],
+["Keh Namut","Cryonis Trial",-1435,-1991,351,"plateau"],
+["Oman Au","Magnesis Trial",-672,-1514,186,"plateau"],
+["Owa Daim","Stasis Trial",-925,-2320,287,"plateau"],
+["Bosh Kala","The Wind Guides You",87,-1658,136,"duel"],
+["Ha Dahamar","The Water Guides",1663,-1922,129,"duel"],
+["Hila Rao","Drifting",854,-839,130,"duel"],
+["Lakna Rokee","Lakna Rokee's Blessing",2040,-972,295,"duel"],
+["Ree Dahee","Timing Is Critical",1273,-1844,151,"duel"],
+["Shee Venath","Twin Memories",1245,-1850,456,"duel"],
+["Shee Vaneer","Twin Memories",1266,-1939,539,"duel"],
+["Ta'loh Naeg","Ta'loh Naeg's Teaching",1841,-891,273,"duel"],
+["Toto Sah","Toto Sah Apparatus",1847,-2474,145,"duel"],
+["Chaas Qeta","A Major Test of Strength",4011,-2990,120,"hateno"],
+["Dow Na'eh","Three Boxes",2697,-1333,234,"hateno"],
+["Jitan Sa'mi","Jitan Sa'mi's Blessing",3883,-1315,586,"hateno"],
+["Kam Urog","Trial of Passage",2502,-1496,128,"hateno"],
+["Mezza Lo","Ancient Trifecta",2622,-379,258,"hateno"],
+["Myahm Agana","Myahm Agana Apparatus",3388,-2215,256,"hateno"],
+["Tahno O'ah","Tahno O'ah's Blessing",4183,-1687,301,"hateno"],
+["Dah Kaso","A Minor Test of Strength",-1696,-1701,82,"central"],
+["Kaam Ya'tak","Trial of Power",-968,-717,141,"central"],
+["Katah Chuki","A Minor Test of Strength",-636,344,142,"central"],
+["Namika Ozz","A Modest Test of Strength",760,821,202,"central"],
+["Noya Neha","A Minor Test of Strength",-952,624,147,"central"],
+["Rota Ooh","Passing of the Gates",-1562,-1310,200,"central"],
+["Saas Ko'sah","A Major Test of Strength",-148,1159,153,"central"],
+["Wahgo Katta","Metal Connections",346,-1008,136,"central"],
+["Dagah Keek","Dagah Keek's Blessing",3149,417,289,"lanayru"],
+["Daka Tuss","Sunken Scoop",1602,-463,131,"lanayru"],
+["Kah Mael","Drop and Rise",4709,1310,255,"lanayru"],
+["Kaya Wan","Shields from Water",825,-188,146,"lanayru"],
+["Ne'ez Yohma","Pushing Power",3323,518,252,"lanayru"],
+["Rucco Maag","Five Flames",3334,-402,132,"lanayru"],
+["Shai Yota","Shai Yota's Blessing",4245,-254,120,"lanayru"],
+["Sheh Rata","Speed of Light",1509,377,141,"lanayru"],
+["Soh Kofi","A Minor Test of Strength",2239,292,161,"lanayru"],
+["Daqa Koh","Stalled Flight",2065,2328,611,"eldin"],
+["Gorae Torr","Gorae Torr's Blessing",2663,3457,483,"eldin"],
+["Kayra Mah","Greedy Hill",2076,2040,534,"eldin"],
+["Mo'a Keet","Metal Makes a Path",2723,1165,298,"eldin"],
+["Qua Raym","A Balanced Approach",1820,1518,401,"eldin"],
+["Sah Dahaj","Power of Fire",2666,1580,261,"eldin"],
+["Shae Mo'sah","Swinging Flames",1757,2562,548,"eldin"],
+["Shora Hah","Blue Flame",1536,3117,520,"eldin"],
+["Tah Muhl","Passing the Flame",2301,941,226,"eldin"],
+["Daqo Chisay","The Whole Picture",-3816,-2819,163,"wasteland"],
+["Dako Tah","Electric Path",-3317,-2163,159,"wasteland"],
+["Dila Maag","Dila Maag's Blessing",-1795,-3464,177,"wasteland"],
+["Hawa Koth","The Current Solution",-4847,-3774,137,"wasteland"],
+["Jee Noh","On the Move",-1793,-2422,126,"wasteland"],
+["Kay Noh","Power of Electricity",-2810,-2300,185,"wasteland"],
+["Kema Zoos","A Delayed Puzzle",-4674,-1969,145,"wasteland"],
+["Korsh O'hu","Korsh O'hu's Blessing",-2689,-2812,114,"wasteland"],
+["Misae Suma","Misae Suma's Blessing",-2970,-3781,151,"wasteland"],
+["Raqa Zunzo","Raqa Zunzo's Blessing",-3810,-3127,168,"wasteland"],
+["Suma Sahma","Suma Sahma's Blessing",-1418,-3449,554,"wasteland"],
+["Tho Kayu","Tho Kayu's Blessing",-4798,-2800,144,"wasteland"],
+["Joloo Nah","Joloo Nah Apparatus",-2004,-1675,241,"gerudo"],
+["Keeha Yoog","Keeha Yoog's Blessing",-3852,-716,649,"gerudo"],
+["Kema Kosassa","A Major Test of Strength",-4657,-905,632,"gerudo"],
+["Kuh Takkar","Melting Ice Hazard",-3084,-1222,585,"gerudo"],
+["Sasa Kai","A Modest Test of Strength",-3560,-1954,362,"gerudo"],
+["Sho Dantu","Two Bombs",-3911,-1653,405,"gerudo"],
+["Akh Va'quot","Windmills",-3656,1758,335,"tabantha"],
+["Bareeda Naag","Cannon",-3609,1516,256,"tabantha"],
+["Kah Okeo","Wind Guide",-4121,414,197,"tabantha"],
+["Sha Warvo","Path of Hidden Winds",-3822,2207,278,"tabantha"],
+["Tena Ko'sah","A Major Test of Strength",-3466,447,397,"tabantha"],
+["Voo Lota","The Winding Route",-4015,1722,284,"tabantha"],
+["Maag No'rah","Maag No'rah's Blessing",-1940,1459,263,"ridge"],
+["Mijah Rokee","A Modest Test of Strength",-2744,-226,318,"ridge"],
+["Mogg Latan","Synced Swing",-2298,-462,453,"ridge"],
+["Shae Loya","Aim for the Moment",-2931,433,319,"ridge"],
+["Sheem Dagoze","Moving in Parallel",-1892,-91,221,"ridge"],
+["Toh Yahsa","Buried Secrets",-2269,901,226,"ridge"],
+["Zalta Wa","Two Orbs to Guide You",-1433,593,151,"ridge"],
+["Ishto Soh","Bravery's Grasp",-986,-3565,334,"lake"],
+["Ka'o Makagh","Metal Doors Open the Way",523,-3525,192,"lake"],
+["Pumaag Nitae","A Minor Test of Strength",559,-2991,131,"lake"],
+["Shae Katha","Shae Katha's Blessing",870,-2330,136,"lake"],
+["Shoqa Tatone","A Modest Test of Strength",95,-3841,120,"lake"],
+["Ya Naga","Shatter the Heavens",-329,-2600,81,"lake"],
+["Kah Yah","Quick Thinking",3437,-3317,130,"faron"],
+["Korgu Chideh","Korgu Chideh's Blessing",4737,-3772,227,"faron"],
+["Muwo Jeem","A Modest Test of Strength",3657,-3308,363,"faron"],
+["Qukah Nata","Qukah Nata's Blessing",2008,-3285,314,"faron"],
+["Shai Utoh","Halt the Tilt",1586,-3614,180,"faron"],
+["Shoda Sah","Impeccable Timing",1790,-2993,203,"faron"],
+["Tawa Jinn","Tawa Jinn's Blessing",2637,-2834,327,"faron"],
+["Yah Rin","A Weighty Decision",2834,-3312,166,"faron"],
+["Daag Chokah","Daag Chokah's Blessing",-26,2458,293,"woodland"],
+["Keo Ruug","Fateful Stars",471,2168,263,"woodland"],
+["Ketoh Wawai","Ketoh Wawai's Blessing",284,3120,294,"woodland"],
+["Kuhn Sidajj","Kuhn Sidajj's Blessing",18,1944,290,"woodland"],
+["Maag Halan","Maag Halan's Blessing",837,2419,295,"woodland"],
+["Mirro Shaz","Tempered Power",1231,1213,141,"woodland"],
+["Monya Toma","Drawing Parabolas",-1489,1474,288,"woodland"],
+["Rona Kachta","Rona Kachta's Blessing",-1089,2661,35,"woodland"],
+["Dah Hesho","A Minor Test of Strength",3900,1304,368,"akkala"],
+["Katosa Aug","Katosa Aug Apparatus",4295,2730,250,"akkala"],
+["Ke'nai Shakah","A Modest Test of Strength",4195,856,336,"akkala"],
+["Ritaag Zumo","Ritaag Zumo's Blessing",4525,2128,117,"akkala"],
+["Tu Ka'loh","Tu Ka'loh's Blessing",4655,3709,250,"akkala"],
+["Tutsuwa Nima","A Major Test of Strength",3777,2704,122,"akkala"],
+["Ze Kasho","Ze Kasho Apparatus",3028,1668,362,"akkala"],
+["Zuna Kai","Zuna Kai's Blessing",3324,3421,312,"akkala"],
+["Dunba Taag","Build and Release",-2832,1577,93,"hebra"],
+["Gee Ha'rah","Tandem",-2380,2255,291,"hebra"],
+["Goma Asaagh","A Major Test of Strength",-2793,2882,684,"hebra"],
+["Hia Miu","A Major Test of Strength",-4446,3802,343,"hebra"],
+["Lanno Kooh","Lanno Kooh's Blessing",-2637,2061,459,"hebra"],
+["Maka Rah","Steady Thy Heart",-4059,2508,108,"hebra"],
+["Mozo Shenno","A Major Test of Strength",-3627,3038,434,"hebra"],
+["Qaza Tokki","Qaza Tokki's Blessing",-822,3535,354,"hebra"],
+["Rin Oyaa","Directing the Wind",-1720,2555,349,"hebra"],
+["Rok Uwog","Power of Reach",-2377,3225,499,"hebra"],
+["Sha Gehma","Shift and Lock",-1672,3759,360,"hebra"],
+["Shada Naw","Red Giveaway",-2998,3221,681,"hebra"],
+["To Quomo","To Quomo's Blessing",-4022,3712,301,"hebra"],
+["Yowaka Ita","Collected Soul",-942,-1672,197,"dlc"],
+["Rohta Chigah","Stop to Start",-518,-1799,183,"dlc"],
+["Ruvo Korbah","A Major Test of Strength+",-834,-2145,199,"dlc"],
+["Etsu Korima","Path of Light",-1216,-2111,350,"dlc"],
+["Shira Gomar","Aim for Stillness",-2377,1384,274,"dlc"],
+["Kiah Toza","Master the Orb",-2156,3188,459,"dlc"],
+["Noe Rajee","The Four Winds",-3821,2311,99,"dlc"],
+["Kee Dafunia","The Melting Point",4934,1002,116,"dlc"],
+["Sato Koda","Support and Guidance",3104,834,552,"dlc"],
+["Mah Eliya","Secret Stairway",3762,646,557,"dlc"],
+["Kamia Omuna","Moving Targets",2129,3229,519,"dlc"],
+["Sharo Lun","Blind Spots",2932,2419,640,"dlc"],
+["Rinu Honika","Block the Blaze",2242,1996,551,"dlc"],
+["Keive Tala","Big or Small",-2340,-3901,138,"dlc"],
+["Takama Shiri","Dual Purpose",-4894,-2156,151,"dlc"],
+["Kihiro Moh","Inside the Box",-3392,-1347,451,"dlc"]
+];
+/* into our coordinates, with the real altitude kept */
+const SHRINE_PTS = SHRINE_REAL.map(r=>({name:r[0], trial:r[1], x:r[2], z:-r[3], alt:r[4], region:r[5]}));
+/* Pull the ground toward the real altitudes, weighting each anchor by inverse
+   distance so a shrine in a valley is not dragged up by the peaks beside it. */
+/* bucketed by 400 m, so a terrain sample tests two or three anchors rather
+   than all one hundred and thirty-six — the difference between a two second
+   load and a minute of it */
+const ANCHOR_CELL=400, ANCHOR_BUCKETS=new Map();
+for(const S of SHRINE_PTS){
+  const k=Math.floor(S.x/ANCHOR_CELL)+','+Math.floor(S.z/ANCHOR_CELL);
+  if(!ANCHOR_BUCKETS.has(k)) ANCHOR_BUCKETS.set(k,[]);
+  ANCHOR_BUCKETS.get(k).push(S);
+}
+const _anchorScratch=[];
+function anchorsNear(x,z){
+  _anchorScratch.length=0;
+  const bx=Math.floor(x/ANCHOR_CELL), bz=Math.floor(z/ANCHOR_CELL);
+  for(let i=-1;i<=1;i++)for(let j=-1;j<=1;j++){
+    const b=ANCHOR_BUCKETS.get((bx+i)+','+(bz+j));
+    if(b) for(let k=0;k<b.length;k++) _anchorScratch.push(b[k]);
+  }
+  return _anchorScratch;
+}
+function anchorH(x,z,h,R){
+  const list=anchorsNear(x,z);
+  if(!list.length) return h;
+  let wsum=0, asum=0, near=0;
+  for(let i=0;i<list.length;i++){
+    const S=list[i];
+    const dx=x-S.x, dz=z-S.z, d2=dx*dx+dz*dz;
+    if(d2>R*R) continue;
+    const d=Math.sqrt(d2);
+    /* the weight spikes at the anchor itself, so the nearest shrine wins
+       outright rather than being averaged with a peak thirty metres away */
+    const w=Math.pow(1-d/R,2)/(d2*0.001+0.01);
+    wsum+=w; asum+=w*S.alt; near++;
+  }
+  if(!near) return h;
+  const target=asum/wsum;
+  const pull=clamp(wsum/(wsum+0.25),0,0.985);
+  return lerp(h,target,pull);
+}
+
+
 const HW=10000, HHALF=5000, HGRID=401, HCELL=HW/(HGRID-1);
 const FIELD=30;                     // Hyrule Field sits ~120 m below the Plateau top
 const HWATER=10;                    // Hyrule's water line (the Plateau has its own)
 
 /* ---- the fifteen regions, laid out as they really are around the Plateau ---- */
 const REGIONS={
-  central   :{x:300,  z:-1500, n:'Central Hyrule',        r:1500},
-  castle    :{x:240,  z:-2250, n:'Hyrule Castle',         r:520},
-  ridge     :{x:-2100,z:-500,  n:'Hyrule Ridge',          r:1100},
-  tabantha  :{x:-3200,z:-1900, n:'Tabantha Frontier',     r:1200},
-  rito      :{x:-3450,z:-2350, n:'Rito Village',          r:340},
-  hebra     :{x:-3300,z:-3600, n:'Hebra Mountains',       r:1500},
-  gerudo    :{x:-3300,z:2500,  n:'Gerudo Desert',         r:1600},
-  gerudoTown:{x:-3550,z:2750,  n:'Gerudo Town',           r:300},
-  wasteland :{x:-4200,z:3400,  n:'Gerudo Wasteland',      r:900},
-  hylia     :{x:700,  z:2000,  n:'Lake Hylia',            r:700},
-  faron     :{x:2200, z:2900,  n:'Faron Woods',           r:1200},
-  lurelin   :{x:3700, z:3400,  n:'Lurelin Village',       r:260},
-  duel      :{x:2350, z:200,   n:'Dueling Peaks',         r:700},
-  kakariko  :{x:2750, z:-350,  n:'Kakariko Village',      r:280},
-  hateno    :{x:4150, z:800,   n:'Hateno Village',        r:420},
-  lanayru   :{x:3500, z:-1650, n:'Lanayru',               r:1200},
-  zora      :{x:3050, z:-2600, n:'Zora’s Domain',         r:420},
-  akkala    :{x:3250, z:-3750, n:'Akkala',                r:1100},
-  eldin     :{x:2500, z:-4150, n:'Death Mountain',        r:1100},
-  woodland  :{x:600,  z:-3550, n:'Great Hyrule Forest',   r:1000},
-  korok     :{x:600,  z:-3800, n:'Korok Forest',          r:340},
-  plateau   :{x:0,    z:0,     n:'Great Plateau',         r:760}
+  /* every centre is the mean of that region's real shrine coordinates */
+  central   :{x:-607, z:224,   n:'Central Hyrule',      r:1500},
+  castle    :{x:-254, z:-1077, n:'Hyrule Castle',       r:520},
+  ridge     :{x:-2215,z:-372,  n:'Hyrule Ridge',        r:1200},
+  tabantha  :{x:-3781,z:-1344, n:'Tabantha Frontier',   r:1200},
+  rito      :{x:-3656,z:-1758, n:'Rito Village',        r:340},
+  hebra     :{x:-2799,z:-2933, n:'Hebra Mountains',     r:1600},
+  gerudo    :{x:-3511,z:1354,  n:'Gerudo Highlands',    r:1300},
+  gerudoTown:{x:-3816,z:2819,  n:'Gerudo Town',         r:300},
+  wasteland :{x:-3228,z:2907,  n:'Gerudo Wasteland',    r:1500},
+  hylia     :{x:122,  z:3142,  n:'Lake Hylia',          r:900},
+  faron     :{x:2836, z:3304,  n:'Faron Woods',         r:1200},
+  lurelin   :{x:2834, z:3312,  n:'Lurelin Village',     r:260},
+  duel      :{x:1346, z:1599,  n:'Dueling Peaks',       r:1000},
+  kakariko  :{x:1841, z:891,   n:'Kakariko Village',    r:280},
+  hateno    :{x:3388, z:2215,  n:'Hateno Village',      r:420},
+  lanayru   :{x:2771, z:-179,  n:'Lanayru',             r:1300},
+  zora      :{x:3323, z:-518,  n:'Zora’s Domain',       r:420},
+  akkala    :{x:3962, z:-2315, n:'Akkala',              r:1200},
+  eldin     :{x:2179, z:-2079, n:'Death Mountain',      r:1200},
+  woodland  :{x:30,   z:-2182, n:'Great Hyrule Forest', r:1100},
+  korok     :{x:471,  z:-2168, n:'Korok Forest',        r:340},
+  plateau   :{x:PCX,  z:PCZ,   n:'Great Plateau',       r:760}
 };
 /* ---- the fifteen Sheikah towers ---- */
 const TOWERS=[
@@ -672,18 +865,47 @@ const BEASTS=[
 ];
 
 /* ================= the 100 Hyrule passes ================= */
+/* ---- region warp ----------------------------------------------------------
+   Every Hyrule feature below was originally sculpted around my estimated
+   region positions. The shrine coordinates gave the real ones, so the whole
+   sculpt field is warped by an inverse-distance displacement instead of
+   re-typing a hundred and sixty passes. ------------------------------------ */
+const WARP_PAIRS=[
+  [300,-1500,   -607,224],   [240,-2250,   -254,-1077], [-2100,-500,  -2215,-372],
+  [-3200,-1900, -3781,-1344],[-3450,-2350, -3656,-1758],[-3300,-3600, -2799,-2933],
+  [-3300,2500,  -3511,1354], [-3550,2750,  -3816,2819], [-4200,3400,  -3228,2907],
+  [700,2000,    122,3142],   [2200,2900,   2836,3304],  [3700,3400,   2834,3312],
+  [2350,200,    1346,1599],  [2750,-350,   1841,891],   [4150,800,    3388,2215],
+  [3500,-1650,  2771,-179],  [3050,-2600,  3323,-518],  [3250,-3750,  3962,-2315],
+  [2500,-4150,  2179,-2079], [600,-3550,   30,-2182],   [600,-3800,   471,-2168],
+  [0,0,         -870,1954]
+];
+function warpXZ(x,z){
+  let ws=0, dx=0, dz=0;
+  for(let i=0;i<WARP_PAIRS.length;i++){
+    const P=WARP_PAIRS[i];
+    const ax=x-P[0], az=z-P[1];
+    const w=1/(ax*ax+az*az+40000);
+    ws+=w; dx+=w*(P[2]-P[0]); dz+=w*(P[3]-P[1]);
+  }
+  return [x+dx/ws, z+dz/ws];
+}
 const HOPS=[];
-const hcone=(n,x,z,r,h,p)=>HOPS.push({n,x,z,r,f:(px,pz)=>{const d=Math.hypot(px-x,pz-z);
-  return d>=r?0:h*Math.pow(smooth(1-d/r),p||1);}});
+const hcone=(n,rx,rz,r,h,p)=>{const[x,z]=warpXZ(rx,rz);
+  HOPS.push({n,x,z,r,f:(px,pz)=>{const d=Math.hypot(px-x,pz-z);
+  return d>=r?0:h*Math.pow(smooth(1-d/r),p||1);}});};
 const hbasin=(n,x,z,r,h)=>hcone(n,x,z,r,-h);
-const hflat=(n,x,z,r,y,k)=>HOPS.push({n,x,z,r,flat:true,f:(px,pz,h)=>{const d=Math.hypot(px-x,pz-z);
-  return d>=r?h:lerp(h,y,smooth(1-d/r)*(k===undefined?1:k));}});
-const hridge=(n,ax,az,bx,bz,r,h)=>HOPS.push({n,x:(ax+bx)/2,z:(az+bz)/2,r:r+Math.hypot(bx-ax,bz-az)/2,
-  f:(px,pz)=>{const s=seg(px,pz,ax,az,bx,bz); return s.d>=r?0:h*smooth(1-s.d/r);}});
-const hriver=(n,pts,r,depth)=>HOPS.push({n,x:pts[0][0],z:pts[0][1],r:1e9,poly:1,
+const hflat=(n,rx,rz,r,y,k)=>{const[x,z]=warpXZ(rx,rz);
+  HOPS.push({n,x,z,r,flat:true,f:(px,pz,h)=>{const d=Math.hypot(px-x,pz-z);
+  return d>=r?h:lerp(h,y,smooth(1-d/r)*(k===undefined?1:k));}});};
+const hridge=(n,rax,raz,rbx,rbz,r,h)=>{const[ax,az]=warpXZ(rax,raz),[bx,bz]=warpXZ(rbx,rbz);
+  HOPS.push({n,x:(ax+bx)/2,z:(az+bz)/2,r:r+Math.hypot(bx-ax,bz-az)/2,
+  f:(px,pz)=>{const s=seg(px,pz,ax,az,bx,bz); return s.d>=r?0:h*smooth(1-s.d/r);}});};
+const hriver=(n,raw,r,depth)=>{const pts=raw.map(q=>warpXZ(q[0],q[1]));
+  HOPS.push({n,x:pts[0][0],z:pts[0][1],r:1e9,poly:1,
   f:(px,pz)=>{let b=1e9; for(let i=0;i<pts.length-1;i++){
     const s=seg(px,pz,pts[i][0],pts[i][1],pts[i+1][0],pts[i+1][1]); if(s.d<b)b=s.d;}
-    return b>=r?0:-depth*smooth(1-b/r)*smooth(1-b/r);}});
+    return b>=r?0:-depth*smooth(1-b/r)*smooth(1-b/r);}});};
 const hlake=(n,x,z,r,bottom)=>hflat(n,x,z,r,bottom);
 
 /* 001-004 the base of the world */
@@ -821,14 +1043,15 @@ hflat ('118 Akkala terrace',         3100,-3200, 220, FIELD+250, .7);
 hflat ('119 Faron terrace',          2000,3200, 260, FIELD+180, .7);
 hflat ('120 Tabantha terrace',       -2800,-1200, 240, FIELD+220, .7);
 /* 121-130 the roads that actually connect Hyrule */
-const hroad=(n,pts,r,k)=>HOPS.push({n,x:pts[0][0],z:pts[0][1],r:1e9,poly:1,flat:true,
+const hroad=(n,raw,r,k)=>{const pts=raw.map(q=>[...warpXZ(q[0],q[1]),q[2]]);
+  HOPS.push({n,x:pts[0][0],z:pts[0][1],r:1e9,poly:1,flat:true,
   f:(px,pz,h)=>{let best=1e9,by=0;
     for(let i=0;i<pts.length-1;i++){
       const sg=seg(px,pz,pts[i][0],pts[i][1],pts[i+1][0],pts[i+1][1]);
       if(sg.d<best){best=sg.d;by=lerp(pts[i][2],pts[i+1][2],sg.t);}}
     if(best>=r)return h;
     const target=h+clamp(by-h,-6,6);
-    return lerp(h,target,smooth(1-best/r)*(k===undefined?.9:k));}});
+    return lerp(h,target,smooth(1-best/r)*(k===undefined?.9:k));}});};
 hroad('121 road: castle to Plateau',  [[240,-2050,180],[300,-1500,70],[200,-900,50],[120,-600,45]], 26);
 hroad('122 road: castle to Dueling',  [[400,-2000,170],[1100,-1400,60],[1800,-600,55],[2180,180,45]], 26);
 hroad('123 road: Dueling to Hateno',  [[2500,300,45],[3200,600,70],[3900,800,110]], 24);
@@ -897,8 +1120,11 @@ const SETTLE=[[3050,-2600,150,90],[REGIONS.kakariko.x,REGIONS.kakariko.z,150,122
   [REGIONS.gerudoTown.x,REGIONS.gerudoTown.z,170,88],[REGIONS.rito.x,REGIONS.rito.z,140,150],
   [REGIONS.korok.x,REGIONS.korok.z,170,240],[2320,-3820,150,430],
   [REGIONS.castle.x,REGIONS.castle.z,180,215]];
+/* 162 shrine elevation anchors — the ground matches the real altitude at all 136 */
+HOPS.push({n:'162 shrine elevation anchors', x:0,z:0,r:1e9, flat:true, f:(x,z,h)=>anchorH(x,z,h,190)});
+const SETTLE_W=SETTLE.map(q=>{const[a,b]=warpXZ(q[0],q[1]);return [a,b,q[2],q[3]];});
 HOPS.push({n:'161 settlement levelling', x:0,z:0,r:1e9, flat:true, f:(x,z,h)=>{
-  for(const [sx,sz,r,y] of SETTLE){
+  for(const [sx,sz,r,y] of SETTLE_W){
     const d=Math.hypot(x-sx,z-sz);
     if(d<r) return lerp(h,y,smooth(1-d/r)*0.96);
   }
@@ -950,27 +1176,30 @@ const NOTCH=[{a:rad(88),w:.055,d:120},{a:rad(150),w:.04,d:90},{a:rad(212),w:.035
 const BASE=150;
 /* op helpers ------------------------------------------------------------- */
 const OPS=[];
-const cone=(n,x,z,r,h,p)=>OPS.push({n,r:r,f:(px,pz)=>{const d=Math.hypot(px-x,pz-z);
-  if(d>=r)return 0; const t=1-d/r; return h*Math.pow(smooth(t), p||1);}, cx:x, cz:z});
+const cone=(n,lx,lz,r,h,p)=>{const x=lx+PCX,z=lz+PCZ; OPS.push({n,r:r,f:(px,pz)=>{const d=Math.hypot(px-x,pz-z);
+  if(d>=r)return 0; const t=1-d/r; return h*Math.pow(smooth(t), p||1);}, cx:x, cz:z});};
 const basin=(n,x,z,r,h)=>cone(n,x,z,r,-h);
-const ridge=(n,ax,az,bx,bz,r,h)=>OPS.push({n,r,f:(px,pz)=>{const s=seg(px,pz,ax,az,bx,bz);
-  if(s.d>=r)return 0; return h*smooth(1-s.d/r);}, cx:(ax+bx)/2, cz:(az+bz)/2, seg:[ax,az,bx,bz]});
-const flat=(n,x,z,r,y,k)=>OPS.push({n,r,flat:true,cx:x,cz:z,
+const ridge=(n,lax,laz,lbx,lbz,r,h)=>{const ax=lax+PCX,az=laz+PCZ,bx=lbx+PCX,bz=lbz+PCZ;
+  OPS.push({n,r,f:(px,pz)=>{const s=seg(px,pz,ax,az,bx,bz);
+  if(s.d>=r)return 0; return h*smooth(1-s.d/r);}, cx:(ax+bx)/2, cz:(az+bz)/2});};
+const flat=(n,lx,lz,r,y,k)=>{const x=lx+PCX,z=lz+PCZ; OPS.push({n,r,flat:true,cx:x,cz:z,
   f:(px,pz,h)=>{const d=Math.hypot(px-x,pz-z); if(d>=r)return h;
-    return lerp(h,y,smooth(1-d/r)*(k===undefined?1:k));}});
-const road=(n,pts,r,k)=>OPS.push({n,r:r+40,flat:true,cx:pts[0][0],cz:pts[0][1],poly:pts,
+    return lerp(h,y,smooth(1-d/r)*(k===undefined?1:k));}});};
+const road=(n,rawpts,r,k)=>{const pts=rawpts.map(q=>[q[0]+PCX,q[1]+PCZ,q[2]]);
+  OPS.push({n,r:r+40,flat:true,cx:pts[0][0],cz:pts[0][1],poly:pts,
   f:(px,pz,h)=>{let best=1e9,by=0;
     for(let i=0;i<pts.length-1;i++){const s=seg(px,pz,pts[i][0],pts[i][1],pts[i+1][0],pts[i+1][1]);
       if(s.d<best){best=s.d; by=lerp(pts[i][2],pts[i+1][2],s.t);} }
     if(best>=r)return h;
     /* a road grades the ground it crosses; it never builds a 16 m berm across a valley */
     const target=h+clamp(by-h,-4,4);
-    return lerp(h,target,smooth(1-best/r)*(k===undefined?.95:k));}});
-const river=(n,pts,r,depth)=>OPS.push({n,r:r+30,cx:pts[0][0],cz:pts[0][1],poly:pts,
+    return lerp(h,target,smooth(1-best/r)*(k===undefined?.95:k));}});};
+const river=(n,rawpts,r,depth)=>{const pts=rawpts.map(q=>[q[0]+PCX,q[1]+PCZ]);
+  OPS.push({n,r:r+30,cx:pts[0][0],cz:pts[0][1],poly:pts,
   f:(px,pz)=>{let best=1e9;
     for(let i=0;i<pts.length-1;i++){const s=seg(px,pz,pts[i][0],pts[i][1],pts[i+1][0],pts[i+1][1]);
       if(s.d<best)best=s.d;}
-    if(best>=r)return 0; const t=1-best/r; return -depth*smooth(t)*smooth(t);}});
+    if(best>=r)return 0; const t=1-best/r; return -depth*smooth(t)*smooth(t);}});};
 
 /* ======================= THE 100 PASSES ======================= */
 /* 001 base slab, 002 silhouette, 003 rim cliff — handled in terrainH */
@@ -1088,6 +1317,8 @@ OPS.push({n:'097 boulder field', r:1e9, cx:0, cz:0, f:(x,z)=>{
   const n=fbm(x*.03+90,z*.03+40,2); return n>.72? (n-.72)*26 : 0;}});
 OPS.push({n:'098 scree on steep ground', r:1e9, cx:0, cz:0, f:(x,z)=> fbm(x*.05+70,z*.05+20,2)*2.2-1.1});
 OPS.push({n:'099 smoothing', r:1e9, cx:0, cz:0, f:()=>0});
+/* the ground meets each shrine at its real elevation */
+OPS.push({n:'099b shrine elevation anchors', r:1e9, cx:0, cz:0, flat:true, f:(x,z,h)=>anchorH(x,z,h,150)});
 OPS.push({n:'100 shoreline grading', r:1e9, cx:0, cz:0, flat:true, f:(x,z,h)=>{
   if(h>WATER-6 && h<WATER+4) return lerp(h, WATER-1.4, .5);      // beach
   if(h>WATER-16 && h<=WATER-6) return lerp(h, WATER-8, .35);     // shelving bottom
@@ -1103,7 +1334,8 @@ function rimRadius(a){
   return r;
 }
 function terrainH(x,z){
-  const a=Math.atan2(z,x), r=Math.hypot(x,z);
+  const lx=x-PCX, lz=z-PCZ;
+  const a=Math.atan2(lz,lx), r=Math.hypot(lx,lz);
   const R=rimRadius(a);
   const inside=1-sstep(R-26,R+16,r);              // 002 silhouette + 003 cliff
   let h=BASE;                                      // 001 base slab
@@ -1120,7 +1352,7 @@ function terrainH(x,z){
 /* bake */
 const HM=new Float32Array(GRID*GRID);
 for(let j=0;j<GRID;j++)for(let i=0;i<GRID;i++)
-  HM[j*GRID+i]=terrainH(-HALF+i*CELL,-HALF+j*CELL);
+  HM[j*GRID+i]=terrainH(PCX-HALF+i*CELL,PCZ-HALF+j*CELL);
 /* 099 smoothing pass, done on the baked grid */
 {
   const T=new Float32Array(HM);
@@ -1140,7 +1372,7 @@ function triAt(H,W,i,j,fx,fz){
                     : c+(b-c)*(1-fx)+(d-c)*(1-fz);
 }
 function groundAt(x,z){
-  const gx=(x+HALF)/CELL, gz=(z+HALF)/CELL;
+  const gx=(x-PCX+HALF)/CELL, gz=(z-PCZ+HALF)/CELL;
   const i=Math.floor(gx), j=Math.floor(gz);
   if(i<0||j<0||i>=GRID-1||j>=GRID-1) return hyruleAt(x,z);
   return triAt(HM,GRID,i,j,gx-i,gz-j);
@@ -1151,7 +1383,8 @@ function slopeAt(x,z){const e=2.2;
 function normalAt(x,z,out){const e=2.2;
   const dx=(groundAt(x+e,z)-groundAt(x-e,z))/(2*e), dz=(groundAt(x,z+e)-groundAt(x,z-e))/(2*e);
   return out.set(-dx,1,-dz).normalize();}
-function onPlateau(x,z){const a=Math.atan2(z,x); return Math.hypot(x,z) < rimRadius(a)-8;}
+function onPlateau(x,z){const lx=x-PCX,lz=z-PCZ;
+  return Math.hypot(lx,lz) < rimRadius(Math.atan2(lz,lx))-8;}
 /* climate across all of Hyrule: altitude, plus each region's own character */
 function tempAt(x,z,y){
   let t=24 - Math.max(0,(y-FIELD))*0.055;
@@ -9839,4 +10072,640 @@ scene.fog.density=0.00028;
   VEG.pine.material.color.setHex(0x2b5a42);
   VEG.grass.material.color.setHex(0x6f9a4e);
 })();
+</script>
+<script>
+"use strict";
+/* ================= real shrine detail =================
+   Rewards and mechanics taken from the shrine atlas, one entry per shrine.
+   `kind` picks the mechanism; `loot` is what the chests actually hold. */
+Object.assign(WEAPONS,{
+  "Traveler's Claymore":{atk:9, dur:20,hand:2,col:0xc9d2da,len:1.45},
+  "Traveler's Spear"   :{atk:5, dur:20,hand:3,col:0xc9d2da,len:2.0},
+  "Soldier's Claymore" :{atk:20,dur:26,hand:2,col:0xb8bfc6,len:1.5},
+  "Soldier's Spear"    :{atk:11,dur:24,hand:3,col:0xb8bfc6,len:2.1},
+  'Iron Sledgehammer'  :{atk:8, dur:35,hand:2,col:0x7a7268,len:1.4},
+  'Serpentine Spear'   :{atk:14,dur:30,hand:3,col:0x8fd0e8,len:2.1},
+  'Eightfold Longblade':{atk:24,dur:36,hand:2,col:0xd8d0bc,len:1.5},
+  'Zora Sword'         :{atk:15,dur:27,hand:1,col:0x8fd0e8,len:1.1},
+  'Zora Spear'         :{atk:14,dur:25,hand:3,col:0x8fd0e8,len:2.1},
+  'Silver Longsword'   :{atk:26,dur:36,hand:2,col:0xc6ccd4,len:1.5},
+  'Royal Halberd'      :{atk:34,dur:50,hand:2,col:0xd8c48a,len:2.2},
+  'Feathered Edge'     :{atk:20,dur:30,hand:1,col:0x9a5a3a,len:1.1},
+  'Frostspear'         :{atk:18,dur:30,hand:3,col:0x9fd8ee,len:2.1,el:'ice'}
+});
+Object.assign(SHIELDS,{
+  "Shield of the Mind's Eye":{grd:20,dur:24,col:0xd8d0bc},
+  "Knight's Shield"         :{grd:38,dur:30,col:0xd6dee6},
+  'Zora Shield'             :{grd:24,dur:26,col:0x8fd0e8}
+});
+for(const [k,v] of Object.entries({'Ancient Core':0x9aa8a0,'Purple Rupee':0x9a5ad8,
+  'Silver Rupee':0xc6ccd4,'Diamond':0xdff2f8,'Topaz':0xe3d055,'Sapphire':0x4a8ad8,'Ruby':0xd8404a}))
+  if(!MATS[k]) MATS[k]={h:0,col:v,g:'\u{1F48E}',gem:true};
+
+const SHRINE_DETAIL={
+  'Ja Baij Shrine'      :{kind:'bomb',      loot:["Traveler's Claymore",'Amber']},
+  'Keh Namut Shrine'    :{kind:'cryonis',   loot:["Traveler's Spear"],           guard:'scoutI'},
+  'Oman Au Shrine'      :{kind:'magnesis',  loot:["Traveler's Bow"],             guard:'scoutI'},
+  'Owa Daim Shrine'     :{kind:'stasis',    loot:["Traveler's Shield",'Iron Sledgehammer']},
+  'Bosh Kala Shrine'    :{kind:'wind',      loot:['Amber',"Soldier's Claymore"]},
+  'Ha Dahamar Shrine'   :{kind:'waterguide',loot:['Purple Rupee']},
+  'Hila Rao Shrine'     :{kind:'waterguide',loot:['Opal','Ice Arrow']},
+  'Lakna Rokee Shrine'  :{kind:'blessing',  loot:['Edge of Duality']},
+  'Ree Dahee Shrine'    :{kind:'tilt',      loot:["Climber's Bandanna"]},
+  'Shee Venath Shrine'  :{kind:'orb',       loot:['Serpentine Spear']},
+  'Shee Vaneer Shrine'  :{kind:'orb',       loot:['Eightfold Longblade']},
+  "Ta'loh Naeg Shrine"  :{kind:'combat',    loot:['Eightfold Blade',"Shield of the Mind's Eye",'Opal'], guard:'scoutII'},
+  'Toto Sah Shrine'     :{kind:'maze',      loot:["Shield of the Mind's Eye"]},
+  'Chaas Qeta Shrine'   :{kind:'majortest', loot:['Climbing Gear'],              guard:'scoutIII'},
+  "Dow Na'eh Shrine"    :{kind:'threechests',loot:['Zora Sword','Opal','Amber']},
+  "Jitan Sa'mi Shrine"  :{kind:'blessing',  loot:['Frostspear']},
+  'Kam Urog Shrine'     :{kind:'tilt',      loot:['Opal',"Soldier's Spear"]},
+  'Mezza Lo Shrine'     :{kind:'metalpath', loot:['Thunderblade']},
+  'Myahm Agana Shrine'  :{kind:'maze',      loot:['Phrenic Bow']},
+  "Tahno O'ah Shrine"   :{kind:'blessing',  loot:['Climbing Boots']},
+  'Dah Kaso Shrine'     :{kind:'modesttest',loot:['Ancient Core'],               guard:'scoutII'},
+  "Kaam Ya'tak Shrine"  :{kind:'ballramp',  loot:['Edge of Duality',"Knight's Broadsword",'Ancient Core','Silver Rupee','Diamond']},
+  'Katah Chuki Shrine'  :{kind:'modesttest',loot:['Royal Halberd'],              guard:'scoutII'},
+  'Namika Ozz Shrine'   :{kind:'modesttest',loot:['Frostspear'],                 guard:'scoutIII'},
+  'Noya Neha Shrine'    :{kind:'modesttest',loot:["Knight's Shield"],            guard:'scoutII'},
+  'Rota Ooh Shrine'     :{kind:'ballramp',  loot:['Feathered Edge']},
+  "Saas Ko'sah Shrine"  :{kind:'majortest', loot:['Flameblade'],                 guard:'scoutIII'},
+  'Wahgo Katta Shrine'  :{kind:'crates',    loot:['Amber']},
+  'Dagah Keek Shrine'   :{kind:'blessing',  loot:['Silver Rupee']},
+  'Daka Tuss Shrine'    :{kind:'scoop',     loot:['Silver Longsword']},
+  'Kah Mael Shrine'     :{kind:'scales',    loot:['Diamond']},
+  'Kaya Wan Shrine'     :{kind:'cryonis',   loot:['Ancient Core',"Knight's Broadsword"], guard:'scoutI'},
+  "Ne'ez Yohma Shrine"  :{kind:'waterguide',loot:['Zora Spear']}
+};
+let detailed=0;
+for(const D of SHRINE_DEFS){
+  const R=SHRINE_DETAIL[D.name];
+  if(!R) continue;
+  D.kind=R.kind; D.loot=R.loot; D.guard=R.guard; detailed++;
+}
+for(const s of SHRINES){
+  const R=SHRINE_DETAIL[s.name];
+  if(R){ s.loot=R.loot; s.chest=R.loot[0]; detailed++; }
+}
+console.log('shrines using their real mechanic and rewards:',detailed);
+
+/* three new mechanisms the atlas describes */
+const _buildRoom2=buildGenericRoom;
+buildGenericRoom=function(D){
+  const NEW=['threechests','crates','scoop','scales'];
+  if(!NEW.includes(D.kind)){
+    const room=_buildRoom2(D);
+    /* real chest contents wherever the atlas gave them */
+    if(D.loot&&D.loot.length){
+      const co=shrineChests[shrineChests.length-1];
+      if(co) co.item=D.loot[0];
+    }
+    return room;
+  }
+  const saved=D.kind; D.kind='blessing';
+  const room=_buildRoom2(D); D.kind=saved;
+  const g=room.g, rx=room.rx, rz=room.rz, floorY=room.floorY, W=room.W, L=room.L;
+  const A=-L/2+24, acc=new THREE.MeshBasicMaterial({color:0xff9a2e});
+  const dk=new THREE.MeshLambertMaterial({color:0x24272c});
+  room.gate1.visible=true; room.glow1.visible=true; room.solved1=false;
+  const track=o=>{room.props.push(o);return o;};
+  if(saved==='threechests'){
+    /* three chests onto one great button */
+    const plate=box(g,7,.4,7,0,.2,A+10,new THREE.MeshLambertMaterial({color:0x8a7a4a}));
+    const boxes=[];
+    for(let i=0;i<3;i++) boxes.push(track(addMetal(rx-10+i*10,floorY,rz+A-8,2.2,2.2,2.2,'gen')));
+    room.check1=()=>boxes.filter(b=>Math.hypot(b.mesh.position.x-rx,b.mesh.position.z-(rz+A+10))<4.5).length>=3;
+    room.hint1='Three boxes belong on the button. Magnesis will carry them.';
+  } else if(saved==='crates'){
+    /* stack the crates, then lay the grate across */
+    const crates=[];
+    for(let i=0;i<3;i++) crates.push(track(addMetal(rx-9,floorY+i*2.3,rz+A-6,2.2,2.2,2.2,'gen')));
+    const grate=track(addMetal(rx+9,floorY,rz+A-6,7,.8,7,'gen'));
+    box(g,W-4,1,26,0,-.5,A+8,new THREE.MeshLambertMaterial({color:0x14171a}));
+    room.floorPf.holes.push({x:rx,z:rz+A+8,hx:(W-4)/2,hz:13});
+    room.check1=()=>P.pos.z>rz+A+20;
+    room.hint1='Stack the crates and lay the grate on top to bridge the gap.';
+  } else if(saved==='scoop'){
+    /* scoop the sphere out of the pool with a metal bowl */
+    const pool=new THREE.Mesh(new THREE.PlaneGeometry(W-8,20),
+      new THREE.MeshLambertMaterial({color:0x2f6f86,transparent:true,opacity:.82}));
+    pool.rotation.x=-Math.PI/2; pool.position.set(0,.12,A); g.add(pool);
+    box(g,W-8,5,20,0,-2.6,A,new THREE.MeshLambertMaterial({color:0x1b2b33}));
+    const bowl=track(addMetal(rx,floorY,rz+A,4,1.2,4,'gen'));
+    const ball=track(addBoulder(rx,floorY-2,rz+A,1.4,'gen'));
+    const cage=new THREE.Mesh(new THREE.TorusGeometry(2.6,.4,8,20),acc);
+    cage.rotation.x=Math.PI/2; cage.position.set(9,.4,A+14); g.add(cage);
+    room.check1=()=>Math.hypot(ball.mesh.position.x-(rx+9),ball.mesh.position.z-(rz+A+14))<3.4;
+    room.hint1='Scoop the sphere out with the metal bowl and drop it in the cage.';
+  } else {
+    /* a pair of scales: weight one to launch yourself off the other */
+    for(const s of[-1,1]){
+      const pan=box(g,8,.6,8,s*10,1.2,A,new THREE.MeshLambertMaterial({color:0x8a8f96}));
+      addPlatform(rx+s*10,rz+A,4,4,floorY+1.5,'scalepan');
+    }
+    room.weight=track(addMetal(rx,floorY+8,rz+A-12,4,4,4,'gen'));
+    box(g,W,1,16,0,11,A+18,dk);
+    addPlatform(rx,rz+A+18,W/2,8,floorY+11.5,'shrineledge');
+    room.check1=()=>Math.abs(P.pos.z-(rz+A+18))<9&&P.pos.y>floorY+9;
+    room.hint1='Drop the weight on one pan while you stand on the other.';
+  }
+  if(D.loot&&D.loot.length){
+    const co=shrineChests[shrineChests.length-1];
+    if(co) co.item=D.loot[0];
+  }
+  return room;
+};
+</script>
+<script>
+"use strict";
+/* ================= side quests, and the people who give them ================= */
+/* extra materials the quests ask for */
+for(const [k,c,g] of [['Luminous Stone',0x8fd8ee,'\u{1F48E}'],['Nightshade',0x4a3a6a,'\u{1F33F}'],
+  ['Voltfruit',0xd8c84a,'\u{1F34A}'],['Fleet-Lotus Seeds',0xd88aa8,'\u{1F33C}'],
+  ['Big Hearty Truffle',0x8d6b4a,'\u{1F344}'],['Silent Princess',0xc4d8e8,'\u{1F33C}'],
+  ['Hydromelon',0x6ac48a,'\u{1F349}'],['Swift Carrot',0xd88a3a,'\u{1F955}'],
+  ['Wildberry',0x8c3f6a,'\u{1FAD0}'],['Star Fragment',0xfff3a0,'\u{2B50}'],
+  ['Sapphire',0x4a8ad8,'\u{1F48E}'],['Ancient Gear',0x9aa8a0,'\u{2699}']])
+  if(!MATS[k]) MATS[k]={h:1,col:c,g,where:'grass'};
+
+/* places the quest givers stand. Stables resolve by name; the rest are placed. */
+const PLACES={};
+for(const st of STABLES) PLACES[st.n]={x:st.x,z:st.z};
+Object.assign(PLACES,{
+  'Kakariko Village'  :{x:REGIONS.kakariko.x,   z:REGIONS.kakariko.z},
+  'Hateno Village'    :{x:REGIONS.hateno.x,     z:REGIONS.hateno.z},
+  "Zora's Domain"     :{x:REGIONS.zora.x,       z:REGIONS.zora.z},
+  'Rito Village'      :{x:REGIONS.rito.x,       z:REGIONS.rito.z},
+  'Gerudo Town'       :{x:REGIONS.gerudoTown.x, z:REGIONS.gerudoTown.z},
+  'Lurelin Village'   :{x:REGIONS.lurelin.x,    z:REGIONS.lurelin.z},
+  'Korok Forest'      :{x:REGIONS.korok.x,      z:REGIONS.korok.z},
+  'Goron City'        :{x:REGIONS.eldin.x-140,  z:REGIONS.eldin.z-260},
+  'Goron Hot Springs' :{x:REGIONS.eldin.x+120,  z:REGIONS.eldin.z-140},
+  'Southern Mine'     :{x:REGIONS.eldin.x+200,  z:REGIONS.eldin.z+180},
+  'Tarrey Town'       :{x:REGIONS.akkala.x+260, z:REGIONS.akkala.z-180},
+  'Kara Kara Bazaar'  :{x:REGIONS.wasteland.x+380,z:REGIONS.wasteland.z-420},
+  'Gerudo Canyon'     :{x:REGIONS.wasteland.x+900,z:REGIONS.wasteland.z-700},
+  'Hateno Ancient Tech Lab':{x:REGIONS.hateno.x+180,z:REGIONS.hateno.z-140},
+  'Kitano Bay'        :{x:REGIONS.hateno.x+420, z:REGIONS.hateno.z+260},
+  'Forgotten Temple'  :{x:-1089,z:-2661},
+  'Woodland Stable'   :{x:REGIONS.woodland.x+520,z:REGIONS.woodland.z+700},
+  'Mounted Archery Camp':{x:REGIONS.hylia.x-300,z:REGIONS.hylia.z-360},
+  'road to Kakariko Village':{x:REGIONS.kakariko.x-260,z:REGIONS.kakariko.z+220},
+  'Wabbin'            :{x:REGIONS.faron.x-300, z:REGIONS.faron.z-240}
+});
+/* the real side quests: name, giver, place, and what the giver asks for */
+const QUESTLIST=[
+ ['A Rare Find','Trott','Outskirt Stable',{t:'fetch',item:'Amber',n:3},{r:300}],
+ ['A Royal Recipe','Gotter','Riverside Stable',{t:'cook',eff:null},{r:200}],
+ ['My Hero','Aliza','Outskirt Stable',{t:'shrine',n:4},{r:150}],
+ ["The Royal Guard's Gear",'Parcy','Riverside Stable',{t:'fetch',item:'Ancient Gear',n:2},{item:'Royal Guard Cap'}],
+ ['The Royal White Stallion','Toffa','Outskirt Stable',{t:'horse'},{r:300}],
+ ['Arrows of Burning Heat','Rola','Kakariko Village',{t:'fetch',item:'Fire Arrow',n:10},{r:200}],
+ ["By Firefly's Light",'Lasli','Kakariko Village',{t:'fetch',item:'Sunset Firefly',n:5},{r:100}],
+ ['Cooking with Koko','Koko','Kakariko Village',{t:'fetch',item:'Hyrule Herb',n:3},{r:60}],
+ ["Koko's Cuisine",'Koko','Kakariko Village',{t:'fetch',item:'Raw Meat',n:3},{r:60}],
+ ["Koko's Kitchen",'Koko','Kakariko Village',{t:'fetch',item:'Hylian Shroom',n:3},{r:60}],
+ ["Koko's Specialty",'Koko','Kakariko Village',{t:'fetch',item:'Swift Carrot',n:3},{r:80}],
+ ['Flown the Coop','Cado','Kakariko Village',{t:'fetch',item:'Bird Egg',n:3},{r:100}],
+ ['Playtime with Cottla','Cottla','Kakariko Village',{t:'talk'},{r:20}],
+ ['Misko, the Great Bandit','Domidak','Dueling Peaks Stable',{t:'fetch',item:'Amber',n:1},{item:'Radiant Mask'}],
+ ['Wild Horses','Rensa','Dueling Peaks Stable',{t:'horse'},{r:100}],
+ ['The Priceless Maracas','Hestu','road to Kakariko Village',{t:'korok',n:5},{r:100}],
+ ['A Gift for My Beloved','Manny','Hateno Village',{t:'fetch',item:'Silent Princess',n:1},{r:120}],
+ ['From the Ground Up','Hudson','Hateno Village',{t:'fetch',item:'Wood',n:20},{r:300}],
+ ['Hylian Homeowner','Bolson','Hateno Village',{t:'fetch',item:'Wood',n:30},{r:400}],
+ ['The Sheep Rustlers','Koyin','Hateno Village',{t:'kill',enemy:'redBoko',n:3},{r:150}],
+ ["The Statue's Bargain",'Horned Statue','Hateno Village',{t:'orbs',n:1},{r:100}],
+ ['The Weapon Connoisseur','Nebb','Hateno Village',{t:'weapons',n:5},{r:200}],
+ ["Robbie's Research",'Purah','Hateno Ancient Tech Lab',{t:'fetch',item:'Ancient Gear',n:3},{r:250}],
+ ['Slated for Upgrades','Purah','Hateno Ancient Tech Lab',{t:'shrine',n:8},{r:200}],
+ ['Sunshroom Sensing','Symin','Hateno Ancient Tech Lab',{t:'fetch',item:'Hylian Shroom',n:5},{r:150}],
+ ["The Hero's Cache",'Kass','Kitano Bay',{t:'shrine',n:6},{r:200}],
+ ['A Wife Washed Away','Fronk',"Zora's Domain",{t:'talk'},{r:100}],
+ ['Diving is Beauty!','Gruve',"Zora's Domain",{t:'talk'},{r:100}],
+ ['Frog Catching','Tumbo',"Zora's Domain",{t:'fetch',item:'Hot-Footed Frog',n:3},{r:150}],
+ ['Luminous Stone Gathering','Ledo',"Zora's Domain",{t:'fetch',item:'Luminous Stone',n:10},{item:'Zora Greaves'}],
+ ['Lynel Safari','Laflat',"Zora's Domain",{t:'kill',enemy:'redLynel',n:1},{r:400}],
+ ['Special Delivery','Finley',"Zora's Domain",{t:'talk'},{r:80}],
+ ['The Giant of Ralis Pond','Torfeau',"Zora's Domain",{t:'kill',enemy:'redHinox',n:1},{r:300}],
+ ['Zora Stone Monuments','Jiahto',"Zora's Domain",{t:'talk'},{r:150}],
+ ['Riverbed Reward','Izra','Wetland Stable',{t:'fetch',item:'Opal',n:3},{r:180}],
+ ["Death Mountain's Secret",'Dugby','Goron Hot Springs',{t:'fetch',item:'Flint',n:5},{r:200}],
+ ['Fireproof Lizard Roundup','Kima','Southern Mine',{t:'fetch',item:'Fireproof Lizard',n:10},{item:'Flamebreaker Armor'}],
+ ['The Jewel Trade','Ramella','Goron City',{t:'gems',n:10},{r:500}],
+ ['The Road to Respect','Fugo','Goron City',{t:'kill',enemy:'igneoTalus',n:1},{r:300}],
+ ["A Parent's Love",'Ruli','Tarrey Town',{t:'fetch',item:'Raw Meat',n:5},{r:120}],
+ ['Hobbies of the Rich','Hagie','Tarrey Town',{t:'gems',n:5},{r:300}],
+ ['A Shady Customer','Hoz','East Akkala Stable',{t:'kill',enemy:'yigaFoot',n:1},{r:250}],
+ ["Little Sister's Big Request",'Jana','South Akkala Stable',{t:'fetch',item:'Amber',n:2},{r:150}],
+ ['Find Kheel','Amali','Rito Village',{t:'talk'},{r:100}],
+ ['Face the Frost Talus','Gesane','Rito Village',{t:'kill',enemy:'frostTalus',n:1},{r:400}],
+ ['The Apple of My Eye','Juney','Rito Village',{t:'fetch',item:'Apple',n:5},{r:80}],
+ ['The Spark of Romance','Jogo','Rito Village',{t:'fetch',item:'Shock Arrow',n:5},{r:150}],
+ ['Curry for What Ails You','Lester','Rito Stable',{t:'fetch',item:'Spicy Pepper',n:5},{r:120}],
+ ['A Gift for the Great Fairy','Toren','Tabantha Bridge Stable',{t:'fairy',n:1},{r:200}],
+ ['Stalhorse: Pictured!','Juannelle','Snowfield Stable',{t:'kill',enemy:'stalBoko',n:3},{r:200}],
+ ['A Freezing Rod','Kula','Korok Forest',{t:'fetch',item:'Ice Rod',n:1},{r:250}],
+ ['Legendary Rabbit Trial','Peeks','Korok Forest',{t:'korok',n:10},{r:200}],
+ ['Riddles of Hyrule','Walton','Korok Forest',{t:'korok',n:15},{r:250}],
+ ['The Korok Trials','Chio','Korok Forest',{t:'korok',n:20},{item:'Korok Mask'}],
+ ['A Gift from the Monks','Monk','Forgotten Temple',{t:'shrine',n:20},{item:'Cap of the Wild'}],
+ ['Balloon Flight','Shamae','Woodland Stable',{t:'fetch',item:'Wood',n:10},{r:150}],
+ ['Leviathan Bones','Akrah','Serenne Stable',{t:'visit',place:'Forgotten Temple'},{r:200}],
+ ['Hunt for the Giant Horse','Straia','Mounted Archery Camp',{t:'horse'},{r:300}],
+ ['The Horseback Hoodlums','Perosa','Highland Stable',{t:'kill',enemy:'blueBoko',n:3},{r:200}],
+ ['A Gift of Nightshade','Wabbin','Wabbin',{t:'fetch',item:'Nightshade',n:5},{r:120}],
+ ['Sunken Treasure','Rozel','Lurelin Village',{t:'fetch',item:'Opal',n:2},{r:180}],
+ ['Take Back the Sea','Sebasto','Lurelin Village',{t:'kill',enemy:'octorok',n:5},{r:250}],
+ ["What's for Dinner?",'Kiana','Lurelin Village',{t:'fetch',item:'Hyrule Bass',n:5},{r:120}],
+ ['Thunder Magnet','Cima','Lakeside Stable',{t:'fetch',item:'Thunderblade',n:1},{r:300}],
+ ['An Ice Guy','Guy','Kara Kara Bazaar',{t:'fetch',item:'Chillshroom',n:5},{r:150}],
+ ['Good-Sized Horse','Zyle','Gerudo Canyon',{t:'horse'},{r:200}],
+ ['Missing in Action','Sesami','Gerudo Canyon Stable',{t:'talk'},{r:100}],
+ ['Rushroom Rush!','Pirou','Gerudo Canyon Stable',{t:'fetch',item:'Rushroom',n:10},{r:200}],
+ ['Medicinal Molduga','Malena','Gerudo Town',{t:'kill',enemy:'molduga',n:1},{r:400}],
+ ['The Eighth Heroine','Bozai','Gerudo Town',{t:'visit',place:'Gerudo Wasteland'},{item:'Sand Boots'}],
+ ['The Forgotten Sword','Bozai','Gerudo Town',{t:'fetch',item:'Flint',n:3},{item:'Snow Boots'}],
+ ['The Mystery Polluter','Dalia','Gerudo Town',{t:'talk'},{r:120}],
+ ['The Search for Barta','Leena','Gerudo Town',{t:'talk'},{r:150}],
+ ["The Secret Club's Secret",'Greta','Gerudo Town',{t:'gems',n:3},{item:'Gerudo Top'}],
+ ['The Thunder Helm','Riju','Gerudo Town',{t:'kill',enemy:'yigaBlade',n:1},{item:'Thunder Helm'}],
+ ['Tools of the Trade','Isha','Gerudo Town',{t:'fetch',item:'Flint',n:5},{r:180}],
+ ['EX Strange Mask Rumors','Traysi','Outskirt Stable',{t:'gems',n:2},{item:"Majora's Mask"}],
+ ['EX Teleportation Rumors!','Traysi','Riverside Stable',{t:'shrine',n:12},{item:'Korok Mask'}],
+ ['EX Treasure: Ancient Mask','Notes','Hateno Village',{t:'shrine',n:10},{item:'Ancient Helm'}],
+ ['EX Treasure: Fairy Clothes','Notes','Kakariko Village',{t:'korok',n:12},{item:"Tingle's Hood"}],
+ ['EX Treasure: Twilight Relic','Notes','Rito Village',{t:'shrine',n:14},{item:"Midna's Helmet"}],
+ ['EX Treasure: Phantasma','Notes','Gerudo Town',{t:'kill',enemy:'blackBoko',n:3},{item:'Phantom Helmet'}],
+ ['EX Treasure: Usurper King','Notes',"Zora's Domain",{t:'kill',enemy:'blueLiz',n:5},{item:"Zant's Helmet"}],
+ ['EX Treasure: Merchant Hood','Notes','Tarrey Town',{t:'gems',n:8},{item:'Salvager Headwear'}],
+ ['EX Ancient Horse Rumors','Toffa','Outskirt Stable',{t:'horse'},{r:400}],
+ ['EX Royal Guard Rumors','Parcy','Riverside Stable',{t:'visit',place:'Hyrule Castle'},{item:'Royal Guard Uniform'}],
+ ['EX Treasure: Dark Armor','Notes','Woodland Stable',{t:'korok',n:25},{item:'Dark Hood'}],
+ ['EX Treasure: Garb of Winds','Notes','Snowfield Stable',{t:'shrine',n:16},{item:'Cap of the Wind'}],
+ ['EX Trial of the Sword','Monk','Korok Forest',{t:'kill',enemy:'blackBoko',n:5},{item:'Master Sword'}],
+ ["EX The Champions' Ballad",'Monk','Forgotten Temple',{t:'shrine',n:30},{item:'Cap of Time'}]
+];
+P.quests={}; P.questDone={};
+const questNPCs=[];
+(function placeGivers(){
+  const seen={};
+  for(const [name,giver,place] of QUESTLIST){
+    const key=giver+'@'+place;
+    if(seen[key]) continue;
+    const P0=PLACES[place];
+    if(!P0) continue;
+    seen[key]=1;
+    const a=rnd()*TAU, r=14+rnd()*26;
+    let x=P0.x+Math.cos(a)*r, z=P0.z+Math.sin(a)*r;
+    if(groundAt(x,z)<waterAt(x,z)+1){ x=P0.x; z=P0.z; }
+    const N=makeNPC({x,z,kind:place.includes('Gerudo')?'gerudo':place.includes('Zora')?'zora':
+      place.includes('Goron')?'goron':place.includes('Rito')?'rito':
+      place==='Korok Forest'?'korok':'villager',
+      name:giver, scale:place.includes('Goron')?1.5:1,
+      cloth:0x7a6a4a, hair:0x3a2a1a});
+    N.giver=true; N.place=place;
+    questNPCs.push(N);
+  }
+  console.log('quest givers placed:',questNPCs.length,'| quests:',QUESTLIST.length);
+})();
+function questsFor(npc){
+  return QUESTLIST.filter(q=>q[1]===npc.name&&q[2]===npc.place);
+}
+function questProgress(q){
+  const o=q[3];
+  switch(o.t){
+    case 'fetch':  return Math.min(P.mats[o.item]||P.arrows[o.item]||0, o.n)+'/'+o.n;
+    case 'kill':   return Math.min((P.killTally&&P.killTally[o.enemy])||0,o.n)+'/'+o.n;
+    case 'shrine': return Math.min(Object.keys(P.genDone).length+SHRINES.filter(s=>P.shrines[s.id]).length,o.n)+'/'+o.n;
+    case 'korok':  return Math.min(P.koroks||0,o.n)+'/'+o.n;
+    case 'gems':   return Math.min(countGems(),o.n)+'/'+o.n;
+    case 'weapons':return Math.min(P.weapons.length,o.n)+'/'+o.n;
+    case 'orbs':   return Math.min(P.orbs,o.n)+'/'+o.n;
+    case 'horse':  return (P.mount||horses.some(h=>h.tamed))?'done':'not yet';
+    case 'fairy':  return Object.keys(P.fairies||{}).length?'done':'not yet';
+    case 'visit':  return (P.visited&&P.visited[o.place])?'done':'not yet';
+    case 'cook':   return P.meals.length?'done':'not yet';
+    default:       return 'ready';
+  }
+}
+function countGems(){ let n=0; for(const k in P.mats) if(MATS[k]&&MATS[k].gem) n+=P.mats[k]; return n; }
+function questComplete(q){
+  const o=q[3];
+  switch(o.t){
+    case 'fetch':  return (P.mats[o.item]||P.arrows[o.item]||0)>=o.n;
+    case 'kill':   return ((P.killTally&&P.killTally[o.enemy])||0)>=o.n;
+    case 'shrine': return Object.keys(P.genDone).length+SHRINES.filter(s=>P.shrines[s.id]).length>=o.n;
+    case 'korok':  return (P.koroks||0)>=o.n;
+    case 'gems':   return countGems()>=o.n;
+    case 'weapons':return P.weapons.length>=o.n;
+    case 'orbs':   return P.orbs>=o.n;
+    case 'horse':  return !!P.mount||horses.some(h=>h.tamed);
+    case 'fairy':  return Object.keys(P.fairies||{}).length>0;
+    case 'visit':  return !!(P.visited&&P.visited[o.place]);
+    case 'cook':   return P.meals.length>0;
+    default:       return true;
+  }
+}
+function turnIn(q){
+  const o=q[3], rw=q[4];
+  if(o.t==='fetch'){
+    if(P.mats[o.item]!==undefined) P.mats[o.item]-=o.n;
+    else if(P.arrows[o.item]!==undefined) P.arrows[o.item]-=o.n;
+  }
+  P.questDone[q[0]]=1; delete P.quests[q[0]];
+  if(rw.r){ P.rupees+=rw.r; toast('+'+rw.r+' rupees','good'); }
+  if(rw.item) give(rw.item);
+  sfx('orb');
+  toast('Quest complete: '+q[0],'good');
+  updateGear();
+}
+/* talking to a quest giver offers, tracks and closes their quests */
+const _talkTo=talkTo;
+talkTo=function(N){
+  const qs=N.giver?questsFor(N):[];
+  if(!qs.length){ _talkTo(N); return; }
+  P.playing=false; document.exitPointerLock&&document.exitPointerLock();
+  $('#talkWho').textContent=N.name;
+  $('#talkName').textContent=N.place;
+  const c=$('#talkChoices'); c.innerHTML='';
+  let line='';
+  for(const q of qs){
+    if(P.questDone[q[0]]) continue;
+    const active=P.quests[q[0]];
+    const done=active&&questComplete(q);
+    const b=document.createElement('button');
+    b.className='act'+(done?' primary':'');
+    if(!active){
+      b.textContent='Accept: '+q[0];
+      b.onclick=()=>{ P.quests[q[0]]=1; toast('Side quest: '+q[0],'good'); sfx('click');
+        $('#talk').classList.remove('on'); startPlay(); };
+      line=line||'There is something I could use a hand with.';
+    } else if(done){
+      b.textContent='Hand in: '+q[0];
+      b.onclick=()=>{ turnIn(q); $('#talk').classList.remove('on'); startPlay(); };
+      line='You did it. I can hardly believe it.';
+    } else {
+      b.textContent=q[0]+'  ·  '+questProgress(q);
+      b.disabled=true;
+      line=line||'Still working on it? Take your time.';
+    }
+    c.appendChild(b);
+  }
+  if(!c.children.length){ line='Thank you again. Truly.'; }
+  $('#talkText').textContent=line;
+  speak('A voice',line);
+  const bye=document.createElement('button'); bye.className='act';
+  bye.textContent='Farewell';
+  bye.onclick=()=>{$('#talk').classList.remove('on');stopSpeaking();startPlay();};
+  c.appendChild(bye);
+  $('#talk').classList.add('on');
+};
+/* kills and places visited are tracked for the objectives */
+const _killEnemy2=killEnemy;
+killEnemy=function(E){
+  P.killTally=P.killTally||{};
+  if(E&&E.t) P.killTally[E.t]=(P.killTally[E.t]||0)+1;
+  _killEnemy2(E);
+};
+function trackVisits(){
+  P.visited=P.visited||{};
+  for(const k in REGIONS){
+    const R=REGIONS[k];
+    if(Math.hypot(P.pos.x-R.x,P.pos.z-R.z)<R.r*0.5) P.visited[R.n]=1;
+  }
+  for(const nm in PLACES){
+    const Q=PLACES[nm];
+    if(Math.hypot(P.pos.x-Q.x,P.pos.z-Q.z)<60) P.visited[nm]=1;
+  }
+}
+setInterval(()=>{ if(P.playing) trackVisits(); },1000);
+/* the quest log lives in the pause screen */
+const _togglePause=togglePause;
+togglePause=function(){
+  _togglePause();
+  if(!paused) return;
+  const active=Object.keys(P.quests||{});
+  let h='';
+  if(active.length){
+    h='<div style="font-family:var(--ui);font-size:12px;letter-spacing:.28em;text-transform:uppercase;color:var(--amber);margin:14px 0 6px">Side quests</div>';
+    for(const name of active){
+      const q=QUESTLIST.find(x=>x[0]===name); if(!q) continue;
+      h+='<div style="display:flex;justify-content:space-between;font-family:var(--ui);font-size:14px;border-bottom:1px solid rgba(242,231,207,.08);padding:3px 0">'+
+         '<span>'+name+' <em style="color:var(--muted);font-style:normal">— '+q[1]+', '+q[2]+'</em></span>'+
+         '<span style="color:'+(questComplete(q)?'var(--stam)':'var(--muted)')+'">'+questProgress(q)+'</span></div>';
+    }
+  }
+  const done=Object.keys(P.questDone||{}).length;
+  h+='<div style="font-family:var(--ui);font-size:13px;color:var(--muted);margin-top:10px">'+
+     done+' of '+QUESTLIST.length+' side quests complete</div>';
+  $('#pauseQuest').insertAdjacentHTML('afterend',h);
+};
+</script>
+<script>
+"use strict";
+/* ================= the 42 shrine quests =================
+   Each one keeps its shrine sealed until the quest is done — the shrine does
+   not glow, cannot be entered, and does not appear on the map. The giver
+   stands near the shrine they unlock. */
+const SHRINE_QUESTS=[
+ ['The Skull’s Eye','Zuna Kai Shrine','Skull Lake',{t:'visit',place:'Skull Lake'}],
+ ['Into the Vortex','Ritaag Zumo Shrine','Rist Peninsula',{t:'visit',place:'Rist Peninsula'}],
+ ['Trial of the Labyrinth','Tu Ka’loh Shrine','Lomei Labyrinth Island',{t:'visit',place:'Lomei Labyrinth Island'}],
+ ['The Spring of Power','Tutsuwa Nima Shrine','East Akkala Stable',{t:'fetch',item:'Ancient Core',n:1}],
+ ['The Stolen Heirloom','Lakna Rokee Shrine','Kakariko Village',{t:'kill',enemy:'yigaFoot',n:1}],
+ ['Watch Out for the Flowers','Hila Rao Shrine','Hylia River',{t:'korok',n:3}],
+ ['Secret of the Cedars','Tahno O’ah Shrine','Retsam Forest',{t:'visit',place:'Retsam Forest'}],
+ ['The Cursed Statue','Kam Urog Shrine','Fort Hateno',{t:'night'}],
+ ['The Crowned Beast','Mezza Lo Shrine','Satori Mountain',{t:'visit',place:'Satori Mountain'}],
+ ['The Spring of Wisdom','Jitan Sa’mi Shrine','Mount Lanayru',{t:'fetch',item:'Chillshroom',n:3}],
+ ['The Ceremonial Song','Dagah Keek Shrine','Zora’s Domain',{t:'visit',place:'Zora’s Domain'}],
+ ['Master of the Wind','Shai Yota Shrine','Horon Lagoon',{t:'visit',place:'Horon Lagoon'}],
+ ['A Landscape of a Stable','Tah Muhl Shrine','Foothill Stable',{t:'visit',place:'Foothill Stable'}],
+ ['A Brother’s Roast','Kayra Mah Shrine','Goron City',{t:'cook'}],
+ ['The Gut Check Challenge','Gorae Torr Shrine','Gut Check Rock',{t:'visit',place:'Gut Check Rock'}],
+ ['Guardian Slideshow','Shoqa Tatone Shrine','Puffer Beach',{t:'kill',enemy:'decayed',n:1}],
+ ['The Serpent’s Jaws','Shae Katha Shrine','Spring of Courage',{t:'fetch',item:'Hyrule Bass',n:3}],
+ ['Stranded on Eventide','Korgu Chideh Shrine','Eventide Island',{t:'visit',place:'Eventide Island'}],
+ ['A Song of Storms','Qukah Nata Shrine','Calora Lake',{t:'visit',place:'Calora Lake'}],
+ ['A Fragmented Monument','Kah Yah Shrine','Palmorae Ruins',{t:'visit',place:'Palmorae Ruins'}],
+ ['The Three Giant Brothers','Tawa Jinn Shrine','Mount Taran',{t:'visit',place:'Mount Taran'}],
+ ['Trial of Thunder','Toh Yahsa Shrine','Thundra Plateau',{t:'visit',place:'Thundra Plateau'}],
+ ['Under a Red Moon','Mijah Rokee Shrine','Hyrule Ridge',{t:'bloodmoon'}],
+ ['The Two Rings','Sheem Dagoze Shrine','West Hyrule Plains',{t:'visit',place:'West Hyrule Plains'}],
+ ['The Ancient Rito Song','Bareeda Naag Shrine','Rito Village',{t:'visit',place:'Rito Village'}],
+ ['Recital at Warbler’s Nest','Voo Lota Shrine','Warbler’s Nest',{t:'visit',place:'Warbler’s Nest'}],
+ ['Trial on the Cliff','Qaza Tokki Shrine','North Lomei Labyrinth',{t:'visit',place:'North Lomei Labyrinth'}],
+ ['The Bird in the Mountains','Mozo Shenno Shrine','Hebra Mountains',{t:'visit',place:'Hebra Mountains'}],
+ ['The Test of Wood','Maag Halan Shrine','Korok Forest',{t:'fetch',item:'Wood',n:5}],
+ ['Trial of Second Sight','Kuhn Sidajj Shrine','Korok Forest',{t:'korok',n:6}],
+ ['The Lost Pilgrimage','Daag Chokah Shrine','Korok Forest',{t:'korok',n:8}],
+ ['Shrouded Shrine','Ketoh Wawai Shrine','Thyphlo Ruins',{t:'visit',place:'Thyphlo Ruins'}],
+ ['Cliffside Etchings','Keeha Yoog Shrine','Gerudo Highlands',{t:'visit',place:'Gerudo Highlands'}],
+ ['Sign of the Shadow','Sasa Kai Shrine','Gerudo Tower',{t:'visit',place:'Gerudo Tower'}],
+ ['Test of Will','Joloo Nah Shrine','Mount Nabooru',{t:'visit',place:'Mount Nabooru'}],
+ ['The Undefeated Champ','Raqa Zunzo Shrine','Sand-Seal Rally',{t:'visit',place:'Sand-Seal Rally'}],
+ ['Secret of the Snowy Peaks','Suma Sahma Shrine','Mount Granajh',{t:'visit',place:'Mount Granajh'}],
+ ['The Eye of the Sandstorm','Dako Tah Shrine','Kara Kara Bazaar',{t:'visit',place:'Kara Kara Bazaar'}],
+ ['The Seven Heroines','Korsh O’hu Shrine','Gerudo Town',{t:'gems',n:4}],
+ ['The Desert Labyrinth','Dila Maag Shrine','South Lomei Labyrinth',{t:'visit',place:'South Lomei Labyrinth'}],
+ ['The Silent Swordswomen','Kema Zoos Shrine','Gerudo Town',{t:'visit',place:'Gerudo Town'}],
+ ['The Perfect Drink','Misae Suma Shrine','East Barrens',{t:'fetch',item:'Ice Arrow',n:3}]
+];
+P.shrineQuests={}; P.shrineQuestDone={};
+const SEALED={};
+/* seal each quest shrine, and stand its giver nearby */
+(function sealShrines(){
+  let sealed=0, givers=0;
+  for(const [qname,sname,place,obj] of SHRINE_QUESTS){
+    const D=SHRINE_DEFS.find(d=>d.name===sname);
+    if(!D){ continue; }
+    SEALED[D.id]={quest:qname,def:D};
+    const g=genShrineObjs[D.id];
+    if(g){ g.visible=false; sealed++; }
+    /* the place, if it is new, is the shrine's own position */
+    if(!PLACES[place]) PLACES[place]={x:D.x,z:D.z};
+    const a=rnd()*TAU, r=60+rnd()*50;
+    let x=D.x+Math.cos(a)*r, z=D.z+Math.sin(a)*r;
+    if(groundAt(x,z)<waterAt(x,z)+1){ x=D.x+20; z=D.z+20; }
+    const N=makeNPC({x,z,kind:'villager',name:'Wanderer',cloth:0x5a4a6a,hair:0x2a2a2a});
+    N.shrineQuest=qname; N.place=place;
+    givers++;
+  }
+  console.log('shrines sealed behind quests:',sealed,'| shrine-quest givers:',givers);
+})();
+window.__SQ_READY=true;
+function sqProgress(q){
+  const o=q[3];
+  switch(o.t){
+    case 'fetch':  return Math.min((P.mats[o.item]||P.arrows[o.item]||0),o.n)+'/'+o.n;
+    case 'kill':   return Math.min((P.killTally&&P.killTally[o.enemy])||0,o.n)+'/'+o.n;
+    case 'korok':  return Math.min(P.koroks||0,o.n)+'/'+o.n;
+    case 'gems':   return Math.min(countGems(),o.n)+'/'+o.n;
+    case 'visit':  return (P.visited&&P.visited[o.place])?'found':'not yet';
+    case 'night':  return isNight()?'the statue glows':'wait for dark';
+    case 'bloodmoon': return bloodMoon?'the moon is red':'wait for a blood moon';
+    case 'cook':   return P.meals.length?'ready':'cook something first';
+    default:       return 'ready';
+  }
+}
+function sqComplete(q){
+  const o=q[3];
+  switch(o.t){
+    case 'fetch':  return (P.mats[o.item]||P.arrows[o.item]||0)>=o.n;
+    case 'kill':   return ((P.killTally&&P.killTally[o.enemy])||0)>=o.n;
+    case 'korok':  return (P.koroks||0)>=o.n;
+    case 'gems':   return countGems()>=o.n;
+    case 'visit':  return !!(P.visited&&P.visited[o.place]);
+    case 'night':  return isNight();
+    case 'bloodmoon': return !!bloodMoon;
+    case 'cook':   return P.meals.length>0;
+    default:       return true;
+  }
+}
+function unsealShrine(q){
+  const [qname,sname]=q;
+  const D=SHRINE_DEFS.find(d=>d.name===sname);
+  if(!D) return;
+  const g=genShrineObjs[D.id];
+  if(g) g.visible=true;
+  delete SEALED[D.id];
+  P.shrineQuestDone[qname]=1; delete P.shrineQuests[qname];
+  const o=q[3];
+  if(o.t==='fetch'){
+    if(P.mats[o.item]!==undefined) P.mats[o.item]-=o.n;
+    else if(P.arrows[o.item]!==undefined) P.arrows[o.item]-=o.n;
+  }
+  sfx('orb');
+  cut('Sheikah Slate','A shrine has revealed itself: '+sname+'.',{t:3});
+  toast(sname+' has appeared','good');
+  updateGear();
+}
+/* a sealed shrine cannot be entered */
+const _interactSeal=interact;
+interact=function(){
+  const it=nearest;
+  if(it&&it.kind==='genShrine'&&SEALED[it.id]){
+    toast('Sealed — '+SEALED[it.id].quest,'bad'); return;
+  }
+  _interactSeal();
+};
+const _promptSeal=promptFor;
+promptFor=function(it){
+  if(it&&it.kind==='genShrine'&&SEALED[it.id])
+    return '<b>Sealed</b> — '+SEALED[it.id].quest;
+  return _promptSeal(it);
+};
+/* and it stays off the map until it is revealed */
+const _drawBigMapSeal=drawBigMap;
+drawBigMap=function(){
+  _drawBigMapSeal();
+  const M=$('#markers');
+  for(const el of Array.from(M.children)){
+    const tip=el.querySelector('.tip');
+    if(!tip) continue;
+    const D=SHRINE_DEFS.find(d=>tip.textContent===d.name);
+    if(D&&SEALED[D.id]) el.remove();
+  }
+};
+/* talking to a shrine-quest giver */
+const _talkSq=talkTo;
+talkTo=function(N){
+  if(!N.shrineQuest){ _talkSq(N); return; }
+  const q=SHRINE_QUESTS.find(x=>x[0]===N.shrineQuest);
+  if(!q||P.shrineQuestDone[q[0]]){ _talkSq(N); return; }
+  P.playing=false; document.exitPointerLock&&document.exitPointerLock();
+  $('#talkWho').textContent='Wanderer';
+  $('#talkName').textContent=q[0];
+  const c=$('#talkChoices'); c.innerHTML='';
+  const active=P.shrineQuests[q[0]];
+  const done=active&&sqComplete(q);
+  let line;
+  if(!active){
+    line='There is a shrine near here that will not open. They say it answers to something else first.';
+    const b=document.createElement('button'); b.className='act primary';
+    b.textContent='Take on: '+q[0];
+    b.onclick=()=>{ P.shrineQuests[q[0]]=1; toast('Shrine quest: '+q[0],'good'); sfx('click');
+      $('#talk').classList.remove('on'); startPlay(); };
+    c.appendChild(b);
+  } else if(done){
+    line='Look — the ground itself is moving. You have done it.';
+    const b=document.createElement('button'); b.className='act primary';
+    b.textContent='Complete: '+q[0];
+    b.onclick=()=>{ unsealShrine(q); $('#talk').classList.remove('on'); };
+    c.appendChild(b);
+  } else {
+    line='Not yet. Keep at it.';
+    const b=document.createElement('button'); b.className='act';
+    b.textContent=q[0]+'  ·  '+sqProgress(q); b.disabled=true; c.appendChild(b);
+  }
+  $('#talkText').textContent=line;
+  speak('A voice',line);
+  const bye=document.createElement('button'); bye.className='act';
+  bye.textContent='Farewell';
+  bye.onclick=()=>{$('#talk').classList.remove('on');stopSpeaking();startPlay();};
+  c.appendChild(bye);
+  $('#talk').classList.add('on');
+};
+/* they show in the quest log too */
+const _pauseSq=togglePause;
+togglePause=function(){
+  _pauseSq();
+  if(!paused) return;
+  const active=Object.keys(P.shrineQuests||{});
+  let h='';
+  if(active.length){
+    h='<div style="font-family:var(--ui);font-size:12px;letter-spacing:.28em;text-transform:uppercase;color:var(--cyan);margin:14px 0 6px">Shrine quests</div>';
+    for(const name of active){
+      const q=SHRINE_QUESTS.find(x=>x[0]===name); if(!q) continue;
+      h+='<div style="display:flex;justify-content:space-between;font-family:var(--ui);font-size:14px;border-bottom:1px solid rgba(242,231,207,.08);padding:3px 0">'+
+        '<span>'+name+' <em style="color:var(--muted);font-style:normal">— unlocks '+q[1]+'</em></span>'+
+        '<span style="color:'+(sqComplete(q)?'var(--stam)':'var(--muted)')+'">'+sqProgress(q)+'</span></div>';
+    }
+  }
+  const d=Object.keys(P.shrineQuestDone||{}).length;
+  h+='<div style="font-family:var(--ui);font-size:13px;color:var(--muted);margin-top:6px">'+
+     d+' of '+SHRINE_QUESTS.length+' shrine quests complete</div>';
+  $('#pauseQuest').insertAdjacentHTML('afterend',h);
+};
 </script>
