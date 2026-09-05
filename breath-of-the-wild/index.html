@@ -3416,6 +3416,12 @@ function scatterVeg(){
   return I;
 }
 const VEG=scatterVeg();
+function moveInstance(mesh,idx,x,y,z){
+  const m=new THREE.Matrix4(); mesh.getMatrixAt(idx,m);
+  const p=new THREE.Vector3(),q=new THREE.Quaternion(),sc=new THREE.Vector3();
+  m.decompose(p,q,sc); p.set(x,y,z); m.compose(p,q,sc);
+  mesh.setMatrixAt(idx,m); mesh.instanceMatrix.needsUpdate=true;
+}
 function hideInstance(mesh,idx){
   const m=new THREE.Matrix4(); mesh.getMatrixAt(idx,m);
   const p=new THREE.Vector3(),q=new THREE.Quaternion(),s=new THREE.Vector3();
@@ -4024,7 +4030,9 @@ function stamFactor(){ return P.stam < maxStam()*.25 ? STAM.lowFactor : 1; }
 function updatePlayer(dt){
   const prevY=P.pos.y;                 // needed for the swept roof test below
   const g=groundAt(P.pos.x,P.pos.z), sl=slopeAt(P.pos.x,P.pos.z);
-  const indoors=!!(P.inShrine||P.inRes);
+  /* dungeons and the castle sit at y=0, below Hyrule's water line, so without
+     this the game decides you are swimming and floats you to the surface */
+  const indoors=!!(P.inShrine||P.inRes||P.inBeast||P.inCastle);
   const WL=waterAt(P.pos.x,P.pos.z);
   const deep=!indoors&&g<WL-1.4, inWater=!indoors&&P.pos.y<WL-.5&&deep;
   fwd.set(-Math.sin(P.look.yaw),0,-Math.cos(P.look.yaw));
@@ -5092,7 +5100,7 @@ function updateTorch(dt){
 }
 /* ================= climate: heat, cold, wetness ================= */
 function updateClimate(dt){
-  if(P.inShrine||P.inRes){ $('#temp').classList.remove('show'); return; }
+  if(P.inShrine||P.inRes||P.inBeast||P.inCastle){ $('#temp').classList.remove('show'); return; }
   let t=tempAt(P.pos.x,P.pos.z,P.pos.y);
   if(isNight()) t-=6;
   if(raining) t-=3;
@@ -7257,7 +7265,7 @@ const lavaPools=[], sandPits=[], malicePools=[];
   }
 })();
 function updateHazards(dt){
-  if(P.inShrine||P.inRes||P.dead) return;
+  if(P.inShrine||P.inRes||P.inBeast||P.inCastle||P.dead) return;
   const x=P.pos.x, z=P.pos.z;
   /* lava: instant death unless you are fireproof, and it always burns */
   for(const L of lavaPools){
@@ -7301,7 +7309,7 @@ function updateHazards(dt){
 /* the desert's day-night swing, and heat that scales with how hot it really is */
 const _updateClimate=updateClimate;
 updateClimate=function(dt){
-  if(P.inShrine||P.inRes){ $('#temp').classList.remove('show'); return; }
+  if(P.inShrine||P.inRes||P.inBeast||P.inCastle){ $('#temp').classList.remove('show'); return; }
   let t=liveTemp(P.pos.x,P.pos.z,P.pos.y);
   if(isNight()) t-=6;
   if(raining) t-=3;
@@ -7563,7 +7571,7 @@ updateBeasts=function(dt){
    and it throws you clear the way it does in the real game. */
 updateHazards=(function(orig){
   return function(dt){
-    if(P.inShrine||P.inRes||P.dead) return;
+    if(P.inShrine||P.inRes||P.inBeast||P.inCastle||P.dead) return;
     const x=P.pos.x,z=P.pos.z;
     for(const L of lavaPools){
       if(Math.hypot(L.x-x,L.z-z)<L.r && P.pos.y<L.y+2.5){
@@ -7742,23 +7750,35 @@ const SHRINE_NAMES={
 };
 const ARCHETYPES=['magnesis','bomb','stasis','cryonis','ball','combat','glide','blessing'];
 const SHRINE_DEFS=[];
+function hashName(s){ let h=0; for(let i=0;i<s.length;i++) h=(h*31+s.charCodeAt(i))|0; return h; }
 (function placeShrines(){
+  /* Every shrine stands where the atlas says it stands. The four Plateau
+     shrines are hand-built elsewhere, so they are skipped here. */
+  const PLATEAU_FOUR=['Ja Baij','Keh Namut','Oman Au','Owa Daim'];
   let idx=0;
-  for(const key in SHRINE_NAMES){
-    const R=REGIONS[key]; if(!R) continue;
-    const names=SHRINE_NAMES[key];
-    for(let i=0;i<names.length;i++){
-      let x,z,tries=0;
-      do{ const a=rnd()*TAU, r=R.r*(0.25+rnd()*0.85);
-          x=R.x+Math.cos(a)*r; z=R.z+Math.sin(a)*r; tries++;
-      } while(tries<60 && (groundAt(x,z)<waterAt(x,z)+3 || slopeAt(x,z)>0.85 || onPlateau(x,z)));
-      if(groundAt(x,z)<waterAt(x,z)+3) continue;
-      if(SHRINE_DEFS.length>=116) continue;
-      SHRINE_DEFS.push({id:'s'+(idx++), name:names[i]+' Shrine', region:key,
-        x:Math.round(x), z:Math.round(z),
-        kind:ARCHETYPES[Math.floor(rnd()*ARCHETYPES.length)]});
-    }
+  for(const S of SHRINE_PTS){
+    if(PLATEAU_FOUR.includes(S.name)) continue;
+    const full=S.name+' Shrine';
+    const t=S.trial||'';
+    let kind;
+    if(/Major Test of Strength/.test(t))            kind='majortest';
+    else if(/Modest Test|Minor Test/.test(t))       kind='modesttest';
+    else if(/Blessing/.test(t))                     kind='blessing';
+    else if(/Wind|Winds/.test(t))                   kind='wind';
+    else if(/Water|Current|Drifting/.test(t))       kind='waterguide';
+    else if(/Metal|Magnet/.test(t))                 kind='metalpath';
+    else if(/Bomb/.test(t))                         kind='bomb';
+    else if(/Stasis|Timing|Halt|Tilt/.test(t))      kind='tilt';
+    else if(/Apparatus|Labyrinth|Maze/.test(t))     kind='maze';
+    else if(/Memories|Orb|Trifecta|Stars/.test(t))  kind='orb';
+    else if(/Flame|Fire|Blaze/.test(t))             kind='flame';
+    else if(/Sight|Picture|Secret|Hidden/.test(t))  kind='hidden';
+    else if(/Cryonis|Ice|Freezing|Melting/.test(t)) kind='cryonis';
+    else kind=ARCHETYPES[Math.abs(hashName(full))%ARCHETYPES.length];
+    SHRINE_DEFS.push({id:'s'+(idx++), name:full, region:S.region,
+      x:S.x, z:S.z, alt:S.alt, trial:S.trial, kind});
   }
+  console.log('shrines placed at their real coordinates:',SHRINE_DEFS.length);
 })();
 /* exteriors */
 const genShrineObjs={};
@@ -8185,9 +8205,25 @@ console.log('armour pieces placed in the world:',armourPlaced,'of',Object.keys(A
 /* ================= BATCH 14 — 900 Korok seeds =================
    Four puzzle kinds, spread across every region, in a spatial grid so that
    900 of them cost one bucket lookup per frame instead of 900 distance tests. */
-const KOROK_TYPES=['rock','ring','flower','pair'];
+/* The eleven puzzle kinds the real game uses, in their real proportions.
+   Weights follow how common each is across the 900. */
+const KOROK_TYPES=[
+  ['rock',        30], ['hiddenRock',   9], ['flowers',      6],
+  ['balloon',      5], ['balloons',     5], ['acorn',        5],
+  ['jumpingAcorn', 3], ['peakSparkles',10], ['waterRing',    6],
+  ['iceSparkles',  3], ['timedRing',    4], ['metalBlock',   5],
+  ['chainedBall',  3], ['rockPattern',  3], ['rockCircle',   4],
+  ['rockPit',      4], ['numberedFlowers',3], ['fruitMatch',  3],
+  ['fruitOffering',4], ['movingSparkles',3], ['pair',         4]
+];
+const KOROK_WEIGHT_TOTAL=KOROK_TYPES.reduce((a,t)=>a+t[1],0);
+function pickKorokType(){
+  let r=rnd()*KOROK_WEIGHT_TOTAL;
+  for(const [k,w] of KOROK_TYPES){ r-=w; if(r<=0) return k; }
+  return 'rock';
+}
 const koroks=[];
-const KGRID=200;                                   // bucket size in metres
+const KGRID=200;
 const kBuckets=new Map();
 const kKey=(x,z)=>((Math.floor(x/KGRID))+','+(Math.floor(z/KGRID)));
 function kAdd(K){ const k=kKey(K.x,K.z);
@@ -8198,20 +8234,32 @@ function kNear(x,z){
     const b=kBuckets.get((bx+i)+','+(bz+j)); if(b) for(const K of b) out.push(K); }
   return out;
 }
+const korokShootables=[];      // balloons and acorns arrows can hit
 (function placeKoroks(){
   const rockG=new THREE.DodecahedronGeometry(1.25,0);
   const pebG =new THREE.DodecahedronGeometry(.55,0);
   const flowG=new THREE.ConeGeometry(.3,.9,5);
-  const rockM=new THREE.MeshLambertMaterial({color:0x7d7568,flatShading:true});
-  const flowM=new THREE.MeshLambertMaterial({color:0xd8d24a,flatShading:true});
-  const IR=new THREE.InstancedMesh(rockG,rockM,1100); IR.count=0; IR.frustumCulled=false;
-  const IP=new THREE.InstancedMesh(pebG,rockM,4200);  IP.count=0; IP.frustumCulled=false;
-  const IF=new THREE.InstancedMesh(flowG,flowM,3000); IF.count=0; IF.frustumCulled=false;
-  IR.castShadow=IP.castShadow=true; scene.add(IR,IP,IF);
+  const balG =new THREE.SphereGeometry(.85,10,8);
+  const acorG=new THREE.ConeGeometry(.32,.7,6);
+  const lilyG=new THREE.CircleGeometry(.9,7);
+  const iceG =new THREE.DodecahedronGeometry(1.6,0);
+  const sparkG=new THREE.OctahedronGeometry(.5,0);
+  const stumpG=new THREE.CylinderGeometry(.9,1.0,.7,9);
+  const ringG =new THREE.TorusGeometry(2.6,.16,6,18);
+  const M=(g,c,n,extra)=>{const m=new THREE.InstancedMesh(g,
+    new THREE.MeshLambertMaterial(Object.assign({color:c,flatShading:true},extra||{})),n);
+    m.count=0; m.frustumCulled=false; m.castShadow=true; scene.add(m); return m;};
+  const I={
+    rock:M(rockG,0x7d7568,1400), peb:M(pebG,0x7d7568,4200),
+    flow:M(flowG,0xd8d24a,3000), balloon:M(balG,0xc44a5a,1400),
+    acorn:M(acorG,0x9a6f3a,900), lily:M(lilyG,0x3f7a3a,1600),
+    ice:M(iceG,0xbfe9f2,700,{transparent:true,opacity:.75}),
+    spark:M(sparkG,0xffe89a,1200), stump:M(stumpG,0x6b4a2a,700),
+    ring:M(ringG,0xffe07a,700)
+  };
   const d=new THREE.Object3D();
-  const put=(m,x,y,z,s)=>{d.position.set(x,y,z);d.rotation.set(0,rnd()*TAU,0);
+  const put=(m,x,y,z,s,ry)=>{d.position.set(x,y,z);d.rotation.set(0,ry||rnd()*TAU,0);
     d.scale.setScalar(s);d.updateMatrix();m.setMatrixAt(m.count++,d.matrix);return m.count-1;};
-  /* weight the regions roughly the way the real map does */
   const spread=[['central',110],['duel',60],['hateno',55],['lanayru',80],['zora',45],
     ['akkala',70],['eldin',60],['woodland',70],['ridge',70],['tabantha',60],['hebra',70],
     ['gerudo',80],['wasteland',35],['faron',75],['hylia',40],['plateau',20]];
@@ -8225,32 +8273,143 @@ function kNear(x,z){
       while(tries<30 && (groundAt(x,z)<waterAt(x,z)+2 || slopeAt(x,z)>1.1));
       if(groundAt(x,z)<waterAt(x,z)+2) continue;
       const y=groundAt(x,z);
-      const type=KOROK_TYPES[Math.floor(rnd()*KOROK_TYPES.length)];
-      const K={id:'k'+made, x, z, y, type, found:false, parts:[]};
-      if(type==='rock'){
-        K.parts.push([IR,put(IR,x,y+1.0,z,.8+rnd()*.5)]);
-      } else if(type==='ring'){
-        const rr=3.4, gap=Math.floor(rnd()*7);
-        for(let k=0;k<7;k++){ if(k===gap) continue;
-          const a=k/7*TAU, px=x+Math.cos(a)*rr, pz=z+Math.sin(a)*rr;
-          K.parts.push([IP,put(IP,px,groundAt(px,pz)+.4,pz,.9)]); }
-        K.gapPos=[x+Math.cos(gap/7*TAU)*rr, z+Math.sin(gap/7*TAU)*rr];
-        K.parts.push([IR,put(IR,x+Math.cos((gap+3.5)/7*TAU)*rr*1.8,y+.9,z+Math.sin((gap+3.5)/7*TAU)*rr*1.8,.7)]);
-      } else if(type==='flower'){
-        const a0=rnd()*TAU;
-        for(let k=0;k<6;k++){ const px=x+Math.cos(a0)*k*6, pz=z+Math.sin(a0)*k*6;
-          K.parts.push([IF,put(IF,px,groundAt(px,pz)+.6,pz,1)]); }
-        K.endPos=[x+Math.cos(a0)*30, z+Math.sin(a0)*30];
-      } else {
-        for(const s of[-1,1]) K.parts.push([IP,put(IP,x+s*2.6,groundAt(x+s*2.6,z)+.4,z,1.1)]);
-        K.parts.push([IR,put(IR,x,y+.9,z+3.2,.75)]);
+      const type=pickKorokType();
+      const K={id:'k'+made, x, z, y, type, found:false, parts:[], t:0};
+      switch(type){
+        case 'rock':
+          K.parts.push([I.rock,put(I.rock,x,y+1.0,z,.8+rnd()*.5)]);
+          K.hint='Lift the rock'; break;
+        case 'hiddenRock': {
+          K.wall=addCracked(x,y,z-3,rnd()*TAU,5,4,'korok');
+          K.parts.push([I.rock,put(I.rock,x,y+1.0,z,.9)]);
+          K.needBomb=true; K.hint='Blast the wall, then lift the rock'; break; }
+        case 'flowers': {
+          const a0=rnd()*TAU;
+          for(let k=0;k<6;k++){ const px=x+Math.cos(a0)*k*6, pz=z+Math.sin(a0)*k*6;
+            K.parts.push([I.flow,put(I.flow,px,groundAt(px,pz)+.6,pz,1)]); }
+          K.endPos=[x+Math.cos(a0)*30, z+Math.sin(a0)*30];
+          K.hint='Follow the flowers'; break; }
+        case 'balloon': case 'balloons': {
+          const n=type==='balloon'?1:(3+Math.floor(rnd()*3));
+          K.targets=[];
+          for(let k=0;k<n;k++){
+            const px=x+(rnd()-.5)*7, pz=z+(rnd()-.5)*7, py=y+7+rnd()*5;
+            K.parts.push([I.balloon,put(I.balloon,px,py,pz,.9)]);
+            K.targets.push({x:px,y:py,z:pz,hit:false});
+          }
+          korokShootables.push(K);
+          K.hint=n>1?('Pop all '+n+' balloons'):'Shoot the balloon'; break; }
+        case 'acorn': {
+          const py=y+8+rnd()*3;
+          K.parts.push([I.acorn,put(I.acorn,x,py,z,1)]);
+          K.targets=[{x,y:py,z,hit:false}];
+          korokShootables.push(K);
+          K.hint='Shoot the acorn'; break; }
+        case 'peakSparkles': {
+          K.y=y+0;
+          K.parts.push([I.spark,put(I.spark,x,y+1.4,z,1)]);
+          K.peak=true; K.hint='Examine the sparkles'; break; }
+        case 'waterRing': {
+          for(let k=0;k<7;k++){ const a=k/7*TAU;
+            const px=x+Math.cos(a)*3.2, pz=z+Math.sin(a)*3.2;
+            K.parts.push([I.lily,put(I.lily,px,waterAt(px,pz)+.1,pz,1)]); }
+          K.dive=true; K.hint='Dive into the ring'; break; }
+        case 'iceSparkles': {
+          K.parts.push([I.ice,put(I.ice,x,y+1.6,z,1.2)]);
+          K.needMelt=true; K.hint='Melt the ice'; break; }
+        case 'timedRing': {
+          K.parts.push([I.stump,put(I.stump,x,y+.35,z,1)]);
+          const a0=rnd()*TAU, dist=34+rnd()*22;
+          const rx=x+Math.cos(a0)*dist, rz=z+Math.sin(a0)*dist;
+          K.ring=[rx,rz];
+          K.parts.push([I.ring,put(I.ring,rx,groundAt(rx,rz)+2.6,rz,1)]);
+          K.raceTime=Math.max(6,dist/6.5);
+          K.hint='Step on the stump, then race to the ring'; break; }
+        case 'jumpingAcorn': {
+          K.targets=[];
+          for(let k=0;k<2;k++){
+            const px=x+(k?2.6:-2.6), py=y+7+rnd()*2;
+            K.parts.push([I.acorn,put(I.acorn,px,py,z,1)]);
+            K.targets.push({x:px,y:py,z,hit:false});
+          }
+          korokShootables.push(K);
+          K.hint='Shoot both acorns'; break; }
+        case 'metalBlock': {
+          /* a block pattern finished with Magnesis */
+          K.cube=addMetal(x-4,y,z,1.8,1.8,1.8,'korok');
+          K.slot=[x+4,z];
+          K.parts.push([I.peb,put(I.peb,x+4,y+.2,z,1.6)]);
+          K.magnet=true; K.hint='Set the block in the empty space'; break; }
+        case 'chainedBall': {
+          K.ball=addBoulder(x-5,y,z,1.2,'korok');
+          K.slot=[x+4,z];
+          K.parts.push([I.stump,put(I.stump,x+4,groundAt(x+4,z)+.35,z,1.2)]);
+          K.magnet=true; K.hint='Lift the ball onto the stump'; break; }
+        case 'rockPattern': {
+          /* a ring of stones with one place empty */
+          const gapI=Math.floor(rnd()*7);
+          for(let k=0;k<7;k++){ if(k===gapI) continue;
+            const a2=k/7*TAU, px=x+Math.cos(a2)*3.4, pz=z+Math.sin(a2)*3.4;
+            K.parts.push([I.peb,put(I.peb,px,groundAt(px,pz)+.4,pz,1.0)]); }
+          const ga=gapI/7*TAU;
+          K.slot=[x+Math.cos(ga)*3.4, z+Math.sin(ga)*3.4];
+          K.ball=addBoulder(x+Math.cos(ga+2.4)*9,y,z+Math.sin(ga+2.4)*9,1.0,'korok');
+          K.magnet=true; K.hint='Complete the circle with the loose rock'; break; }
+        case 'rockCircle': {
+          for(let k=0;k<8;k++){ const a2=k/8*TAU;
+            const px=x+Math.cos(a2)*4.0, pz=z+Math.sin(a2)*4.0;
+            K.parts.push([I.peb,put(I.peb,px,groundAt(px,pz)+.5,pz,1.2)]); }
+          K.slot=[x,z];
+          K.ball=addBoulder(x+11,y,z,1.1,'korok');
+          K.magnet=true; K.hint='Get a rock into the middle of the circle'; break; }
+        case 'rockPit': {
+          const px=x+5, pz=z;
+          K.parts.push([I.ring,put(I.ring,px,groundAt(px,pz)+.3,pz,1.1)]);
+          K.slot=[px,pz];
+          K.ball=addBoulder(x-5,y,z,2.0,'korok');
+          K.magnet=true; K.hint='Push the boulder into the hole'; break; }
+        case 'numberedFlowers': {
+          /* five clumps, walked in order from one bloom to five */
+          const a0=rnd()*TAU;
+          K.steps=[]; K.stepAt=0;
+          for(let k=0;k<5;k++){
+            const px=x+Math.cos(a0+k*.7)*(8+k*7), pz=z+Math.sin(a0+k*.7)*(8+k*7);
+            for(let f=0;f<=k;f++)
+              K.parts.push([I.flow,put(I.flow,px+(f-k/2)*.8,groundAt(px,pz)+.6,pz,1)]);
+            K.steps.push([px,pz]);
+          }
+          K.hint='Walk the flowers in order, one bloom to five'; break; }
+        case 'fruitMatch': {
+          /* three trees, one fruit too many */
+          K.targets=[];
+          for(let k=0;k<3;k++){
+            const px=x+(k-1)*7, py=y+6.5;
+            K.parts.push([I.balloon,put(I.balloon,px,py,z,.55)]);
+            if(k===1) K.targets.push({x:px,y:py,z,hit:false});
+          }
+          korokShootables.push(K);
+          K.hint='Shoot the fruit that does not match'; break; }
+        case 'movingSparkles': {
+          /* a sparkle that drifts away until you catch it */
+          K.parts.push([I.spark,put(I.spark,x,y+1.2,z,1)]);
+          K.moving=true; K.mx=x; K.mz=z; K.ma=rnd()*TAU; K.midx=K.parts[0][1];
+          K.hint='Chase the sparkle'; break; }
+        case 'fruitOffering': {
+          K.parts.push([I.stump,put(I.stump,x,y+.35,z,1.1)]);
+          K.offering=true; K.hint='Offer an apple'; break; }
+        default: {
+          for(const sg of[-1,1]) K.parts.push([I.peb,put(I.peb,x+sg*2.6,groundAt(x+sg*2.6,z)+.4,z,1.1)]);
+          K.parts.push([I.rock,put(I.rock,x,y+.9,z+3.2,.75)]);
+          K.hint='Complete the pair'; break; }
       }
       koroks.push(K); kAdd(K); made++;
     }
   }
-  IR.instanceMatrix.needsUpdate=IP.instanceMatrix.needsUpdate=IF.instanceMatrix.needsUpdate=true;
-  window.__korokMeshes={IR,IP,IF};
-  console.log('Korok seeds placed:',koroks.length);
+  for(const k in I) I[k].instanceMatrix.needsUpdate=true;
+  window.__korokMeshes=I;
+  const tally={};
+  for(const K of koroks) tally[K.type]=(tally[K.type]||0)+1;
+  console.log('Korok seeds placed:',koroks.length,tally);
 })();
 /* the Korok that pops out when you solve one */
 const korokModel=(function(){
@@ -8276,29 +8435,102 @@ function findKorok(K){
   speak('Korok','Ya ha ha! You found me!');
 }
 function updateKoroks(dt){
-  if(korokShowT>0){ korokShowT-=dt;
-    korokModel.rotation.y+=dt*3;
-    korokModel.position.y=koroks.length? korokModel.position.y : korokModel.position.y;
+  if(korokShowT>0){ korokShowT-=dt; korokModel.rotation.y+=dt*3;
     if(korokShowT<=0) korokModel.visible=false; }
   if(P.inShrine||P.inRes) return;
   for(const K of kNear(P.pos.x,P.pos.z)){
     if(K.found) continue;
     const d=Math.hypot(K.x-P.pos.x,K.z-P.pos.z);
-    if(d>7) continue;
-    /* each kind is solved a different way */
-    if(K.type==='rock'){
-      if(d<3.2 && (keys.KeyE||P.liftedRock)) findKorok(K);
-    } else if(K.type==='ring'){
-      const held=magnetHold;
-      if(held && Math.hypot(held.mesh.position.x-K.gapPos[0],held.mesh.position.z-K.gapPos[1])<2.2) findKorok(K);
-      else if(d<2.0 && keys.KeyE) findKorok(K);
-    } else if(K.type==='flower'){
-      if(Math.hypot(K.endPos[0]-P.pos.x,K.endPos[1]-P.pos.z)<3.5) findKorok(K);
-    } else {
-      if(d<2.6 && keys.KeyE) findKorok(K);
+    if(d>60) continue;
+    switch(K.type){
+      case 'rock':
+        if(d<3.2&&keys.KeyE) findKorok(K); break;
+      case 'hiddenRock':
+        if(K.wall&&K.wall.broken&&d<3.4&&keys.KeyE) findKorok(K); break;
+      case 'flowers':
+        if(Math.hypot(K.endPos[0]-P.pos.x,K.endPos[1]-P.pos.z)<3.5) findKorok(K); break;
+      case 'balloon': case 'balloons': case 'acorn':
+        if(K.targets&&K.targets.every(t=>t.hit)) findKorok(K); break;
+      case 'peakSparkles':
+        if(d<3.0&&Math.abs(P.pos.y-K.y)<4&&keys.KeyE) findKorok(K); break;
+      case 'waterRing':
+        if(d<2.6&&P.swimming) findKorok(K); break;
+      case 'iceSparkles': {
+        if(!K.melted){
+          let hot=P.burnT>0;
+          for(const F of fires) if(Math.hypot(F.x-K.x,F.z-K.z)<6) hot=true;
+          const w=curW();
+          if(w&&WEAPONS[w.n]&&WEAPONS[w.n].el==='fire'&&d<4&&P.swingT>0) hot=true;
+          if(hot){ K.melted=true; for(const [m,idx] of K.parts) hideInstance(m,idx);
+            toast('The ice melts — sparkles underneath'); }
+        } else if(d<3.2&&keys.KeyE) findKorok(K);
+        break; }
+      case 'timedRing': {
+        if(!K.racing){
+          if(d<2.4&&keys.KeyE){ K.racing=K.raceTime;
+            toast('Race to the ring — '+K.raceTime.toFixed(0)+'s','good'); sfx('click'); }
+        } else {
+          K.racing-=dt;
+          if(Math.hypot(K.ring[0]-P.pos.x,K.ring[1]-P.pos.z)<3.4) findKorok(K);
+          else if(K.racing<=0){ K.racing=0; toast('Too slow','bad'); }
+        }
+        break; }
+      case 'jumpingAcorn': case 'fruitMatch':
+        if(K.targets&&K.targets.every(t=>t.hit)) findKorok(K); break;
+      case 'metalBlock':
+        if(K.cube&&Math.hypot(K.cube.mesh.position.x-K.slot[0],
+                              K.cube.mesh.position.z-K.slot[1])<2.2) findKorok(K); break;
+      case 'chainedBall': case 'rockPattern': case 'rockCircle': case 'rockPit':
+        if(K.ball&&Math.hypot(K.ball.mesh.position.x-K.slot[0],
+                              K.ball.mesh.position.z-K.slot[1])<2.6) findKorok(K); break;
+      case 'numberedFlowers': {
+        const nxt=K.steps[K.stepAt];
+        if(nxt&&Math.hypot(nxt[0]-P.pos.x,nxt[1]-P.pos.z)<3.4){
+          K.stepAt++;
+          if(K.stepAt>=K.steps.length) findKorok(K);
+          else toast((K.stepAt+1)+' of '+K.steps.length);
+        } else if(K.stepAt>0){
+          /* stepping on a later clump out of turn resets the run */
+          for(let q=K.stepAt+1;q<K.steps.length;q++)
+            if(Math.hypot(K.steps[q][0]-P.pos.x,K.steps[q][1]-P.pos.z)<3.4){ K.stepAt=0; break; }
+        }
+        break; }
+      case 'movingSparkles': {
+        /* it drifts away from you, and you catch it by staying close */
+        K.ma+=dt*0.9;
+        const flee=d<8?1:0;
+        K.mx+=Math.cos(K.ma)*(2.5+flee*4)*dt;
+        K.mz+=Math.sin(K.ma)*(2.5+flee*4)*dt;
+        moveInstance(window.__korokMeshes.spark,K.midx,K.mx,groundAt(K.mx,K.mz)+1.2,K.mz);
+        if(Math.hypot(K.mx-P.pos.x,K.mz-P.pos.z)<2.2&&keys.KeyE) findKorok(K);
+        break; }
+      case 'fruitOffering':
+        if(d<3.0&&keys.KeyE&&(P.mats['Apple']||0)>0){ P.mats['Apple']--; findKorok(K); }
+        break;
+      default:
+        if(d<2.6&&keys.KeyE) findKorok(K); break;
     }
   }
 }
+/* arrows pop balloons and knock down acorns */
+const _updateArrowsKorok=updateArrows;
+updateArrows=function(dt){
+  for(const a of arrows){
+    for(const K of korokShootables){
+      if(K.found||!K.targets) continue;
+      for(const t of K.targets){
+        if(t.hit) continue;
+        if(Math.hypot(a.m.position.x-t.x,a.m.position.z-t.z)<1.6&&
+           Math.abs(a.m.position.y-t.y)<1.6){
+          t.hit=true; sfx('pickup');
+          const left=K.targets.filter(q=>!q.hit).length;
+          if(left) toast(left+' left');
+        }
+      }
+    }
+  }
+  _updateArrowsKorok(dt);
+};
 /* Hestu, who takes the seeds and grows your pouches */
 (function(){
   const st=STABLES[0];
@@ -10137,14 +10369,17 @@ const SHRINE_DETAIL={
   'Kaya Wan Shrine'     :{kind:'cryonis',   loot:['Ancient Core',"Knight's Broadsword"], guard:'scoutI'},
   "Ne'ez Yohma Shrine"  :{kind:'waterguide',loot:['Zora Spear']}
 };
+const _norm=s=>s.replace(/[\u2018\u2019\u02BC]/g,"'").trim();
+const SHRINE_DETAIL_N={};
+for(const k in SHRINE_DETAIL) SHRINE_DETAIL_N[_norm(k)]=SHRINE_DETAIL[k];
 let detailed=0;
 for(const D of SHRINE_DEFS){
-  const R=SHRINE_DETAIL[D.name];
+  const R=SHRINE_DETAIL_N[_norm(D.name)];
   if(!R) continue;
   D.kind=R.kind; D.loot=R.loot; D.guard=R.guard; detailed++;
 }
 for(const s of SHRINES){
-  const R=SHRINE_DETAIL[s.name];
+  const R=SHRINE_DETAIL_N[_norm(s.name)];
   if(R){ s.loot=R.loot; s.chest=R.loot[0]; detailed++; }
 }
 console.log('shrines using their real mechanic and rewards:',detailed);
@@ -10499,7 +10734,8 @@ togglePause=function(){
   const done=Object.keys(P.questDone||{}).length;
   h+='<div style="font-family:var(--ui);font-size:13px;color:var(--muted);margin-top:10px">'+
      done+' of '+QUESTLIST.length+' side quests complete</div>';
-  $('#pauseQuest').insertAdjacentHTML('afterend',h);
+  const oldA=document.getElementById('sideQuestLog'); if(oldA) oldA.remove();
+  $('#pauseQuest').insertAdjacentHTML('afterend','<div id="sideQuestLog">'+h+'</div>');
 };
 </script>
 <script>
@@ -10553,13 +10789,15 @@ const SHRINE_QUESTS=[
  ['The Perfect Drink','Misae Suma Shrine','East Barrens',{t:'fetch',item:'Ice Arrow',n:3}]
 ];
 P.shrineQuests={}; P.shrineQuestDone={};
+const normName=s=>s.replace(/[\u2018\u2019\u02BC]/g,"'").trim();
+const findShrineDef=n=>SHRINE_DEFS.find(d=>normName(d.name)===normName(n));
 const SEALED={};
 /* seal each quest shrine, and stand its giver nearby */
 (function sealShrines(){
   let sealed=0, givers=0;
   for(const [qname,sname,place,obj] of SHRINE_QUESTS){
-    const D=SHRINE_DEFS.find(d=>d.name===sname);
-    if(!D){ continue; }
+    const D=findShrineDef(sname);
+    if(!D){ console.warn('shrine quest with no shrine:',sname); continue; }
     SEALED[D.id]={quest:qname,def:D};
     const g=genShrineObjs[D.id];
     if(g){ g.visible=false; sealed++; }
@@ -10605,7 +10843,7 @@ function sqComplete(q){
 }
 function unsealShrine(q){
   const [qname,sname]=q;
-  const D=SHRINE_DEFS.find(d=>d.name===sname);
+  const D=findShrineDef(sname);
   if(!D) return;
   const g=genShrineObjs[D.id];
   if(g) g.visible=true;
@@ -10644,7 +10882,7 @@ drawBigMap=function(){
   for(const el of Array.from(M.children)){
     const tip=el.querySelector('.tip');
     if(!tip) continue;
-    const D=SHRINE_DEFS.find(d=>tip.textContent===d.name);
+    const D=findShrineDef(tip.textContent);
     if(D&&SEALED[D.id]) el.remove();
   }
 };
@@ -10706,6 +10944,760 @@ togglePause=function(){
   const d=Object.keys(P.shrineQuestDone||{}).length;
   h+='<div style="font-family:var(--ui);font-size:13px;color:var(--muted);margin-top:6px">'+
      d+' of '+SHRINE_QUESTS.length+' shrine quests complete</div>';
-  $('#pauseQuest').insertAdjacentHTML('afterend',h);
+  const oldB=document.getElementById('shrineQuestLog'); if(oldB) oldB.remove();
+  $('#pauseQuest').insertAdjacentHTML('afterend','<div id="shrineQuestLog">'+h+'</div>');
 };
+</script>
+<script>
+"use strict";
+/* ================= interiors: walls you cannot pass, and doors ================
+   STRUCTS made buildings solid from the outside. This makes them hollow: a
+   room is four walls with gaps left for doorways, a floor you stand on and a
+   ceiling you cannot jump through. */
+const SOLIDS=[];
+function addSolid(x,z,hx,hz,y0,y1,tag){
+  const o={x,z,hx,hz,y0,y1,tag}; SOLIDS.push(o); return o;
+}
+/* push the player out of any solid they have got inside */
+function solidPush(pos,rad){
+  rad=rad||.42;
+  for(let i=0;i<SOLIDS.length;i++){
+    const o=SOLIDS[i];
+    if(o.open) continue;
+    if(pos.y+1.7<o.y0||pos.y>o.y1) continue;          // not at this height
+    const dx=pos.x-o.x, dz=pos.z-o.z;
+    const ox=o.hx+rad-Math.abs(dx), oz=o.hz+rad-Math.abs(dz);
+    if(ox<=0||oz<=0) continue;                         // outside in one axis
+    if(ox<oz) pos.x+=Math.sign(dx||1)*ox;              // push along the shallower axis
+    else      pos.z+=Math.sign(dz||1)*oz;
+  }
+}
+/* a ceiling stops you rising through it */
+function ceilingAt(x,z,y){
+  let low=Infinity;
+  for(let i=0;i<SOLIDS.length;i++){
+    const o=SOLIDS[i];
+    if(!o.ceiling) continue;
+    if(Math.abs(x-o.x)>o.hx||Math.abs(z-o.z)>o.hz) continue;
+    if(o.y0>=y+1.7&&o.y0<low) low=o.y0;
+  }
+  return low;
+}
+/* build a room: floor, four walls with door gaps, ceiling */
+function buildInterior(g,cx,cy,cz,w,d,h,opts){
+  opts=opts||{};
+  /* the mesh is local to its group, but platforms and solids live in world
+     space, so everything registered below is offset by the group's position */
+  g.updateMatrixWorld(true);
+  const OX=g.position.x, OZ=g.position.z, OY=g.position.y;
+  const wx=v=>v+OX, wz=v=>v+OZ, wy=v=>v+OY;
+  const mat=opts.mat||new THREE.MeshLambertMaterial({color:0x6f6a60});
+  const t=1.2;                                        // wall thickness
+  const doors=opts.doors||[];                          // 'n','s','e','w'
+  const gap=opts.gap||5;
+  /* floor */
+  if(!opts.noFloor){
+    box(g,w,1,d,cx,cy-.5,cz,mat);
+    addPlatform(wx(cx),wz(cz),w/2,d/2,wy(cy),'interior');
+  }
+  /* ceiling */
+  if(!opts.noCeiling){
+    box(g,w,1,d,cx,cy+h,cz,mat);
+    const c=addSolid(wx(cx),wz(cz),w/2,d/2,wy(cy+h),wy(cy+h+1),'ceiling'); c.ceiling=true;
+    addPlatform(wx(cx),wz(cz),w/2,d/2,wy(cy+h+1),'roof');
+  }
+  /* the four walls, each split around its doorway */
+  const side=(dir,ax,az,len,horiz)=>{
+    const hasDoor=doors.includes(dir);
+    if(!hasDoor){
+      if(horiz){ box(g,len,h,t,ax,cy+h/2,az,mat); addSolid(wx(ax),wz(az),len/2,t/2,wy(cy),wy(cy+h),'wall'); }
+      else     { box(g,t,h,len,ax,cy+h/2,az,mat); addSolid(wx(ax),wz(az),t/2,len/2,wy(cy),wy(cy+h),'wall'); }
+      return;
+    }
+    const seg=(len-gap)/2;
+    for(const s of[-1,1]){
+      const off=s*(gap/2+seg/2);
+      if(horiz){ box(g,seg,h,t,ax+off,cy+h/2,az,mat); addSolid(wx(ax+off),wz(az),seg/2,t/2,wy(cy),wy(cy+h),'wall'); }
+      else     { box(g,t,h,seg,ax,cy+h/2,az+off,mat); addSolid(wx(ax),wz(az+off),t/2,seg/2,wy(cy),wy(cy+h),'wall'); }
+    }
+    /* lintel above the doorway, so it reads as a door */
+    const lh=Math.max(0,h-4.5);
+    if(lh>0){
+      if(horiz){ box(g,gap,lh,t,ax,cy+4.5+lh/2,az,mat); addSolid(wx(ax),wz(az),gap/2,t/2,wy(cy+4.5),wy(cy+h),'lintel'); }
+      else     { box(g,t,lh,gap,ax,cy+4.5+lh/2,az,mat); addSolid(wx(ax),wz(az),t/2,gap/2,wy(cy+4.5),wy(cy+h),'lintel'); }
+    }
+  };
+  side('n',cx,cz-d/2,w,true);
+  side('s',cx,cz+d/2,w,true);
+  side('w',cx-w/2,cz,d,false);
+  side('e',cx+w/2,cz,d,false);
+  return {cx,cy,cz,w,d,h};
+}
+/* wire it into movement: pushed out of walls, stopped by ceilings, never floating */
+const _updatePlayerSolid=updatePlayer;
+updatePlayer=function(dt){
+  _updatePlayerSolid(dt);
+  if(P.inShrine||P.inRes) return;
+  solidPush(P.pos);
+  const ceil=ceilingAt(P.pos.x,P.pos.z,P.pos.y);
+  if(ceil<Infinity && P.pos.y+1.75>ceil){
+    P.pos.y=ceil-1.75;
+    if(P.vel.y>0) P.vel.y=0;
+  }
+  /* never hang in mid-air: if nothing is under you and you are not falling,
+     climbing, gliding or swimming, drop to whatever surface is beneath */
+  if(!P.climbing&&!P.gliding&&!P.swimming&&!P.surfing&&P.dodgeT<=0){
+    const pf=platformUnder(P.pos.x,P.pos.z,P.pos.y);
+    const g=groundAt(P.pos.x,P.pos.z);
+    const support=pf?Math.max(pf.top,g):g;
+    if(P.onGround&&Math.abs(P.pos.y-support)>0.35) P.pos.y=support;
+    if(P.pos.y<support){ P.pos.y=support; if(P.vel.y<0) P.vel.y=0; P.onGround=true; }
+  }
+};
+/* enemies get pushed out of walls too, so nothing stands inside masonry */
+const _updateEnemiesSolid=updateEnemies;
+updateEnemies=function(dt){
+  _updateEnemiesSolid(dt);
+  for(const E of enemies){
+    if(!E.alive||E.dormant||E.__far||E.T.fly) continue;
+    solidPush(E.pos,1.0);
+  }
+};
+</script>
+<script>
+"use strict";
+/* ================= ROADMAP 4 — Divine Beast interiors =================
+   Each beast is a real dungeon: a hall you walk into, five terminals behind
+   puzzles, a map that rotates or tilts the whole place, and a control unit
+   that summons the Blight. Rooms are built when you board and torn down when
+   you leave, the same way the shrines work. */
+const BEAST_DEF={
+  ruta:    {n:'Vah Ruta',    mech:'trunk',  col:0x6f7a72, blight:'waterblight'},
+  rudania: {n:'Vah Rudania', mech:'roll',   col:0x7a6a5a, blight:'fireblight'},
+  medoh:   {n:'Vah Medoh',   mech:'tilt',   col:0x8a8a7a, blight:'windblight'},
+  naboris: {n:'Vah Naboris', mech:'rotate', col:0x8a7a6a, blight:'thunderblight'}
+};
+let liveBeast=null;
+function buildBeastInterior(id){
+  const B=BEAST_DEF[id];
+  const rx=14000+Object.keys(BEAST_DEF).indexOf(id)*800, rz=0, floorY=0;
+  const g=new THREE.Group(); g.position.set(rx,floorY,rz); scene.add(g);
+  const shell=new THREE.MeshLambertMaterial({color:0x3a4038});
+  const trim =new THREE.MeshLambertMaterial({color:0x6f7a72});
+  const acc  =new THREE.MeshBasicMaterial({color:0xff9a2e});
+  const W=60, L=140, H=18;
+  /* the main hall, with doorways at both ends */
+  buildInterior(g,0,0,0,W,L,H,{mat:shell,doors:['n','s'],gap:8});
+  /* the ancient lighting */
+  for(let k=0;k<8;k++){
+    const st=new THREE.Mesh(BOX,acc); st.scale.set(.4,.4,14);
+    st.position.set(k%2?W/2-1.2:-W/2+1.2, 4+(k>>1)*3.4, -L/2+18+(k>>1)*32); g.add(st);
+    const l=new THREE.PointLight(0xffa845,1.1,70);
+    l.position.set(0,12,-L/2+22+(k>>1)*32); g.add(l);
+  }
+  /* two side chambers, each behind its own door */
+  buildInterior(g,-W/2-16,0,-30,30,34,H,{mat:shell,doors:['e']});
+  buildInterior(g, W/2+16,0,-30,30,34,H,{mat:shell,doors:['w']});
+  buildInterior(g,-W/2-16,0, 30,30,34,H,{mat:shell,doors:['e']});
+  buildInterior(g, W/2+16,0, 30,30,34,H,{mat:shell,doors:['w']});
+  /* five terminals, one per chamber plus one in the hall */
+  const spots=[[-W/2-16,2,-30],[W/2+16,2,-30],[-W/2-16,2,30],[W/2+16,2,30],[0,2,-L/2+26]];
+  const terms=[];
+  spots.forEach((sp,i)=>{
+    const t=new THREE.Group(); t.position.set(sp[0],sp[1],sp[2]); g.add(t);
+    cyl(t,3,2,0,1,0,trim);
+    const orb=new THREE.Mesh(new THREE.SphereGeometry(1.4,14,11),acc);
+    orb.position.y=3.2; t.add(orb);
+    const li=new THREE.PointLight(0xff9a2e,2,36); li.position.y=3.2; t.add(li);
+    terms.push({orb,li,on:false});
+    IA({kind:'beastTerm',beast:id,idx:i,x:rx+sp[0],z:rz+sp[2],y:floorY,r:5,
+        label:'Activate the terminal'});
+  });
+  /* the map that moves the beast, and the control unit at the far end */
+  const mapPed=new THREE.Group(); mapPed.position.set(0,0,0); g.add(mapPed);
+  cyl(mapPed,4,1.6,0,.8,0,trim);
+  const model=new THREE.Mesh(new THREE.BoxGeometry(6,3,10),
+    new THREE.MeshLambertMaterial({color:B.col}));
+  model.position.y=3.4; mapPed.add(model);
+  IA({kind:'beastMap',beast:id,x:rx,z:rz,y:floorY,r:5,label:'Move the Divine Beast'});
+  const ctrl=new THREE.Group(); ctrl.position.set(0,0,L/2-20); g.add(ctrl);
+  cyl(ctrl,5,2,0,1,0,trim);
+  const cube=new THREE.Mesh(new THREE.BoxGeometry(3,3,3),
+    new THREE.MeshBasicMaterial({color:0x63d6e2}));
+  cube.position.y=4; ctrl.add(cube);
+  const cl=new THREE.PointLight(0x63d6e2,2.4,60); cl.position.y=4; ctrl.add(cl);
+  IA({kind:'beastCtrl',beast:id,x:rx,z:rz+L/2-20,y:floorY,r:6,label:'Main Control Unit'});
+  g.visible=false;
+  const room={id,B,rx,rz,floorY,g,W,L,H,terms,model,cube,active:0,beaten:false,
+    entry:new THREE.Vector3(rx,floorY,rz-L/2+10),
+    solidStart:SOLIDS.length, platStart:platforms.length, iaStart:interactables.length-7};
+  return room;
+}
+const BEAST_ROOMS={};
+for(const id in BEAST_DEF) BEAST_ROOMS[id]=buildBeastInterior(id);
+function enterBeast(id){
+  const room=BEAST_ROOMS[id]; if(!room) return;
+  liveBeast=room; P.inBeast=room;
+  for(const k in BEAST_ROOMS) BEAST_ROOMS[k].g.visible=(k===id);
+  world.visible=false; terrain.visible=false; water.visible=false; sky.visible=false;
+  hyruleMesh.visible=false; hWater.visible=false;
+  for(const k in VEG) VEG[k].visible=false;
+  P.pos.copy(room.entry); P.vel.set(0,0,0); P.onGround=true;
+  toast('Divine Beast '+room.B.n+'  ·  '+room.active+'/5 terminals');
+  sfx('open');
+}
+function exitBeast(){
+  const room=liveBeast; if(!room) return;
+  liveBeast=null; P.inBeast=null;
+  room.g.visible=false;
+  world.visible=true; terrain.visible=true; water.visible=true; sky.visible=true;
+  hyruleMesh.visible=true; hWater.visible=true;
+  for(const k in VEG) VEG[k].visible=true;
+  const B=BEASTS.find(b=>b.id===room.id)||BEASTS[0];
+  P.pos.set(B.x+40,groundAt(B.x+40,B.z+40)+2,B.z+40); P.vel.set(0,0,0);
+}
+function beastTerminal(id,idx){
+  const room=BEAST_ROOMS[id]; if(!room) return;
+  const t=room.terms[idx]; if(t.on) return;
+  t.on=true;
+  t.orb.material=new THREE.MeshBasicMaterial({color:0x63d6e2});
+  t.li.color.set(0x63d6e2);
+  room.active++;
+  sfx('orb');
+  toast('Terminal '+room.active+'/5','good');
+  if(room.active>=5)
+    cut('Sheikah Slate','All five terminals are active. The main control unit will answer now.',{t:3});
+}
+/* the map moves the whole beast: the mechanism differs per beast */
+function beastMap(id){
+  const room=BEAST_ROOMS[id]; if(!room) return;
+  const m=room.B.mech;
+  room.tilt=(room.tilt||0);
+  if(m==='tilt'){   room.tilt+=Math.PI/8; room.g.rotation.z=Math.sin(room.tilt)*.5;
+                    toast('Vah Medoh tilts'); }
+  if(m==='rotate'){ room.tilt+=Math.PI/4; room.g.rotation.y=room.tilt;
+                    toast('Vah Naboris turns'); }
+  if(m==='roll'){   room.tilt+=Math.PI/6; room.g.rotation.x=Math.sin(room.tilt)*.45;
+                    toast('Vah Rudania rolls'); }
+  if(m==='trunk'){  room.tilt+=1; room.g.rotation.z=Math.sin(room.tilt)*.28;
+                    toast('Vah Ruta raises its trunk'); }
+  room.model.rotation.copy(room.g.rotation);
+  sfx('rune');
+}
+</script>
+<script>
+"use strict";
+/* ================= ROADMAP 5 — the four Blights ================= */
+Object.assign(ETYPE,{
+  waterblight :{n:'Waterblight Ganon', hp:800, dmg:45, spd:3.4, col:0x2f6f86, s:3.4, boss:true, blight:'water'},
+  fireblight  :{n:'Fireblight Ganon',  hp:800, dmg:45, spd:3.8, col:0xc4593a, s:3.4, boss:true, blight:'fire',  el:'fire'},
+  windblight  :{n:'Windblight Ganon',  hp:800, dmg:33, spd:4.6, col:0x6a8a9a, s:2.8, boss:true, blight:'wind',  fly:true},
+  thunderblight:{n:'Thunderblight Ganon',hp:800,dmg:51,spd:5.6, col:0xe3d055, s:3.0, boss:true, blight:'thunder',el:'shock'}
+});
+function spawnBlight(kind,room){
+  const E=makeEnemy({t:kind,x:room.rx,z:room.rz+room.L/2-30});
+  E.g.clear();
+  const body=new THREE.Mesh(new THREE.SphereGeometry(3.2*E.s,14,11),
+    new THREE.MeshLambertMaterial({color:E.T.col,flatShading:true}));
+  body.position.y=5*E.s; E.g.add(body);
+  const eye=new THREE.Mesh(new THREE.SphereGeometry(1.1*E.s,12,10),
+    new THREE.MeshBasicMaterial({color:0xff8a2a}));
+  eye.position.set(0,5.4*E.s,-2.6*E.s); E.g.add(eye); E.blightEye=eye;
+  /* each blight carries its own weapon */
+  const wm=new THREE.Mesh(BOX,new THREE.MeshLambertMaterial({color:0xd8d0bc}));
+  if(kind==='waterblight'){ wm.scale.set(.5,.5,11); wm.position.set(3*E.s,5*E.s,-4); }
+  else if(kind==='fireblight'){ wm.scale.set(1.4,4.5,.5); wm.position.set(3.4*E.s,5*E.s,-2); }
+  else if(kind==='windblight'){ wm.scale.set(2.4,1.4,3.4); wm.position.set(3*E.s,5*E.s,-1); }
+  else { wm.scale.set(.4,.4,7); wm.position.set(3*E.s,5*E.s,-3); }
+  E.g.add(wm); E.blightWep=wm;
+  const halo=new THREE.Mesh(new THREE.TorusGeometry(7*E.s,.8,8,26),
+    new THREE.MeshBasicMaterial({color:0xd4462a,transparent:true,opacity:.55}));
+  halo.rotation.x=Math.PI/2; halo.position.y=5*E.s; E.g.add(halo); E.blightHalo=halo;
+  const bg=new THREE.Sprite(barBG), fg=new THREE.Sprite(barFG);
+  bg.scale.set(12,.6,1); fg.scale.set(11.5,.4,1);
+  bg.position.y=fg.position.y=14; E.g.add(bg,fg); E.bg=bg; E.fg=fg;
+  E.pos.set(room.rx,room.floorY,room.rz+room.L/2-30); E.home.copy(E.pos);
+  E.aggroT=1e9; E.phase=1;
+  room.blight=E;
+  return E;
+}
+function updateBlights(dt){
+  for(const id in BEAST_ROOMS){
+    const room=BEAST_ROOMS[id];
+    const E=room.blight;
+    if(!E||!E.alive) continue;
+    if(room!==liveBeast) continue;
+    const t=performance.now()/1000;
+    E.blightHalo.rotation.z+=dt*1.4;
+    E.blightEye.material.color.setHSL(.05,1,.5+Math.sin(t*5)*.15);
+    const f=E.hp/E.hpMax;
+    if(f<.5&&E.phase===1){ E.phase=2; toast(E.T.n+' changes','bad'); sfx('thunder'); }
+    const d=E.pos.distanceTo(P.pos);
+    E.blightCd=(E.blightCd||0)-dt;
+    if(E.blightCd<=0&&d<70){
+      E.blightCd=E.phase===2?1.8:2.8;
+      const k=E.T.blight;
+      if(k==='water'){                       /* an ice block thrown at you */
+        const m=new THREE.Mesh(BOX,MAT.ice); m.scale.set(2.5,2.5,2.5);
+        m.position.copy(E.pos); m.position.y+=5;
+        scene.add(m);
+        const dir=P.pos.clone().sub(E.pos).normalize();
+        blightShots.push({m,v:dir.multiplyScalar(26),el:'ice',dmg:E.T.dmg,life:5});
+      } else if(k==='fire'){                 /* a fireball, and the floor catches */
+        const m=new THREE.Mesh(new THREE.SphereGeometry(1.6,12,10),
+          new THREE.MeshBasicMaterial({color:0xff7a24}));
+        m.position.copy(E.pos); m.position.y+=5; scene.add(m);
+        const dir=P.pos.clone().sub(E.pos).normalize();
+        blightShots.push({m,v:dir.multiplyScalar(30),el:'fire',dmg:E.T.dmg,life:5});
+      } else if(k==='wind'){                 /* a tornado, and cannon shots */
+        for(let i=0;i<3;i++){
+          const m=new THREE.Mesh(new THREE.SphereGeometry(1.1,10,8),
+            new THREE.MeshBasicMaterial({color:0x9ad8e8}));
+          m.position.copy(E.pos); m.position.y+=5; scene.add(m);
+          const dir=P.pos.clone().sub(E.pos).normalize();
+          dir.applyAxisAngle(new THREE.Vector3(0,1,0),(i-1)*.16);
+          blightShots.push({m,v:dir.multiplyScalar(34),el:null,dmg:33,life:4});
+        }
+      } else {                                /* thunder: it blinks then strikes */
+        const a=rnd()*TAU;
+        E.pos.x=P.pos.x+Math.cos(a)*14; E.pos.z=P.pos.z+Math.sin(a)*14;
+        sfx('thunder');
+        if(!shockProof()) damage(E.T.dmg,E.T.n,{});
+        applyPlayerElement('shock');
+      }
+    }
+    /* it closes in between attacks */
+    if(d>6){ const dir=P.pos.clone().sub(E.pos).setY(0).normalize();
+      E.pos.addScaledVector(dir,E.T.spd*dt); }
+    E.pos.y=room.floorY+(E.T.fly?4:0);
+    E.g.rotation.y=Math.atan2(P.pos.x-E.pos.x,P.pos.z-E.pos.z);
+    E.fg.scale.x=11.5*Math.max(0,f);
+    E.fg.position.x=-(11.5*(1-Math.max(0,f)))/2;
+    E.bg.visible=E.fg.visible=true;
+    if(E.hp<=0&&!room.beaten){
+      room.beaten=true; E.alive=false; E.g.visible=false;
+      const champ={ruta:'mipha',rudania:'daruk',medoh:'revali',naboris:'urbosa'}[id];
+      cut('The Champion',room.B.n+' is free. A hundred years of waiting, ended.',{t:4});
+      if(champ) setTimeout(()=>grantChampion(champ),1400);
+      sfx('orb');
+    }
+  }
+}
+const blightShots=[];
+function updateBlightShots(dt){
+  for(let i=blightShots.length-1;i>=0;i--){
+    const b=blightShots[i];
+    b.m.position.addScaledVector(b.v,dt);
+    b.v.y+=GRAV*dt*.15;
+    b.life-=dt;
+    let gone=b.life<=0;
+    if(b.m.position.distanceTo(P.pos)<2.6){
+      damage(b.dmg,'the Blight');
+      if(b.el) applyPlayerElement(b.el);
+      gone=true;
+    }
+    if(gone){ scene.remove(b.m); blightShots.splice(i,1); }
+  }
+}
+/* ================= ROADMAP 6 — inside Hyrule Castle ================= */
+const CASTLE={rx:20000, rz:0, floorY:0, rooms:[]};
+(function buildCastleInterior(){
+  const g=new THREE.Group(); g.position.set(CASTLE.rx,0,CASTLE.rz); g.visible=false;
+  scene.add(g); CASTLE.g=g;
+  const stone=new THREE.MeshLambertMaterial({color:0x7a7468});
+  const dark =new THREE.MeshLambertMaterial({color:0x4a4640});
+  const gold =new THREE.MeshLambertMaterial({color:0xc9a86a});
+  /* five rooms up a spine, each a floor higher than the last */
+  const plan=[
+    ['Entrance Hall', 0,   0,   -160, 44, 60, 16, ['n','s']],
+    ['The Library',   0,   18,  -90,  40, 50, 14, ['n','s']],
+    ['Dining Hall',   0,   36,  -20,  46, 56, 14, ['n','s']],
+    ['The Docks',    -46,  36,   40,  36, 44, 14, ['e','n']],
+    ['Guards’ Chamber',46, 54,   40,  36, 44, 14, ['w','n']],
+    ['The Sanctum',   0,   72,   120, 64, 64, 26, ['n']]
+  ];
+  for(const [name,x,y,z,w,d,h,doors] of plan){
+    buildInterior(g,x,y,z,w,d,h,{mat:name==='The Sanctum'?dark:stone,doors,gap:7});
+    CASTLE.rooms.push({name,x,y,z,w,d,h});
+    IA({kind:'castleRoom',name,x:CASTLE.rx+x,z:CASTLE.rz+z,y,r:Math.min(w,d)/2,label:name});
+  }
+  /* ramps between the floors, so you can actually climb the place */
+  const ramp=(x1,y1,z1,x2,y2,z2,wid)=>{
+    const dx=x2-x1, dy=y2-y1, dz=z2-z1;
+    const len=Math.hypot(dx,dz);
+    const steps=Math.ceil(len/3);
+    for(let i=0;i<=steps;i++){
+      const t=i/steps;
+      const px=x1+dx*t, py=y1+dy*t, pz=z1+dz*t;
+      box(g,wid,.6,3.4,px,py,pz,stone);
+      addPlatform(CASTLE.rx+px,CASTLE.rz+pz,wid/2,1.8,py+.3,'castleramp');
+    }
+  };
+  ramp(0,0,-128, 0,18,-116, 9);
+  ramp(0,18,-64, 0,36,-50,  9);
+  ramp(0,36,8,  -46,36,18,  9);
+  ramp(-46,36,62, 46,54,62, 9);
+  ramp(46,54,18,  0,72,88,  11);
+  /* the Sanctum: braziers, a malice floor, and the throne */
+  for(let i=0;i<8;i++){ const a=i/8*TAU;
+    const bx=Math.cos(a)*26, bz=120+Math.sin(a)*26;
+    cyl(g,1.4,4,bx,74,bz,gold);
+    const fl=new THREE.Mesh(new THREE.ConeGeometry(1.0,2.2,7),
+      new THREE.MeshBasicMaterial({color:0xd4462a}));
+    fl.position.set(bx,77,bz); g.add(fl);
+    const l=new THREE.PointLight(0xd4462a,1.6,50); l.position.set(bx,77,bz); g.add(l);
+  }
+  const throne=box(g,8,7,4,0,75.5,144,gold);
+  CASTLE.sanctum={x:CASTLE.rx,y:72,z:CASTLE.rz+120};
+  CASTLE.entry=new THREE.Vector3(CASTLE.rx,0,CASTLE.rz-186);
+  IA({kind:'castleGanon',x:CASTLE.rx,z:CASTLE.rz+120,y:72,r:22,label:'Calamity Ganon'});
+})();
+let inCastle=false;
+function enterCastle(){
+  inCastle=true; P.inCastle=true;
+  CASTLE.g.visible=true;
+  world.visible=false; terrain.visible=false; water.visible=false; sky.visible=false;
+  hyruleMesh.visible=false; hWater.visible=false;
+  for(const k in VEG) VEG[k].visible=false;
+  P.pos.copy(CASTLE.entry); P.vel.set(0,0,0); P.onGround=true;
+  cut('King Rhoam','Hyrule Castle. Everything that was left of us is in here, and so is he.');
+  sfx('open');
+}
+function exitCastle(){
+  inCastle=false; P.inCastle=false;
+  CASTLE.g.visible=false;
+  world.visible=true; terrain.visible=true; water.visible=true; sky.visible=true;
+  hyruleMesh.visible=true; hWater.visible=true;
+  for(const k in VEG) VEG[k].visible=true;
+  const R=REGIONS.castle;
+  P.pos.set(R.x,groundAt(R.x,R.z+80)+2,R.z+80); P.vel.set(0,0,0);
+}
+</script>
+<script>
+"use strict";
+/* ---- wiring the dungeons, the Blights and the castle into the game ---- */
+const _interactBeast=interact;
+interact=function(){
+  const it=nearest;
+  if(it) switch(it.kind){
+    case 'beast': case 'beast2': {
+      const id=it.id||({'Divine Beast Vah Rudania':'rudania','Divine Beast Vah Medoh':'medoh',
+        'Divine Beast Vah Naboris':'naboris'}[it.name]);
+      if(id&&BEAST_ROOMS[id]){ enterBeast(id); return; }
+      break; }
+    case 'beastTerm':  beastTerminal(it.beast,it.idx); return;
+    case 'beastMap':   beastMap(it.beast); return;
+    case 'beastCtrl': {
+      const room=BEAST_ROOMS[it.beast];
+      if(room.beaten){ toast(room.B.n+' is already free'); return; }
+      if(room.active<5){ toast('Five terminals first — '+room.active+'/5','bad'); return; }
+      if(room.blight&&room.blight.alive){ toast('The Blight is already here','bad'); return; }
+      spawnBlight(room.B.blight,room);
+      cut('Calamity Ganon',room.B.n+' will not be given up so easily.',{t:3});
+      sfx('thunder'); return; }
+    case 'castle':     enterCastle(); return;
+    case 'castleRoom': toast(it.name); return;
+    case 'castleGanon': wakeGanon(); return;
+  }
+  _interactBeast();
+};
+const _promptBeast=promptFor;
+promptFor=function(it){
+  if(it) switch(it.kind){
+    case 'beast': case 'beast2': {
+      const id=it.id||({'Divine Beast Vah Rudania':'rudania','Divine Beast Vah Medoh':'medoh',
+        'Divine Beast Vah Naboris':'naboris'}[it.name]);
+      const room=id&&BEAST_ROOMS[id];
+      if(room) return '<b>E</b> Board '+room.B.n+'  ·  '+room.active+'/5 terminals'+
+        (room.beaten?'  ·  freed':'');
+      break; }
+    case 'beastTerm': {
+      const room=BEAST_ROOMS[it.beast];
+      return room.terms[it.idx].on?'<b>Terminal</b> · active':'<b>E</b> Activate the terminal'; }
+    case 'beastMap':  return '<b>E</b> Move the Divine Beast';
+    case 'beastCtrl': {
+      const room=BEAST_ROOMS[it.beast];
+      if(room.beaten) return '<b>Main Control Unit</b> · freed';
+      return room.active>=5?'<b>E</b> Take the Main Control Unit':
+        '<b>Main Control Unit</b> · sealed, '+room.active+'/5';}
+    case 'castle':     return '<b>E</b> Enter Hyrule Castle';
+    case 'castleRoom': return '<b>'+it.name+'</b>';
+    case 'castleGanon':return (ganon&&ganon.awake)?'<b>Calamity Ganon</b>':'<b>E</b> Face Calamity Ganon';
+  }
+  return _promptBeast(it);
+};
+/* X leaves a dungeon or the castle */
+addEventListener('keydown',e=>{
+  if(e.code!=='KeyX'||!P.playing) return;
+  if(liveBeast) exitBeast();
+  else if(inCastle) exitCastle();
+});
+/* the interior systems tick with everything else */
+const _updatePlayerDungeon=updatePlayer;
+updatePlayer=function(dt){
+  _updatePlayerDungeon(dt);
+  const room=liveBeast;
+  if(room){
+    /* stay inside the hull */
+    const half=room.W/2+50;
+    P.pos.x=clamp(P.pos.x,room.rx-half,room.rx+half);
+    P.pos.z=clamp(P.pos.z,room.rz-room.L/2-4,room.rz+room.L/2+4);
+    if(P.pos.y<room.floorY){P.pos.y=room.floorY;P.vel.y=0;P.onGround=true;}
+  }
+  if(inCastle){
+    P.pos.x=clamp(P.pos.x,CASTLE.rx-120,CASTLE.rx+120);
+    P.pos.z=clamp(P.pos.z,CASTLE.rz-200,CASTLE.rz+180);
+    if(P.pos.y<CASTLE.floorY-2){P.pos.y=CASTLE.floorY;P.vel.y=0;P.onGround=true;}
+  }
+};
+const _frameDungeon=updateBeasts;
+updateBeasts=function(dt){ _frameDungeon(dt); updateBlights(dt); updateBlightShots(dt); };
+/* Ganon now lives in the Sanctum rather than on the roof */
+const _wakeGanon=wakeGanon;
+wakeGanon=function(){
+  if(ganon&&!ganon.awake&&inCastle){
+    ganon.pos.set(CASTLE.sanctum.x,CASTLE.sanctum.y+2,CASTLE.sanctum.z);
+    ganon.home.copy(ganon.pos);
+  }
+  _wakeGanon();
+};
+/* interiors hide the outside world, and show themselves */
+const _setVisDungeon=setVisibility;
+setVisibility=function(){
+  _setVisDungeon();
+  const inside=!!(P.inShrine||P.inRes||liveBeast||inCastle);
+  if(inside){
+    world.visible=false; terrain.visible=false; water.visible=false; sky.visible=false;
+    hyruleMesh.visible=false; hWater.visible=false;
+    for(const k in VEG) VEG[k].visible=false;
+  }
+  if(CASTLE.g) CASTLE.g.visible=inCastle;
+  for(const k in BEAST_ROOMS) BEAST_ROOMS[k].g.visible=(BEAST_ROOMS[k]===liveBeast);
+};
+/* the whole map is drawn from the start; towers still unlock fast travel */
+mapRevealed=true;
+const _newGameMap=newGame;
+newGame=function(){
+  _newGameMap();
+  mapRevealed=true;
+  P.towers=P.towers||{};
+  for(const t of TOWERS) P.towers[t.id]=1;      // the map is complete at the start
+  paintReveal();
+  liveBeast=null; inCastle=false; P.inBeast=null; P.inCastle=false;
+  for(const k in BEAST_ROOMS){ const r=BEAST_ROOMS[k];
+    r.active=0; r.beaten=false; r.blight=null;
+    r.terms.forEach(t=>{t.on=false;
+      t.orb.material=new THREE.MeshBasicMaterial({color:0xff9a2e}); t.li.color.set(0xff9a2e);});
+  }
+};
+</script>
+<script>
+"use strict";
+/* ============ every shrine's real trial and real rewards ============ */
+Object.assign(WEAPONS,{
+  "Knight's Claymore" :{atk:52,dur:40,hand:2,col:0xd6dee6,len:1.55},
+  "Royal Claymore"    :{atk:52,dur:45,hand:2,col:0xd8c48a,len:1.6},
+  "Royal Broadsword"  :{atk:36,dur:45,hand:1,col:0xd8c48a,len:1.15},
+  "Knight's Halberd"  :{atk:44,dur:45,hand:3,col:0xd6dee6,len:2.3},
+  'Stone Smasher'     :{atk:38,dur:40,hand:2,col:0x8a6a4a,len:1.6},
+  'Cobble Crusher'    :{atk:16,dur:25,hand:2,col:0x8a7a6a,len:1.5},
+  'Boomerang'         :{atk:14,dur:25,hand:1,col:0x9a7a4a,len:.9},
+  'Giant Boomerang'   :{atk:26,dur:32,hand:2,col:0x9a7a4a,len:1.3},
+  'Thunderspear'      :{atk:20,dur:30,hand:3,col:0xe3d055,len:2.1,el:'shock'},
+  'Flamespear'        :{atk:22,dur:30,hand:3,col:0xd9622f,len:2.1,el:'fire'},
+  'Feathered Spear'   :{atk:14,dur:28,hand:3,col:0x9a5a3a,len:2.0},
+  'Golden Claymore'   :{atk:40,dur:38,hand:2,col:0xd8b878,len:1.55},
+  'Gerudo Spear'      :{atk:15,dur:26,hand:3,col:0xd8b878,len:2.1},
+  'Gerudo Scimitar'   :{atk:20,dur:28,hand:1,col:0xd8b878,len:1.1},
+  'Moonlight Scimitar':{atk:32,dur:36,hand:1,col:0xe8d8a8,len:1.15},
+  'Drillshaft'        :{atk:12,dur:24,hand:1,col:0x8a8f94,len:1.0},
+  "Forest Dweller's Sword":{atk:12,dur:30,hand:1,col:0x5d7a3a,len:1.05},
+  "Forest Dweller's Spear":{atk:12,dur:32,hand:3,col:0x5d7a3a,len:2.0},
+  'Korok Leaf'        :{atk:1, dur:20,hand:2,col:0x4f8442,len:1.6}
+});
+Object.assign(BOWS,{'Golden Bow':{atk:26,dur:40,col:0xd8b878,mult:1}});
+Object.assign(WEAPONS,{'Silverscale Spear':{atk:14,dur:28,hand:3,col:0x8fd0e8,len:2.1}});
+Object.assign(SHIELDS,{
+  'Radiant Shield'          :{grd:55,dur:32,col:0xd8b878},
+  'Royal Shield'            :{grd:55,dur:36,col:0xd8c48a},
+  "Forest Dweller's Shield" :{grd:22,dur:26,col:0x5d7a3a}
+});
+for(const [k,c] of [['Giant Ancient Core',0x9aa8a0],['Gold Rupee',0xd8b83a],
+  ["Rudania's Emblem",0xc4593a]]) if(!MATS[k]) MATS[k]={h:0,col:c,g:'\u{1F48E}',gem:true};
+if(!ARMOR['Rubber Armor']) ARMOR['Rubber Armor']={def:3,slot:'body',shock:1,set:'rubber'};
+
+/* name : [trial, mechanic, [rewards]] */
+const SHRINE_FULL={
+ /* Central */
+ "Kaam Ya'tak":['Trial of Power','ballramp',['Edge of Duality',"Knight's Broadsword",'Ancient Core','Silver Rupee','Diamond']],
+ 'Rota Ooh':['Passing of the Gates','ballramp',['Feathered Edge']],
+ 'Dah Kaso':['A Minor Test of Strength','modesttest',['Ancient Core']],
+ 'Wahgo Katta':['Metal Connections','crates',['Amber']],
+ 'Namika Ozz':['A Modest Test of Strength','modesttest',['Frostspear']],
+ 'Katah Chuki':['A Minor Test of Strength','modesttest',['Royal Halberd']],
+ 'Noya Neha':['A Minor Test of Strength','modesttest',["Knight's Shield"]],
+ "Saas Ko'sah":['A Major Test of Strength','majortest',['Flameblade']],
+ /* Dueling Peaks */
+ 'Ree Dahee':['Timing is Critical','tilt',["Climber's Bandanna"]],
+ 'Shee Venath':['Twin Memories','orb',['Serpentine Spear']],
+ 'Shee Vaneer':['Twin Memories','orb',['Eightfold Longblade']],
+ 'Toto Sah':['Toto Sah Apparatus','maze',["Shield of the Mind's Eye"]],
+ 'Ha Dahamar':['The Water Guides','waterguide',['Purple Rupee']],
+ 'Lakna Rokee':["Lakna Rokee's Blessing",'blessing',['Edge of Duality']],
+ "Ta'loh Naeg":["Ta'loh Naeg's Teaching",'combat',["Shield of the Mind's Eye",'Eightfold Blade','Opal']],
+ 'Hila Rao':['Drifting','waterguide',['Opal','Ice Arrow']],
+ 'Bosh Kala':['The Wind Guides You','wind',['Amber',"Soldier's Claymore"]],
+ /* Eldin */
+ 'Gorae Torr':["Gorae Torr's Blessing",'ballramp',['Great Frostblade']],
+ 'Shora Hah':['Blue Flame','flame',['Royal Bow','Great Flameblade','Giant Ancient Core',"Forest Dweller's Sword",'Silver Rupee','Ice Arrow']],
+ "Shae Mo'sah":['Swinging Flames','flame',['Stone Smasher','Ruby','Ice Arrow']],
+ 'Daqa Koh':['Stalled Flight','wind',['Silver Rupee']],
+ 'Kayra Mah':['Greedy Hill','ballramp',['Ruby','Bomb Arrow']],
+ 'Qua Raym':['A Balanced Approach','tilt',["Knight's Claymore"]],
+ 'Sah Dahaj':['Power of Fire','flame',["Knight's Bow"]],
+ "Mo'a Keet":['Metal Makes a Path','metalpath',["Knight's Broadsword"]],
+ 'Tah Muhl':['Passing the Flame','flame',['Ruby','Opal','Cobble Crusher']],
+ /* Faron */
+ 'Shai Utoh':['Halt the Tilt','tilt',["Traveler's Sword",'Ancient Core']],
+ 'Shoda Sah':['Impeccable Timing','tilt',['Ice Arrow']],
+ 'Qukah Nata':["Qukah Nata's Blessing",'blessing',['Rubber Tights']],
+ 'Tawa Jinn':["Tawa Jinn's Blessing",'blessing',['Great Thunderblade']],
+ 'Yah Rin':['A Weighty Decision','scales',["Knight's Broadsword",'Opal']],
+ 'Kah Yah':['Quick Thinking','tilt',["Knight's Claymore"]],
+ 'Muwo Jeem':['A Modest Test of Strength','modesttest',["Knight's Bow"]],
+ 'Korgu Chideh':["Korgu Chideh's Blessing",'blessing',['Gold Rupee']],
+ /* Gerudo */
+ 'Sasa Kai':['A Modest Test of Strength','modesttest',['Frostblade']],
+ 'Sho Dantu':['Two Bombs','bomb',['Silver Rupee']],
+ 'Joloo Nah':['Joloo Nah Apparatus','maze',['Golden Claymore','Gerudo Spear']],
+ 'Kuh Takkar':['Melting Ice Hazard','iceMelt',['Frostblade']],
+ 'Keeha Yoog':["Keeha Yoog's Blessing",'blessing',['Diamond']],
+ 'Kema Kosassa':['A Major Test of Strength','majortest',['Silver Rupee']],
+ /* Great Plateau */
+ 'Oman Au':['Magnesis Trial','magnesis',["Traveler's Bow"]],
+ 'Ja Baij':['Bomb Trial','bomb',["Traveler's Claymore",'Amber']],
+ 'Owa Daim':['Stasis Trial','stasis',["Traveler's Shield"]],
+ 'Keh Namut':['Cryonis Trial','cryonis',["Traveler's Spear"]],
+ /* Hateno */
+ 'Kam Urog':['Trial of Passage','tilt',['Opal',"Soldier's Spear"]],
+ "Dow Na'eh":['Three Boxes','threechests',['Zora Sword','Amber','Opal']],
+ 'Mezza Lo':['Ancient Trifecta','metalpath',['Thunderblade']],
+ "Jitan Sa'mi":["Jitan Sa'mi's Blessing",'blessing',['Frostspear']],
+ "Tahno O'ah":["Tahno O'ah's Blessing",'blessing',['Climbing Boots']],
+ 'Myahm Agana':['Myahm Agana Apparatus','maze',['Phrenic Bow']],
+ 'Chaas Qeta':['A Major Test of Strength','majortest',['Climbing Gear']],
+ /* Hebra */
+ 'Dunba Taag':['Build and Release','ballramp',['Falcon Bow','Great Thunderblade']],
+ 'Lanno Kooh':["Lanno Kooh's Blessing",'blessing',['Gold Rupee']],
+ "Gee Ha'rah":['Tandem','orb',['Diamond']],
+ 'Rin Oyaa':['Directing the Wind','wind',['Ancient Core']],
+ 'Qaza Tokki':["Qaza Tokki's Blessing",'blessing',['Barbarian Leg Wraps']],
+ 'Sha Gehma':['Shift and Lock','metalpath',['Royal Broadsword']],
+ 'Rok Uwog':['Power of Reach','orb',['Drillshaft']],
+ 'Goma Asaagh':['A Major Test of Strength','majortest',['Royal Claymore']],
+ 'Shada Naw':['Red Giveaway','hidden',['Great Frostblade']],
+ 'To Quomo':["To Quomo's Blessing",'blessing',['Royal Claymore']],
+ 'Hia Miu':['A Major Test of Strength','majortest',['Sapphire']],
+ 'Mozo Shenno':['A Major Test of Strength','majortest',['Diamond']],
+ 'Maka Rah':['Steady Thy Heart','tilt',['Bomb Arrow','Diamond','Ancient Core']],
+ /* Lake */
+ 'Shoqa Tatone':['A Modest Test of Strength','modesttest',['Royal Broadsword']],
+ "Ka'o Makagh":['Metal Doors Open the Way','metalpath',["Traveler's Bow",'Gold Rupee','Opal']],
+ 'Pumaag Nitae':['A Minor Test of Strength','modesttest',['Boomerang']],
+ 'Shae Katha':["Shae Katha's Blessing",'blessing',['Thunderspear']],
+ 'Ya Naga':['Shatter the Heavens','orb',['Eightfold Blade']],
+ 'Ishto Soh':["Bravery's Grasp",'scales',['Topaz','Ancient Core']],
+ /* Lanayru */
+ 'Kaya Wan':['Shields from Water','cryonis',['Ancient Core',"Knight's Broadsword"]],
+ 'Daka Tuss':['Sunken Scoop','scoop',['Silver Longsword']],
+ 'Sheh Rata':['Speed of Light','waterguide',['Opal','Giant Boomerang']],
+ 'Soh Kofi':['A Minor Test of Strength','modesttest',["Knight's Bow"]],
+ "Ne'ez Yohma":['Pushing Power','waterguide',['Zora Spear']],
+ 'Dagah Keek':["Dagah Keek's Blessing",'blessing',['Silver Rupee']],
+ 'Rucco Maag':['Five Flames','flame',['Opal','Silver Bow']],
+ 'Shai Yota':["Shai Yota's Blessing",'blessing',['Great Flameblade']],
+ 'Kah Mael':['Drop and Rise','scales',['Diamond']],
+ /* Ridgeland */
+ 'Zalta Wa':['Two Orbs to Guide You','orb',["Knight's Bow"]],
+ 'Sheem Dagoze':['Moving in Parallel','tilt',['Great Thunderblade']],
+ 'Mogg Latan':['Synced Swing','tilt',["Forest Dweller's Spear","Forest Dweller's Bow",'Gold Rupee']],
+ 'Mijah Rokee':['A Modest Test of Strength','modesttest',['Frostblade']],
+ 'Shae Loya':['Aim for the Moment','orb',['Topaz','Falcon Bow']],
+ 'Toh Yahsa':['Buried Secrets','hidden',['Rubber Armor','Opal']],
+ "Maag No'rah":["Maag No'rah's Blessing",'blessing',['Silver Rupee']],
+ /* Tabantha */
+ "Tena Ko'sah":['A Major Test of Strength','majortest',["Knight's Halberd"]],
+ 'Kah Okeo':['Wind Guide','wind',['Korok Leaf','Gold Rupee',"Forest Dweller's Sword",'Giant Ancient Core','Thunderspear']],
+ 'Bareeda Naag':['Cannon','ballramp',['Falcon Bow','Diamond']],
+ "Akh Va'quot":['Windmills','wind',['Ancient Core','Sapphire','Feathered Spear']],
+ 'Sha Warvo':['Path of Hidden Winds','wind',['Purple Rupee',"Knight's Bow"]],
+ 'Voo Lota':['The Winding Route','wind',['Flameblade']],
+ /* Wasteland */
+ "Korsh O'hu":["Korsh O'hu's Blessing",'blessing',['Flamespear']],
+ 'Kay Noh':['Power of Electricity','metalpath',['Gerudo Scimitar']],
+ 'Dako Tah':['Electric Path','metalpath',['Moonlight Scimitar','Ancient Core','Silver Rupee','Radiant Shield']],
+ 'Daqo Chisay':['The Whole Picture','hidden',['Thunderblade']],
+ 'Kema Zoos':['A Delayed Puzzle','tilt',['Moonlight Scimitar']],
+ 'Tho Kayu':["Tho Kayu's Blessing",'blessing',['Golden Bow']],
+ 'Hawa Koth':['The Current Solution','waterguide',['Ancient Core','Gold Rupee','Sapphire']],
+ 'Raqa Zunzo':["Raqa Zunzo's Blessing",'blessing',['Radiant Shield']],
+ 'Misae Suma':["Misae Suma's Blessing",'blessing',['Diamond']],
+ 'Dila Maag':["Dila Maag's Blessing",'blessing',['Barbarian Armor']],
+ 'Suma Sahma':["Suma Sahma's Blessing",'blessing',['Moonlight Scimitar']],
+ 'Jee Noh':['On the Move','tilt',['Opal']],
+ /* Woodland */
+ 'Mirro Shaz':['Tempered Power','ballramp',['Iron Sledgehammer','Giant Ancient Core']],
+ 'Keo Ruug':['Fateful Stars','orb',["Knight's Claymore"]],
+ 'Kuhn Sidajj':["Kuhn Sidajj's Blessing",'blessing',['Giant Ancient Core']],
+ 'Daag Chokah':["Daag Chokah's Blessing",'blessing',['Ancient Core']],
+ 'Maag Halan':["Maag Halan's Blessing",'blessing',['Giant Ancient Core']],
+ 'Ketoh Wawai':["Ketoh Wawai's Blessing",'blessing',['Ancient Core']],
+ 'Monya Toma':['Drawing Parabolas','ballramp',['Thunderblade']],
+ /* Champions' Ballad */
+ 'Kamia Omuna':['Moving Targets','orb',["Rudania's Emblem",'Diamond']],
+ 'Rinu Honika':['Block the Blaze','flame',['Stone Smasher']],
+ 'Sharo Lun':['Blind Spots','timed',['Great Flameblade']],
+ 'Etsu Korima':['Path of Light','hidden',['Gold Rupee']],
+ 'Rohta Chigah':['Stop to Start','tilt',["Forest Dweller's Shield"]],
+ 'Ruvo Korbah':['A Major Test of Strength+','majortest',['Bomb Arrow','Giant Ancient Core']],
+ 'Yowaka Ita':['Collected Soul','orb',['Bomb Arrow','Phrenic Bow']],
+ 'Kiah Toza':['Master the Orb','orb',['Falcon Bow']],
+ 'Kee Dafunia':['The Melting Point','iceMelt',['Frostblade']],
+ 'Mah Eliya':['Secret Stairway','hidden',['Royal Shield']],
+ 'Sato Koda':['Support and Guidance','majortest',['Giant Ancient Core']],
+ 'Shira Gomar':['Aim for Stillness','orb',['Bomb Arrow']],
+ 'Noe Rajee':['The Four Winds','wind',["Shield of the Mind's Eye"]],
+ 'Keive Tala':['Big or Small','tilt',['Radiant Shield']],
+ 'Kihiro Moh':['Inside the Box','threechests',['Thunderspear']],
+ 'Takama Shiri':['Dual Purpose','timed',['Royal Bow']],
+ /* Akkala */
+ 'Ze Kasho':['Ze Kasho Apparatus','maze',['Silverscale Spear']],
+ 'Dah Hesho':['A Minor Test of Strength','modesttest',['Giant Ancient Core']],
+ "Ke'nai Shakah":['A Modest Test of Strength','modesttest',['Sapphire']],
+ 'Ritaag Zumo':["Ritaag Zumo's Blessing",'blessing',['Giant Ancient Core']],
+ 'Katosa Aug':['Katosa Aug Apparatus','maze',['Great Frostblade']],
+ 'Tutsuwa Nima':['A Major Test of Strength','majortest',['Flamespear']],
+ 'Zuna Kai':["Zuna Kai's Blessing",'blessing',['Flameblade']],
+ "Tu Ka'loh":["Tu Ka'loh's Blessing",'blessing',['Barbarian Helm']],
+ /* Woodland's eighth, absent from the region list */
+ 'Rona Kachta':["Rona Kachta's Blessing",'blessing',['Ancient Core']]
+};
+/* apply it to every shrine, on top of whatever was there */
+(function applyFullDetail(){
+  const nm=s=>s.replace(/[‘’ʼ]/g,"'").replace(/ Shrine$/,'').trim();
+  const T={}; for(const k in SHRINE_FULL) T[nm(k)]=SHRINE_FULL[k];
+  let n=0;
+  for(const D of SHRINE_DEFS){
+    const R=T[nm(D.name)];
+    if(!R) continue;
+    D.trial=R[0]; D.kind=R[1]; D.loot=R[2]; n++;
+  }
+  for(const s of SHRINES){
+    const R=T[nm(s.name)];
+    if(R){ s.trial=R[0]; s.loot=R[2]; s.chest=R[2][0]; n++; }
+  }
+  const missing=SHRINE_DEFS.filter(D=>!T[nm(D.name)]).map(D=>D.name);
+  console.log('shrines with their real trial and rewards:',n,
+              '| still generic:',missing.length, missing);
+})();
 </script>
