@@ -12067,3 +12067,148 @@ newGame=function(){
   for(const M of memorySites) M.g.visible=true;
 };
 </script>
+<script>
+"use strict";
+/* ================= ROADMAP 21 — fishing ================= */
+const FISH={
+  'Hyrule Bass'      :{h:2, col:0x6fa8c4},
+  'Hearty Bass'      :{h:4, col:0x7fc4a4, eff:'hearty',     pot:2},
+  'Staminoka Bass'   :{h:2, col:0xd8a44e, eff:'energizing', pot:2, st:400},
+  'Armored Porgy'    :{h:2, col:0x8a8272, eff:'tough',      pot:2},
+  'Mighty Porgy'     :{h:2, col:0xc44a3a, eff:'mighty',     pot:2},
+  'Sanke Carp'       :{h:2, col:0xd86a5a},
+  'Mighty Carp'      :{h:2, col:0xb04a3a, eff:'mighty',     pot:2},
+  'Armored Carp'     :{h:2, col:0x6a6a5a, eff:'tough',      pot:2},
+  'Chillfin Trout'   :{h:2, col:0x9fd0e8, eff:'chilly',     pot:2},
+  'Sizzlefin Trout'  :{h:2, col:0xd9622f, eff:'spicy',      pot:2},
+  'Voltfin Trout'    :{h:2, col:0xe3d055, eff:'electro',    pot:2},
+  'Hearty Salmon'    :{h:4, col:0xd88a6a, eff:'hearty',     pot:3},
+  'Hyrule Herring'   :{h:1, col:0x9ab8c4},
+  'Sneaky River Snail':{h:2,col:0x7a9a8a, eff:'sneaky',     pot:2}
+};
+for(const k in FISH) if(!MATS[k]) MATS[k]={h:FISH[k].h, st:FISH[k].st, col:FISH[k].col,
+  g:'\u{1F41F}', where:'water', eff:FISH[k].eff, pot:FISH[k].pot};
+
+const swimmers=[];
+(function stockWaters(){
+  /* Region centres are dry land, so hunt for real water instead: sample each
+     region, keep the wet points, and stock those. */
+  const SPECIES={
+    hebra:['Chillfin Trout','Hearty Salmon','Hyrule Bass'],
+    eldin:['Sizzlefin Trout','Hyrule Bass'],
+    lanayru:['Voltfin Trout','Hyrule Bass','Mighty Carp','Armored Carp','Staminoka Bass'],
+    zora:['Hearty Salmon','Staminoka Bass','Hyrule Bass'],
+    hylia:['Hyrule Bass','Hearty Bass','Sanke Carp','Hyrule Herring','Sneaky River Snail'],
+    faron:['Mighty Porgy','Hearty Bass','Hyrule Bass','Sanke Carp'],
+    lurelin:['Hyrule Herring','Sanke Carp','Mighty Porgy'],
+    akkala:['Armored Porgy','Hyrule Bass','Sanke Carp'],
+    central:['Hyrule Bass','Hyrule Herring','Mighty Carp','Armored Carp'],
+    woodland:['Hyrule Bass','Hearty Bass','Sneaky River Snail'],
+    duel:['Hyrule Bass','Staminoka Bass','Sanke Carp'],
+    hateno:['Hyrule Bass','Mighty Porgy','Hyrule Herring'],
+    ridge:['Hyrule Bass','Armored Carp'],
+    tabantha:['Chillfin Trout','Hyrule Bass'],
+    gerudo:['Hyrule Bass'],
+    wasteland:['Hyrule Bass'],
+    plateau:['Hyrule Bass','Hearty Bass'],
+    korok:['Hyrule Bass','Sneaky River Snail']
+  };
+  const geo=new THREE.IcosahedronGeometry(.42,0);
+  const mats={};
+  const put=(x,z,kind)=>{
+    const wl=waterAt(x,z);
+    if(!mats[kind]) mats[kind]=new THREE.MeshLambertMaterial({color:FISH[kind].col,flatShading:true});
+    const m=new THREE.Mesh(geo,mats[kind]);
+    m.position.set(x,wl-.9,z); scene.add(m);
+    swimmers.push({m,kind,hx:x,hz:z,wl,a:rnd()*TAU,caught:false,stun:0,spook:0});
+  };
+  let total=0;
+  for(const key in SPECIES){
+    const R=REGIONS[key]; if(!R) continue;
+    const kinds=SPECIES[key];
+    let placed=0, tries=0;
+    const want=key==='hylia'?40:key==='lanayru'?34:26;
+    while(placed<want && tries++<4000){
+      const a=rnd()*TAU, r=Math.sqrt(rnd())*R.r;
+      const x=R.x+Math.cos(a)*r, z=R.z+Math.sin(a)*r;
+      if(groundAt(x,z) > waterAt(x,z)-2.5) continue;      // must be genuinely deep
+      put(x,z,kinds[Math.floor(rnd()*kinds.length)]);
+      placed++; total++;
+    }
+  }
+  /* the sea round the southern and eastern coasts */
+  let sea=0, t2=0;
+  while(sea<70 && t2++<8000){
+    const x=(rnd()*2-1)*4800, z=(rnd()*2-1)*4800;
+    if(groundAt(x,z) > waterAt(x,z)-6) continue;
+    put(x,z,['Hyrule Herring','Sanke Carp','Mighty Porgy','Armored Porgy'][Math.floor(rnd()*4)]);
+    sea++; total++;
+  }
+  console.log('fish stocked:',total,'across',Object.keys(SPECIES).length,'regions plus the sea');
+})();
+function updateFish(dt){
+  if(P.inShrine||P.inRes||P.inBeast||P.inCastle) return;
+  const t=performance.now()/1000;
+  for(const F of swimmers){
+    if(F.caught) continue;
+    if(Math.hypot(F.hx-P.pos.x,F.hz-P.pos.z)>220) continue;   // only the ones near you
+    if(F.stun>0){
+      F.stun-=dt;
+      F.m.position.y=F.wl-.15+Math.sin(t*3)*.06;
+      F.m.rotation.z=Math.PI;                                  // belly-up
+      if(F.m.position.distanceTo(P.pos)<3.6){
+        F.caught=true; scene.remove(F.m); giveMat(F.kind,1); sfx('pickup');
+      }
+      continue;
+    }
+    F.a+=dt*(.5+Math.sin(t*.6+F.hx*.01)*.35)+(F.spook>0?dt*3:0);
+    F.spook=Math.max(0,F.spook-dt);
+    const swim=F.spook>0?9:2.4;
+    F.m.position.x=F.hx+Math.cos(F.a)*swim;
+    F.m.position.z=F.hz+Math.sin(F.a)*swim;
+    F.m.position.y=F.wl-.9+Math.sin(t*2+F.hz*.05)*.16;
+    F.m.rotation.y=-F.a;
+    const d=F.m.position.distanceTo(P.pos);
+    /* noise scares them; crouching lets you get close */
+    if(d<14&&P.noise>(P.crouch?.5:.25)) F.spook=2.2;
+    /* dive on one and you have it by hand */
+    if(P.swimming&&d<3.2&&F.spook<=0){
+      F.caught=true; scene.remove(F.m); giveMat(F.kind,1);
+      toast('Caught a '+F.kind,'good'); sfx('pickup');
+    }
+  }
+}
+/* a blast in the water stuns everything nearby — bomb fishing */
+function stunFish(x,z,r){
+  let n=0;
+  for(const F of swimmers){
+    if(F.caught||F.stun>0) continue;
+    if(Math.hypot(F.m.position.x-x,F.m.position.z-z)<r){ F.stun=15; n++; }
+  }
+  if(n) toast(n+' fish float to the surface','good');
+  return n;
+}
+const _explodeFish=explode;
+explode=function(p,dmg,rad){
+  _explodeFish(p,dmg,rad);
+  if(p.y<waterAt(p.x,p.z)+3) stunFish(p.x,p.z,rad*2.6);
+};
+/* an arrow spears one outright */
+const _updateArrowsFish=updateArrows;
+updateArrows=function(dt){
+  for(const a of arrows){
+    if(a.__fish) continue;
+    for(const F of swimmers){
+      if(F.caught||F.stun>0) continue;
+      if(a.m.position.distanceTo(F.m.position)<1.5){
+        F.stun=15; a.__fish=true;
+        toast('Speared a '+F.kind,'good'); sfx('hit');
+        break;
+      }
+    }
+  }
+  _updateArrowsFish(dt);
+};
+const _updateBeastsFish=updateBeasts;
+updateBeasts=function(dt){ _updateBeastsFish(dt); updateFish(dt); };
+</script>
