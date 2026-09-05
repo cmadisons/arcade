@@ -11701,3 +11701,369 @@ const SHRINE_FULL={
               '| still generic:',missing.length, missing);
 })();
 </script>
+<script>
+"use strict";
+/* ================= ROADMAP 10 — the eighteen memories ================= */
+/* Each is a place in the world. Stand there and the scene plays. Recovering
+   all eighteen opens the last one and finishes the Champion story. */
+const MEMORIES=[
+ [1,'Subdued Ceremony',    -254, 1077,'Zelda','Father… I have done everything asked of me. It has changed nothing.'],
+ [2,'Resolve and Grief',    3323, 518,'Zelda','Mipha. You always could put me back together, and never yourself.'],
+ [3,'Zelda’s Resentment',  -3656,1758,'Zelda','You follow me everywhere. Do you never tire of it? Say something.'],
+ [4,'Blades of the Yiga',  -3816,-2819,'Link','…'],
+ [5,'A Premonition',        1841,-891,'Impa','She has seen it. The castle falling. She has seen all of it.'],
+ [6,'Silent Princess',      471, 2168,'Zelda','A silent princess. They will not grow in captivity, no matter how carefully you tend them.'],
+ [7,'Shelter from the Storm',-2100,-500,'Zelda','You never say anything. Is it duty? Or do you simply have nothing to say to me?'],
+ [8,'Father and Daughter',  -254, 1200,'King Rhoam','You will go to the spring and you will pray. That is all that is asked of you.'],
+ [9,'Slumbering Power',     3883,-1315,'Zelda','Nothing. Seventeen years, and still nothing wakes in me.'],
+ [10,'To Mount Lanayru',    3750,-1500,'Zelda','If the power does not come today, it never will.'],
+ [11,'Return of Calamity Ganon',-254,1077,'King Rhoam','It has begun. Ganon has returned, and we were not ready.'],
+ [12,'Despair',             300,-1500,'Zelda','The Guardians have turned. They are ours no longer.'],
+ [13,'Zelda’s Awakening',   -700, 900,'Zelda','Do not touch him! Do not you dare touch him!'],
+ [14,'Daruk’s Mettle',      2320,-3820,'Daruk','Leave it to me! Nothing gets past Daruk’s Protection!'],
+ [15,'Mipha’s Touch',       3323, 518,'Mipha','Hold still. I will not have you carry a scar you did not earn.'],
+ [16,'Revali’s Flap',      -3656,1758,'Revali','Watch closely. This is what a real warrior looks like.'],
+ [17,'Urbosa’s Hand',      -3816,-2819,'Urbosa','Little bird. You do not have to carry it all alone.'],
+ [18,'Rhoam’s Confession',  -148,1159,'King Rhoam','I was a poor father and a worse king. I told her to pray when she needed a father.']
+];
+P.memories={};
+const memorySites=[];
+(function placeMemories(){
+  const ringG=new THREE.TorusGeometry(4,.28,8,26);
+  const mat=new THREE.MeshBasicMaterial({color:0xd8e8ff,transparent:true,opacity:.7});
+  for(const [n,name,bx,by,who,line] of MEMORIES){
+    const x=bx, z=-by;
+    if(!onPlateau(x,z)&&Math.abs(x)>5200) continue;
+    const y=groundAt(x,z);
+    const g=new THREE.Group(); g.position.set(x,y+.4,z); world.add(g);
+    const ring=new THREE.Mesh(ringG,mat.clone());
+    ring.rotation.x=-Math.PI/2; g.add(ring);
+    const beam=new THREE.Mesh(new THREE.CylinderGeometry(3.4,3.4,26,14,1,true),
+      new THREE.MeshBasicMaterial({color:0xd8e8ff,transparent:true,opacity:.10,
+        side:THREE.DoubleSide,depthWrite:false}));
+    beam.position.y=13; g.add(beam);
+    const li=new THREE.PointLight(0xbfd8ff,1.2,40); li.position.y=4; g.add(li);
+    memorySites.push({n,name,who,line,x,z,y,g,ring,found:false});
+    IA({kind:'memory',n,x,z,y:y+1,r:6,label:'Memory '+n});
+  }
+  console.log('memory sites placed:',memorySites.length);
+})();
+function recallMemory(n){
+  const M=memorySites.find(m=>m.n===n);
+  if(!M||P.memories[n]) { toast('Already recalled'); return; }
+  P.memories[n]=1;
+  M.g.visible=false;
+  sfx('orb');
+  cut('Memory '+M.n,M.name,{t:2.6});
+  cut(M.who,M.line);
+  const count=Object.keys(P.memories).length;
+  toast('Memory recovered — '+count+'/'+memorySites.length,'good');
+  if(count>=memorySites.length&&!P.storyDone){
+    P.storyDone=true;
+    setTimeout(()=>{
+      cut('Zelda','You remember. All of it. Every last thing they asked of you, and everything you gave.');
+      cut('Zelda','I am still here, Link. I have been holding him a hundred years. Come to the castle. Come and finish it.');
+    },1200);
+  }
+}
+function updateMemories(dt){
+  const t=performance.now()/1000;
+  for(const M of memorySites){
+    if(P.memories[M.n]){ M.g.visible=false; continue; }
+    M.ring.rotation.z+=dt*.5;
+    M.ring.material.opacity=.5+Math.sin(t*1.6+M.x)*.2;
+  }
+}
+</script>
+<script>
+"use strict";
+/* ================= ROADMAP 12 — how the big monsters really fight ========= */
+/* A Talus is only hurt through the ore on its back, and you climb it to reach
+   it. A Hinox wears a necklace of weapons you can shoot off. A Lynel can be
+   mounted and ridden while you strike it. */
+const _hitEnemyBoss=hitEnemy;
+hitEnemy=function(E,dmg,nx,nz,el){
+  if(!E||!E.T){ _hitEnemyBoss(E,dmg,nx,nz,el); return; }
+  /* --- Talus: the ore, or nothing --- */
+  if(E.T.talus){
+    if(!E.ore){                                  // grow its ore the first time
+      E.ore=new THREE.Mesh(new THREE.DodecahedronGeometry(2.2,0),
+        new THREE.MeshLambertMaterial({color:0x2a2a2a,flatShading:true}));
+      E.ore.position.set(0,6.5*E.s,0); E.g.add(E.ore);
+      E.oreHits=0;
+    }
+    const orePos=new THREE.Vector3(); E.ore.getWorldPosition(orePos);
+    const nearOre=P.pos.distanceTo(orePos)<6 || P.riding===E;
+    if(!nearOre){
+      toast('Its hide turns the blow — strike the ore on its back','bad');
+      sfx('clang');
+      return;
+    }
+    E.oreHits++;
+    _hitEnemyBoss(E,dmg*3,nx,nz,el);            // ore takes triple
+    if(E.oreHits>=3&&P.riding===E){ P.riding=null; toast('It throws you off','bad'); }
+    return;
+  }
+  /* --- Hinox: the necklace comes off first --- */
+  if(E.T.n&&/Hinox|Stalnox/.test(E.T.n)){
+    if(E.necklace===undefined) E.necklace=3;
+    const headPos=E.pos.clone(); headPos.y+=6*E.s;
+    if(E.asleepBoss&&P.pos.distanceTo(headPos)<7){
+      _hitEnemyBoss(E,dmg*4,nx,nz,el);          // an eye strike while it sleeps
+      toast('Straight in the eye','good');
+      E.asleepBoss=false; return;
+    }
+  }
+  _hitEnemyBoss(E,dmg,nx,nz,el);
+};
+/* arrows knock the weapons off a Hinox necklace, and blind it */
+const _updateArrowsBoss=updateArrows;
+updateArrows=function(dt){
+  for(const a of arrows){
+    for(const E of enemies){
+      if(!E.alive||E.dormant||!E.T) continue;
+      if(/Hinox|Stalnox/.test(E.T.n)){
+        if(E.necklace===undefined) E.necklace=3;
+        const nk=E.pos.clone(); nk.y+=4.4*E.s;
+        if(E.necklace>0&&a.m.position.distanceTo(nk)<3.2){
+          E.necklace--;
+          toast('A weapon falls from its necklace'+(E.necklace?'':' — the last one'),'good');
+          spawnPickup(E.pos.x+(rnd()-.5)*6,E.pos.z+(rnd()-.5)*6,
+            {w:['Boko Club','Spiked Boko Club','Knight’s Broadsword','Iron Sledgehammer'][Math.floor(rnd()*4)]});
+          sfx('clang');
+        }
+        const eye=E.pos.clone(); eye.y+=6*E.s;
+        if(a.m.position.distanceTo(eye)<2.4){
+          E.stun=4; toast('Blinded','good'); sfx('hit');
+        }
+      }
+    }
+  }
+  _updateArrowsBoss(dt);
+};
+/* climbing onto a Talus, and riding a Lynel */
+function tryMount(){
+  for(const E of enemies){
+    if(!E.alive||E.dormant||!E.T) continue;
+    const d=E.pos.distanceTo(P.pos);
+    if(E.T.talus&&d<5*E.s&&P.pos.y>E.pos.y+1){
+      P.riding=E; toast('You climb onto the Talus','good'); sfx('climbjump'); return true;
+    }
+    if(E.T.charge&&d<4.5&&E.stun>0){          /* a stunned Lynel can be mounted */
+      P.riding=E; P.rideT=6;
+      toast('Mounted the Lynel — strike while you can','good'); sfx('flurry'); return true;
+    }
+  }
+  return false;
+}
+function updateBossRides(dt){
+  const E=P.riding;
+  if(!E){ return; }
+  if(!E.alive){ P.riding=null; return; }
+  if(E.T.talus){
+    P.pos.set(E.pos.x,E.pos.y+7*E.s,E.pos.z);
+    P.vel.set(0,0,0); P.onGround=true;
+    if(keys.Space){ P.riding=null; P.vel.y=9; }
+  } else {
+    P.rideT-=dt;
+    P.pos.set(E.pos.x,E.pos.y+4.4*E.s,E.pos.z);
+    P.vel.set(0,0,0); P.onGround=true;
+    E.stun=Math.max(E.stun,.2);
+    if(P.rideT<=0||keys.Space){ P.riding=null; P.vel.y=10; toast('You leap clear'); }
+  }
+}
+/* Hinox and Talus sleep out in the world until you wake them */
+const _updateEnemiesBoss=updateEnemies;
+updateEnemies=function(dt){
+  for(const E of enemies){
+    if(!E.alive||E.dormant||!E.T||!E.T.boss) continue;
+    if(E.asleepBoss===undefined) E.asleepBoss=/Hinox|Talus/.test(E.T.n);
+    if(E.asleepBoss){
+      if(E.aggroT>0||P.noise>.8&&E.pos.distanceTo(P.pos)<18){
+        E.asleepBoss=false; toast(E.T.n+' wakes','bad'); sfx('horn');
+      } else { E.g.rotation.z=E.T.talus?0:1.3; }
+    } else if(!E.T.talus) E.g.rotation.z=0;
+  }
+  _updateEnemiesBoss(dt);
+};
+
+/* ================= ROADMAP 13 — the enemies that were missing ============= */
+Object.assign(ETYPE,{
+  skywatcher:{n:'Guardian Skywatcher',hp:1500,dmg:58,spd:3.2,col:0x7a7466,s:2.6,
+              guardian:true,beam:true,fly:true,boss:true},
+  turret    :{n:'Guardian Turret',    hp:1500,dmg:58,spd:0,  col:0x6b6455,s:2.6,
+              guardian:true,beam:true},
+  sentry    :{n:'Sentry',             hp:1000,dmg:20,spd:4.0,col:0x8a9490,s:1.0,
+              guardian:true,fly:true},
+  cursedBoko:{n:'Cursed Bokoblin',    hp:1,   dmg:14,spd:5.0,col:0x6a2a4a,s:1.0,night:true,cursed:true},
+  cursedMoblin:{n:'Cursed Moblin',    hp:30,  dmg:16,spd:4.4,col:0x5a2040,s:1.9,night:true,cursed:true},
+  cursedLiz :{n:'Cursed Lizalfos',    hp:1,   dmg:12,spd:6.2,col:0x4a2a5a,s:1.15,night:true,cursed:true},
+  kohga     :{n:'Master Kohga',       hp:300, dmg:20,spd:3.0,col:0x8a2a3a,s:2.0,boss:true,kohga:true}
+});
+(function placeNewEnemies(){
+  const add=(t,x,z,night)=>{
+    if(!onPlateau(x,z)&&Math.abs(x)<5200&&Math.abs(z)<5200&&groundAt(x,z)>waterAt(x,z)+2){
+      const E=makeEnemy({t,x:Math.round(x),z:Math.round(z),night:!!night});
+      if(night){E.dormant=true;E.g.visible=false;}
+      return E;
+    }
+  };
+  /* Guardians hold Central Hyrule and Akkala */
+  for(let i=0;i<6;i++){ const a=rnd()*TAU,r=rnd()*900;
+    add('turret',REGIONS.central.x+Math.cos(a)*r,REGIONS.central.z+Math.sin(a)*r); }
+  for(let i=0;i<4;i++){ const a=rnd()*TAU,r=rnd()*700;
+    add('skywatcher',REGIONS.castle.x+Math.cos(a)*r,REGIONS.castle.z+Math.sin(a)*r); }
+  for(let i=0;i<5;i++){ const a=rnd()*TAU,r=rnd()*800;
+    add('turret',REGIONS.akkala.x+Math.cos(a)*r,REGIONS.akkala.z+Math.sin(a)*r); }
+  for(let i=0;i<6;i++){ const a=rnd()*TAU,r=rnd()*400;
+    add('sentry',REGIONS.castle.x+Math.cos(a)*r,REGIONS.castle.z+Math.sin(a)*r); }
+  /* cursed things rise at night in the graveyard places */
+  for(const R of [REGIONS.woodland,REGIONS.hebra,REGIONS.akkala,REGIONS.central]){
+    for(let i=0;i<5;i++){ const a=rnd()*TAU,r=rnd()*R.r;
+      add(['cursedBoko','cursedLiz','cursedMoblin'][Math.floor(rnd()*3)],
+          R.x+Math.cos(a)*r,R.z+Math.sin(a)*r,true); }
+  }
+  /* Master Kohga, in the Yiga hideout out in the Wasteland */
+  const K=add('kohga',REGIONS.wasteland.x-600,REGIONS.wasteland.z-500);
+  if(K){ K.aggroT=0; window.__kohga=K; }
+  console.log('new enemy types placed; total enemies:',enemies.length);
+})();
+/* Master Kohga drops his own boulder on himself, as he does */
+function updateKohga(dt){
+  const K=window.__kohga;
+  if(!K||!K.alive||K.dormant||K.__far) return;
+  K.kohgaT=(K.kohgaT||0)-dt;
+  if(K.aggroT>0&&K.kohgaT<=0){
+    K.kohgaT=4.5;
+    if(!K.rock){
+      K.rock=new THREE.Mesh(new THREE.DodecahedronGeometry(3,0),
+        new THREE.MeshLambertMaterial({color:0x7d7568,flatShading:true}));
+      scene.add(K.rock);
+    }
+    K.rock.visible=true;
+    K.rock.position.set(K.pos.x,K.pos.y+22,K.pos.z);
+    K.rockFall=1.2;
+  }
+  if(K.rockFall>0){
+    K.rockFall-=dt;
+    K.rock.position.y-=34*dt;
+    if(K.rock.position.y<=K.pos.y+3){
+      K.rock.visible=false; K.rockFall=0;
+      if(rnd()<.5){                       /* it lands on him */
+        hitEnemy(K,120,0,1,null);
+        toast('Master Kohga drops it on himself','good');
+      } else if(K.pos.distanceTo(P.pos)<7) damage(K.T.dmg,'Master Kohga');
+    }
+  }
+}
+</script>
+<script>
+"use strict";
+/* ================= ROADMAP 15 — snow, fog and heat haze ================= */
+let snowing=false, foggy=false, snowMesh=null, fogVolume=null;
+(function buildWeather(){
+  /* snow */
+  const n=2600, pos=new Float32Array(n*3);
+  for(let i=0;i<n;i++){ pos[i*3]=(rnd()-.5)*120; pos[i*3+1]=rnd()*60; pos[i*3+2]=(rnd()-.5)*120; }
+  const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.BufferAttribute(pos,3));
+  snowMesh=new THREE.Points(g,new THREE.PointsMaterial({color:0xf4f8ff,size:.42,
+    transparent:true,opacity:.85}));
+  snowMesh.visible=false; snowMesh.frustumCulled=false; scene.add(snowMesh);
+  /* fog: a soft shell around the player that thickens the air */
+  fogVolume=new THREE.Mesh(new THREE.SphereGeometry(120,16,12),
+    new THREE.MeshBasicMaterial({color:0xc8d2d8,transparent:true,opacity:0,
+      side:THREE.BackSide,depthWrite:false}));
+  fogVolume.frustumCulled=false; scene.add(fogVolume);
+})();
+function updateWeather2(dt){
+  if(P.inShrine||P.inRes||P.inBeast||P.inCastle){
+    snowMesh.visible=false; fogVolume.material.opacity=0; return;
+  }
+  const t=liveTemp(P.pos.x,P.pos.z,P.pos.y);
+  /* below freezing, rain falls as snow */
+  snowing=raining&&t<2;
+  const wasRain=rainMesh.visible;
+  if(snowing) rainMesh.visible=false;
+  snowMesh.visible=snowing;
+  if(snowing){
+    snowMesh.position.set(P.pos.x,P.pos.y,P.pos.z);
+    const p=snowMesh.geometry.attributes.position.array;
+    const tt=performance.now()/1000;
+    for(let i=0;i<p.length;i+=3){
+      p[i+1]-=dt*6;                                   // snow drifts rather than falls
+      p[i]  +=Math.sin(tt*.7+p[i+2]*.05)*dt*3;
+      if(p[i+1]<0) p[i+1]=60;
+    }
+    snowMesh.geometry.attributes.position.needsUpdate=true;
+  }
+  /* fog: mornings in the woods, and anywhere cold and damp */
+  const f=(P.time/DAY_LEN)%1;
+  const dawn=f>.20&&f<.32;
+  const woods=Math.hypot(P.pos.x-REGIONS.woodland.x,P.pos.z-REGIONS.woodland.z)<1200
+           || Math.hypot(P.pos.x-REGIONS.faron.x,P.pos.z-REGIONS.faron.z)<1000;
+  const wantFog=(dawn&&woods)||(raining&&t<10&&woods)||(t<-15);
+  foggy=wantFog;
+  const target=wantFog?0.55:0;
+  fogVolume.material.opacity=lerp(fogVolume.material.opacity,target,1-Math.pow(.02,dt));
+  fogVolume.position.copy(P.pos);
+  if(fogVolume.material.opacity>0.02){
+    scene.fog.density=lerp(scene.fog.density,0.0042,1-Math.pow(.05,dt));
+  }
+  /* heat haze over Death Mountain and the desert at noon */
+  const hot=t>42;
+  if(hot){
+    const wob=Math.sin(performance.now()/220)*0.0009;
+    camera.fov=lerp(camera.fov,62+wob*900,.2);
+    camera.updateProjectionMatrix();
+  }
+  $('#weather').textContent = snowing?'Snow':foggy?'Fog':
+    (storming?'Thunderstorm':raining?'Rain':hot?'Heat haze':'Clear');
+  /* snow underfoot slows you and shows your tracks */
+  if(snowing&&P.onGround&&!P.mount) P.vel.multiplyScalar(0.985);
+}
+</script>
+<script>
+"use strict";
+/* ---- wiring the memories, boss rides, Kohga and weather in ---- */
+const _interactMem=interact;
+interact=function(){
+  const it=nearest;
+  if(it&&it.kind==='memory'){ recallMemory(it.n); return; }
+  if(tryMount()) return;
+  _interactMem();
+};
+const _promptMem=promptFor;
+promptFor=function(it){
+  if(it&&it.kind==='memory')
+    return P.memories[it.n]?'<b>Memory '+it.n+'</b> · recovered':'<b>E</b> Recall this place';
+  return _promptMem(it);
+};
+const _updatePlayerExtra=updatePlayer;
+updatePlayer=function(dt){
+  _updatePlayerExtra(dt);
+  updateBossRides(dt);
+};
+const _updateBeastsExtra=updateBeasts;
+updateBeasts=function(dt){
+  _updateBeastsExtra(dt);
+  updateMemories(dt); updateKohga(dt); updateWeather2(dt);
+};
+/* the memory count belongs in the pause screen */
+const _pauseMem=togglePause;
+togglePause=function(){
+  _pauseMem();
+  if(!paused) return;
+  const old=document.getElementById('memoryLog'); if(old) old.remove();
+  const n=Object.keys(P.memories||{}).length;
+  const h='<div id="memoryLog" style="font-family:var(--ui);font-size:13px;color:var(--muted);margin-top:6px">'+
+    'Memories recovered: '+n+' of '+memorySites.length+
+    (P.storyDone?'  ·  the story is whole':'')+'</div>';
+  $('#pauseQuest').insertAdjacentHTML('afterend',h);
+};
+const _newGameExtra=newGame;
+newGame=function(){
+  _newGameExtra();
+  P.memories={}; P.storyDone=false; P.riding=null;
+  for(const M of memorySites) M.g.visible=true;
+};
+</script>
