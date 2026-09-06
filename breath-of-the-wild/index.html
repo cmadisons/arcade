@@ -13485,3 +13485,476 @@ $('#btnMaster').addEventListener('click',()=>{ if(P.master) buildSkyPlatforms();
 (function(){ const k=$('#keys');
   if(k) k.insertAdjacentHTML('beforeend','<div><span>Ride a sand seal</span><k>E</k></div>'); })();
 </script>
+<script>
+"use strict";
+/* ============ the amiibo tables, as they really are ============
+   Every amiibo rolls three ways: a rare exclusive, a chest item, and a
+   handful of food or materials. Several give more than one thing. */
+Object.assign(WEAPONS,{
+  "Soldier's Broadsword":{atk:26,dur:27,hand:1,col:0xb8bfc6,len:1.1},
+  'Rusty Claymore'      :{atk:18,dur:14,hand:2,col:0x9c6b4b,len:1.5},
+  'Fierce Deity Sword'  :{atk:60,dur:60,hand:2,col:0xd8e8f4,len:1.7},
+  "Hero's Sword"        :{atk:30,dur:40,hand:1,col:0xbfe4ee,len:1.1},
+  'Guardian Sword++'    :{atk:40,dur:32,hand:1,col:0x9aa8a0,len:1.1},
+  'Guardian Spear++'    :{atk:32,dur:30,hand:3,col:0x9aa8a0,len:2.1},
+  'Guardian Axe++'      :{atk:60,dur:36,hand:2,col:0x9aa8a0,len:1.5}
+});
+Object.assign(BOWS,{"Soldier's Bow":{atk:14,dur:30,col:0xb8bfc6,mult:1}});
+Object.assign(SHIELDS,{
+  "Soldier's Shield":{grd:22,dur:22,col:0xb8bfc6},
+  "Hero's Shield"   :{grd:55,dur:40,col:0x3f6cb0},
+  'Guardian Shield++':{grd:44,dur:28,col:0x9aa8a0},
+  'Ancient Shield'  :{grd:70,dur:40,col:0x9aa8a0}
+});
+Object.assign(ARROWS,{'Ancient Arrow':{el:'ancient',col:0x9aa8a0,mult:1}});
+for(const [k,c,g] of [
+  ['Palm Fruit',0xd8a84a,'\u{1F965}'],['Chickaloo Tree Nut',0x9a6f3a,'\u{1F330}'],
+  ['Mighty Bananas',0xe8d24a,'\u{1F34C}'],['Hearty Durian',0x9ac44a,'\u{1F95D}'],
+  ['Electric Safflina',0xe3d055,'\u{1F33F}'],['Swift Violet',0x8a5ad8,'\u{1F33C}'],
+  ['Fortified Pumpkin',0xd8842a,'\u{1F383}'],['Blue Nightshade',0x4a5a9a,'\u{1F33F}'],
+  ['Hearty Radish',0xd8c8b8,'\u{1F955}'],['Big Hearty Radish',0xe8d8c8,'\u{1F955}'],
+  ['Endura Carrot',0xd86a2a,'\u{1F955}'],['Sunshroom',0xd8724a,'\u{1F344}'],
+  ['Zapshroom',0xe3d055,'\u{1F344}'],['Razorshroom',0x9ac4d8,'\u{1F344}'],
+  ['Ironshroom',0x8a8f94,'\u{1F344}'],['Silent Shroom',0x9a8ac4,'\u{1F344}'],
+  ['Endura Shroom',0x8a6a4a,'\u{1F344}'],['Stealthfin Trout',0x7a9ac4,'\u{1F41F}'],
+  ['Raw Prime Meat',0xc47a72,'\u{1F356}'],['Raw Gourmet Meat',0xd88a80,'\u{1F356}'],
+  ['Raw Bird Thigh',0xd09a80,'\u{1F357}'],['Raw Whole Bird',0xd8a88a,'\u{1F357}'],
+  ['Lynel Guts',0x8a3a4a,'\u{1FAC0}'],['Lizalfos Tail',0x5f9a5a,'\u{1F98E}'],
+  ['Moblin Guts',0x7a4a5a,'\u{1FAC0}'],['Ancient Screw',0x9aa8a0,'\u{2699}'],
+  ['Ancient Spring',0x9aa8a0,'\u{2699}'],['Ancient Shaft',0x9aa8a0,'\u{2699}']
+]) if(!MATS[k]) MATS[k]={h:1,col:c,g,where:'grass'};
+
+const ARROWS5=['Fire Arrow','Ice Arrow','Shock Arrow','Bomb Arrow'];
+const PLANTS=['Hyrule Herb','Cool Safflina','Warm Safflina','Electric Safflina','Swift Carrot',
+  'Swift Violet','Mighty Thistle','Armoranth','Fortified Pumpkin','Blue Nightshade',
+  'Hearty Radish','Big Hearty Radish','Endura Carrot','Silent Princess'];
+const SHROOMS=['Hylian Shroom','Stamella Shroom','Chillshroom','Sunshroom','Zapshroom','Rushroom',
+  'Razorshroom','Ironshroom','Silent Shroom','Endura Shroom','Hearty Truffle','Big Hearty Truffle'];
+const FISHLIST=['Hyrule Bass','Staminoka Bass','Chillfin Trout','Sizzlefin Trout','Voltfin Trout',
+  'Stealthfin Trout','Mighty Carp','Armored Carp','Mighty Porgy','Armored Porgy','Hearty Bass','Hearty Salmon'];
+const FRUIT=['Apple','Palm Fruit','Wildberry','Acorn','Chickaloo Tree Nut','Hydromelon',
+  'Spicy Pepper','Voltfruit','Fleet-Lotus Seeds','Mighty Bananas','Hearty Durian'];
+const GEMS=['Diamond','Sapphire','Ruby','Topaz','Luminous Stone','Opal','Amber'];
+const MEATS=['Raw Meat','Raw Prime Meat','Raw Gourmet Meat','Raw Bird Drumstick','Raw Bird Thigh','Raw Whole Bird'];
+
+/* replace the approximate table with the real one */
+AMIIBOS.length=0;
+AMIIBOS.push(
+ {n:'Link (Super Smash Bros.)', s:'Super Smash Bros.',
+  ex:['Epona','Cap of Twilight','Trousers of Twilight','Tunic of Twilight'],
+  chest:["Knight's Broadsword","Soldier's Broadsword","Traveler's Sword",
+         "Knight's Shield","Soldier's Shield","Traveler's Shield",...ARROWS5],
+  other:[...FRUIT,'Arrow']},
+ {n:'Zelda (Super Smash Bros.)', s:'Super Smash Bros.',
+  ex:['Twilight Bow'],
+  chest:['Royal Bow',"Knight's Bow","Soldier's Bow","Traveler's Bow",'Star Fragment',...GEMS],
+  other:PLANTS},
+ {n:'Sheik (Super Smash Bros.)', s:'Super Smash Bros.',
+  ex:["Sheik's Mask"],
+  chest:['Eightfold Blade','Edge of Duality','Eightfold Longblade','Serpentine Spear',
+         'Phrenic Bow',"Shield of the Mind's Eye",...ARROWS5],
+  other:[...SHROOMS,'Arrow']},
+ {n:'Ganondorf (Super Smash Bros.)', s:'Super Smash Bros.',
+  ex:['Sword of the Six Sages'],
+  chest:['Golden Claymore',"Knight's Claymore","Soldier's Claymore","Traveler's Claymore",
+         'Star Fragment',...GEMS,'Lynel Guts','Lizalfos Tail','Moblin Guts'],
+  other:['Arrow','Rupee','Bokoblin Guts']},
+ {n:'Toon Link (Super Smash Bros.)', s:'Super Smash Bros.',
+  ex:['Cap of the Wind','Tunic of the Wind','Trousers of the Wind','Sea-Breeze Boomerang'],
+  chest:["Knight's Broadsword","Soldier's Broadsword","Traveler's Sword",'Boomerang',...ARROWS5],
+  other:[...FISHLIST,'Arrow']},
+ {n:'Toon Link (30th Anniversary)', s:'30th Anniversary',
+  ex:['Cap of the Wind','Tunic of the Wind','Trousers of the Wind','Sea-Breeze Boomerang'],
+  chest:["Knight's Broadsword","Soldier's Broadsword","Traveler's Sword",'Boomerang',...ARROWS5],
+  other:[...FISHLIST,'Arrow']},
+ {n:'Link (30th, Ocarina of Time)', s:'30th Anniversary',
+  ex:['Cap of Time','Trousers of Time','Tunic of Time',"Biggoron's Sword"],
+  chest:['Royal Claymore',"Knight's Claymore","Soldier's Claymore",...ARROWS5],
+  other:['Raw Meat','Raw Prime Meat','Raw Gourmet Meat','Arrow']},
+ {n:'Link (30th, The Legend of Zelda)', s:'30th Anniversary',
+  ex:['Cap of the Hero','Tunic of the Hero','Trousers of the Hero',"Hero's Sword"],
+  chest:["Knight's Broadsword","Soldier's Broadsword","Traveler's Sword",
+         "Knight's Shield","Soldier's Shield","Traveler's Shield",...ARROWS5],
+  other:['Arrow','Rupee']},
+ {n:'Toon Zelda (30th Anniversary)', s:'30th Anniversary',
+  ex:["Hero's Shield"],
+  chest:['Royal Shield',"Knight's Shield","Soldier's Shield","Traveler's Shield",'Star Fragment',...GEMS],
+  other:PLANTS},
+ {n:'Link (Majora’s Mask)', s:'30th Anniversary',
+  ex:['Fierce Deity Mask','Fierce Deity Boots','Fierce Deity Armor','Fierce Deity Sword'],
+  chest:["Knight's Broadsword",'Royal Claymore',...ARROWS5],
+  other:MEATS},
+ {n:'Link (Skyward Sword)', s:'30th Anniversary',
+  ex:['Cap of the Sky','Trousers of the Sky','Tunic of the Sky','Goddess Sword'],
+  chest:["Knight's Broadsword","Soldier's Broadsword",...ARROWS5],
+  other:[...FRUIT,'Arrow']},
+ {n:'Zelda (Breath of the Wild)', s:'Breath of the Wild',
+  ex:[],
+  chest:['Radiant Shield','Royal Shield',"Knight's Shield","Soldier's Shield","Traveler's Shield",
+         'Star Fragment',...GEMS],
+  other:PLANTS},
+ {n:'Link — Archer (Breath of the Wild)', s:'Breath of the Wild',
+  ex:[],
+  chest:['Falcon Bow','Royal Bow',"Knight's Bow","Soldier's Bow","Traveler's Bow",...ARROWS5],
+  other:[...FISHLIST,...MEATS,'Arrow']},
+ {n:'Link — Rider (Breath of the Wild)', s:'Breath of the Wild',
+  ex:["Traveler's Bridle","Traveler's Saddle"],
+  chest:['Moonlight Scimitar','Royal Broadsword',"Knight's Broadsword","Soldier's Broadsword",
+         "Traveler's Sword",...ARROWS5],
+  other:[...SHROOMS,'Arrow']},
+ {n:'Bokoblin (Breath of the Wild)', s:'Breath of the Wild',
+  ex:[],
+  chest:['Boko Club','Spiked Boko Club','Boko Bat','Boko Spear','Boko Bow','Boko Shield'],
+  other:['Raw Meat','Raw Prime Meat','Raw Gourmet Meat','Bokoblin Guts','Bokoblin Horn','Bokoblin Fang']},
+ {n:'Guardian (Breath of the Wild)', s:'Breath of the Wild',
+  ex:['Ancient Shield'],
+  chest:['Guardian Sword++','Guardian Spear++','Guardian Axe++','Guardian Shield++',
+         'Ancient Core','Giant Ancient Core','Ancient Arrow','Rusty Broadsword','Rusty Claymore','Rusty Halberd'],
+  other:['Ancient Screw','Ancient Spring','Ancient Shaft','Ancient Gear',...GEMS]},
+ {n:'Wolf Link (Twilight Princess)', s:'Twilight Princess',
+  ex:[], chest:[], other:['Raw Meat','Raw Prime Meat','Hearty Truffle'], wolf:true},
+ /* the four Champions */
+ {n:'Daruk',  s:'Champion', ex:['Boulder Breaker'],        chest:['Vah Rudania Divine Helm','Ruby'],   other:MEATS},
+ {n:'Mipha',  s:'Champion', ex:['Lightscale Trident'],      chest:['Vah Ruta Divine Helm','Opal'],      other:FISHLIST},
+ {n:'Revali', s:'Champion', ex:['Great Eagle Bow'],         chest:['Vah Medoh Divine Helm','Sapphire'], other:['Raw Bird Drumstick','Raw Bird Thigh','Raw Whole Bird']},
+ {n:'Urbosa', s:'Champion', ex:['Scimitar of the Seven'],   chest:['Vah Naboris Divine Helm','Topaz'],  other:[...FRUIT]}
+);
+/* one scan gives an exclusive if you have not had it, a chest item, and food */
+function tapAmiibo(a){
+  if(!amiiboAvailable(a)){ toast(a.n+' has already been tapped today','bad'); return; }
+  P.amiiboUsed[a.n]=amiiboDay();
+  P.amiiboEx=P.amiiboEx||{};
+  const dropped=[];
+  const drop=(item,n)=>{
+    const ang=rnd()*TAU, r=3+rnd()*5;
+    const x=P.pos.x+Math.cos(ang)*r, z=P.pos.z+Math.sin(ang)*r;
+    if(WEAPONS[item]||BOWS[item]||SHIELDS[item]) spawnPickup(x,z,{w:item});
+    else if(ARROWS[item]) spawnPickup(x,z,{a:item,n:n||5});
+    else if(ARMOR[item]) give(item);
+    else if(HORSE_GEAR&&HORSE_GEAR[item]){ P.horseGearOwned=P.horseGearOwned||{};
+      P.horseGearOwned[item]=1; toast('Got '+item,'good'); }
+    else if(item==='Rupee'){ P.rupees+=100; }
+    else if(item==='Epona'){ spawnEpona(); }
+    else spawnPickup(x,z,{m:item});
+    dropped.push(item);
+  };
+  /* the exclusive comes first, and only until you have them all */
+  const exLeft=(a.ex||[]).filter(e=>!(P.amiiboEx[a.n]||{})[e]);
+  if(exLeft.length&&rnd()<0.55){
+    const e=exLeft[Math.floor(rnd()*exLeft.length)];
+    P.amiiboEx[a.n]=P.amiiboEx[a.n]||{}; P.amiiboEx[a.n][e]=1;
+    drop(e);
+  }
+  if(a.chest&&a.chest.length) drop(a.chest[Math.floor(rnd()*a.chest.length)]);
+  const others=1+Math.floor(rnd()*3);
+  for(let i=0;i<others&&a.other&&a.other.length;i++)
+    drop(a.other[Math.floor(rnd()*a.other.length)]);
+  if(a.wolf&&!P.wolfLink){ P.wolfLink=true; summonWolfLink(); dropped.push('Wolf Link'); }
+  sfx('orb');
+  toast(a.n+' — '+dropped.join(', '),'good');
+  cut('Sheikah Slate',a.n+'.  '+dropped.join(', ')+' fall out of the light.',{t:3});
+  renderAmiibo();
+}
+/* Epona, who arrives already tame */
+function spawnEpona(){
+  if(P.epona){ toast('Epona is already yours'); return; }
+  const H=makeHorse(P.pos.x+8,P.pos.z+8,0x8a4a2a,false);
+  H.name='Epona'; H.tamed=true; H.registered=true; H.maxSpd=20; H.bondLevel=5;
+  H.g.scale.setScalar(1.1);
+  P.epona=true; P.stable=P.stable||{}; P.stable['Epona']={spd:20,epona:true,gear:{}};
+  toast('Epona arrives','good');
+}
+</script>
+<script>
+"use strict";
+/* horse tack was keyed with curly apostrophes; alias both forms so nothing
+   can miss again */
+(function aliasHorseGear(){
+  for(const k of Object.keys(HORSE_GEAR)){
+    const straight=k.replace(/[‘’ʼ]/g,"'");
+    const curly=k.replace(/'/g,'’');
+    if(!HORSE_GEAR[straight]) HORSE_GEAR[straight]=HORSE_GEAR[k];
+    if(!HORSE_GEAR[curly])    HORSE_GEAR[curly]=HORSE_GEAR[k];
+  }
+  console.log('horse tack aliased:',Object.keys(HORSE_GEAR).length,'keys');
+})();
+</script>
+<script>
+"use strict";
+/* ============ the full cooking book ============
+   Recipes match on categories as well as exact ingredients: "any meat",
+   "any mushroom", "four different kinds of fruit". The pot picks the most
+   specific recipe your ingredients can satisfy. */
+for(const [k,c,g] of [
+  ['Rock Salt',0xe8e4dc,'\u{1F9C2}'],['Goron Spice',0xc4593a,'\u{1F336}'],
+  ['Hylian Rice',0xf0e8d0,'\u{1F35A}'],['Tabantha Wheat',0xd8c48a,'\u{1F33E}'],
+  ['Goat Butter',0xf0e0a0,'\u{1F9C8}'],['Fresh Milk',0xf4f4f0,'\u{1F95B}'],
+  ['Cane Sugar',0xf0f0e8,'\u{1F36C}'],['Courser Bee Honey',0xd8a83a,'\u{1F36F}'],
+  ['Monster Extract',0x8a2a4a,'\u{1F9EA}'],['Fairy',0xf0a0d8,'\u{1F9DA}'],
+  ['Ironshell Crab',0x8a8272,'\u{1F980}'],['Razorclaw Crab',0xc44a3a,'\u{1F980}'],
+  ['Energetic Rhino Beetle',0x4a6a3a,'\u{1FAB2}'],['Hearty Blueshell Snail',0x7a9a8a,'\u{1F40C}']
+]) if(!MATS[k]) MATS[k]={h:1,col:c,g,where:'grass'};
+MATS['Rock Salt'].h=0; MATS['Goron Spice'].h=0; MATS['Cane Sugar'].h=0;
+MATS['Monster Extract'].part=true; MATS['Fairy'].h=7;
+
+/* which categories each ingredient belongs to */
+const CAT={};
+const setCat=(items,...cats)=>{ for(const i of items) CAT[i]=(CAT[i]||[]).concat(cats); };
+setCat(['Raw Meat','Raw Prime Meat','Raw Gourmet Meat','Raw Bird Drumstick','Raw Bird Thigh','Raw Whole Bird'],'meat');
+setCat(['Raw Bird Drumstick','Raw Bird Thigh','Raw Whole Bird'],'poultry');
+setCat(['Hylian Shroom','Stamella Shroom','Chillshroom','Sunshroom','Zapshroom','Rushroom',
+        'Razorshroom','Ironshroom','Silent Shroom','Endura Shroom','Hearty Truffle','Big Hearty Truffle'],'mushroom');
+setCat(['Hyrule Herb','Cool Safflina','Warm Safflina','Electric Safflina','Swift Violet',
+        'Mighty Thistle','Armoranth','Blue Nightshade','Silent Princess'],'greens','vegetable');
+setCat(['Swift Carrot','Endura Carrot'],'carrot','vegetable','greens');
+setCat(['Hearty Radish','Big Hearty Radish'],'radish','vegetable','greens');
+setCat(['Fortified Pumpkin'],'vegetable','greens');
+setCat(['Apple','Palm Fruit','Wildberry','Hydromelon','Spicy Pepper','Voltfruit',
+        'Fleet-Lotus Seeds','Mighty Bananas','Hearty Durian'],'fruit');
+setCat(['Acorn','Chickaloo Tree Nut'],'nut');
+setCat(['Hyrule Bass','Hearty Bass','Staminoka Bass','Armored Porgy','Mighty Porgy','Sanke Carp',
+        'Mighty Carp','Armored Carp','Chillfin Trout','Sizzlefin Trout','Voltfin Trout',
+        'Stealthfin Trout','Hearty Salmon','Hyrule Herring'],'fish','seafood');
+setCat(['Bright-Eyed Crab','Ironshell Crab','Razorclaw Crab'],'crab','seafood');
+setCat(['Sneaky River Snail','Hearty Blueshell Snail'],'snail','seafood');
+setCat(['Diamond','Sapphire','Ruby','Topaz','Opal','Amber','Luminous Stone','Star Fragment'],'gem');
+setCat(['Bokoblin Horn','Bokoblin Fang','Bokoblin Guts','Chuchu Jelly','Red Chuchu Jelly',
+        'White Chuchu Jelly','Yellow Chuchu Jelly','Keese Wing','Keese Eyeball','Lynel Guts',
+        'Lizalfos Tail','Moblin Guts','Monster Extract','Ancient Core','Giant Ancient Core',
+        'Ancient Gear','Ancient Screw','Ancient Spring','Ancient Shaft'],'monster');
+setCat(['Hot-Footed Frog','Hightail Lizard','Tireless Frog','Restless Cricket','Bright-Eyed Crab',
+        'Winterwing Butterfly','Cold Darner','Summerwing Butterfly','Warm Darner','Electric Darner',
+        'Thunderwing Butterfly','Sunset Firefly','Sneaky River Snail','Mighty Thistle',
+        'Bladed Rhino Beetle','Armoranth','Rugged Rhino Beetle','Fireproof Lizard',
+        'Smotherwing Butterfly','Hearty Lizard','Energetic Rhino Beetle'],'critter');
+const inCat=(item,c)=>(CAT[item]||[]).includes(c);
+
+/* need tokens: a plain name, "@category", or "@category x4" for four different kinds */
+const R=(rec,n,need,eff)=>({rec,n,need,eff});
+const COOKBOOK=[
+ /* meat */
+ R(2,'Meat Skewer',['@meat']), R(2,'Salt-Grilled Meat',['@meat','Rock Salt']),
+ R(2,'Spiced Meat Skewer',['Goron Spice','Raw Meat']),
+ R(3,'Meat and Mushroom Skewer',['@meat','@mushroom']),
+ R(3,'Meat-Stuffed Pumpkin',['Fortified Pumpkin','@meat'],'tough'),
+ R(3,'Pepper Steak',['@meat','Spicy Pepper'],'spicy'),
+ R(3,'Prime Spiced Meat Skewer',['Goron Spice','Raw Prime Meat']),
+ R(3,'Salt-Grilled Prime Meat',['Raw Prime Meat','Rock Salt']),
+ R(4,'Meat and Rice Bowl',['Raw Meat','Hylian Rice','Rock Salt']),
+ R(4,'Meat and Seafood Fry',['@meat','@seafood']),
+ R(4,'Meat Curry',['Goron Spice','Hylian Rice','Raw Meat']),
+ R(4,'Meat Pie',['Goat Butter','@meat','Rock Salt','Tabantha Wheat']),
+ R(4,'Meaty Rice Balls',['Hylian Rice','@meat']),
+ R(4,'Poultry Curry',['Hylian Rice','Goron Spice','Raw Bird Drumstick']),
+ R(4,'Steamed Meat',['@meat','@greens']),
+ R(5,'Creamy Meat Soup',['Fresh Milk','Rock Salt','@greens','@meat']),
+ R(5,'Meat Stew',['@meat','Goat Butter','Fresh Milk','Tabantha Wheat']),
+ R(5,'Prime Meat and Rice Bowl',['Raw Prime Meat','Hylian Rice','Rock Salt']),
+ R(5,'Prime Meat and Seafood Fry',['Raw Prime Meat','@seafood']),
+ R(5,'Prime Meat Curry',['Goron Spice','Hylian Rice','Raw Prime Meat']),
+ R(5,'Prime Poultry Curry',['Goron Spice','Hylian Rice','Raw Bird Thigh']),
+ R(6,'Glazed Meat',['Courser Bee Honey','@meat'],'energizing'),
+ R(6,'Gourmet Spiced Meat Skewer',['Goron Spice','Raw Gourmet Meat']),
+ R(6,'Poultry Pilaf',['Bird Egg','Goat Butter','Hylian Rice','Raw Bird Drumstick']),
+ R(6,'Prime Meat Stew',['Raw Prime Meat','Goat Butter','Fresh Milk','Tabantha Wheat']),
+ R(6,'Salt-Grilled Gourmet Meat',['Raw Gourmet Meat','Rock Salt']),
+ R(7,'Prime Poultry Pilaf',['Bird Egg','Goat Butter','Hylian Rice','Raw Bird Thigh']),
+ R(8,'Gourmet Meat and Rice Bowl',['Raw Gourmet Meat','Hylian Rice','Rock Salt']),
+ R(8,'Gourmet Meat and Seafood Fry',['Raw Gourmet Meat','@seafood']),
+ R(8,'Gourmet Meat Curry',['Hylian Rice','Goron Spice','Raw Gourmet Meat']),
+ R(8,'Gourmet Poultry Curry',['Goron Spice','Hylian Rice','Raw Whole Bird']),
+ R(9,'Gourmet Meat Stew',['Raw Whole Bird','Tabantha Wheat','Goat Butter','Fresh Milk']),
+ R(10,'Copious Meat Skewers',['@meat x4']),
+ R(10,'Gourmet Poultry Pilaf',['Bird Egg','Goat Butter','Hylian Rice','Raw Whole Bird']),
+ /* seafood */
+ R(99,'Clam Chowder',['Fresh Milk','Goat Butter','Hearty Blueshell Snail','Tabantha Wheat'],'hearty'),
+ R(99,'Salmon Meuniere',['Goat Butter','Hearty Salmon','Tabantha Wheat'],'hearty'),
+ R(99,'Salmon Risotto',['Goat Butter','Hearty Salmon','Hylian Rice','Rock Salt'],'hearty'),
+ R(2,'Crab Stir-Fry',['@crab','Goron Spice']),
+ R(2,'Fish Skewer',['@fish']),
+ R(2,'Salt-Grilled Crab',['@crab','Rock Salt']),
+ R(2,'Salt-Grilled Fish',['@fish','Rock Salt']),
+ R(2,'Seafood Skewer',['@seafood']),
+ R(3,'Fish and Mushroom Skewer',['@fish','@mushroom']),
+ R(3,'Pepper Seafood',['@seafood','Spicy Pepper'],'spicy'),
+ R(4,'Crab Risotto',['@crab','Goat Butter','Hylian Rice','Rock Salt']),
+ R(4,'Fish Pie',['Goat Butter','Rock Salt','@seafood','Tabantha Wheat']),
+ R(4,'Porgy Meuniere',['Armored Porgy','Goat Butter','Tabantha Wheat'],'tough'),
+ R(4,'Seafood Curry',['@seafood','Hylian Rice','Goron Spice']),
+ R(4,'Seafood Fried Rice',['@seafood','Hylian Rice','Rock Salt']),
+ R(4,'Seafood Meuniere',['Goat Butter','@seafood','Tabantha Wheat']),
+ R(4,'Seafood Rice Balls',['@fish','Hylian Rice']),
+ R(4,'Steamed Fish',['@fish','@greens']),
+ R(5,'Creamy Seafood Soup',['Fresh Milk','Rock Salt','@greens','@seafood']),
+ R(6,'Crab Omelet with Rice',['@crab','Bird Egg','Hylian Rice','Rock Salt']),
+ R(6,'Glazed Seafood',['Courser Bee Honey','@seafood'],'energizing'),
+ R(8,'Copious Fish Skewers',['@fish x4']),
+ R(12,'Seafood Paella',['@seafood','Hearty Blueshell Snail','Hylian Rice','Goat Butter','Rock Salt']),
+ /* vegetable */
+ R(1,'Fragrant Mushroom Saute',['Goron Spice','@mushroom']),
+ R(1,'Mushroom Skewer',['@mushroom']),
+ R(1,'Salt-Grilled Mushrooms',['@mushroom','Rock Salt']),
+ R(1,'Sauteed Peppers',['Spicy Pepper'],'spicy'),
+ R(2,'Copious Fried Wild Greens',['@greens x4']),
+ R(2,'Fried Wild Greens',['@greens']),
+ R(2,'Fruit and Mushroom Mix',['@fruit','@mushroom']),
+ R(2,'Herb Saute',['Goron Spice','@greens']),
+ R(2,'Salt-Grilled Greens',['Rock Salt','@greens']),
+ R(2,'Veggie Cream Soup',['@vegetable','Fresh Milk','Rock Salt']),
+ R(3,'Cream of Vegetable Soup',['Fresh Milk','Rock Salt','@greens']),
+ R(3,'Mushroom Omelet',['Bird Egg','Goat Butter','@mushroom','Rock Salt']),
+ R(3,'Mushroom Rice Balls',['Hylian Rice','@mushroom']),
+ R(3,'Mushroom Risotto',['Goat Butter','Hylian Rice','@mushroom','Rock Salt']),
+ R(3,'Pumpkin Pie',['Cane Sugar','Fortified Pumpkin','Goat Butter','Tabantha Wheat'],'tough'),
+ R(3,'Steamed Mushrooms',['@mushroom','@greens']),
+ R(3,'Vegetable Curry',['@vegetable','Goron Spice','Hylian Rice']),
+ R(3,'Vegetable Risotto',['@vegetable','Goat Butter','Hylian Rice','Rock Salt']),
+ R(4,'Carrot Stew',['@carrot','Fresh Milk','Goat Butter','Tabantha Wheat'],'hasty'),
+ R(4,'Cream of Mushroom Soup',['Fresh Milk','@mushroom','Rock Salt','@greens']),
+ R(4,'Pumpkin Stew',['Fortified Pumpkin','Fresh Milk','Goat Butter','Tabantha Wheat'],'tough'),
+ R(4,'Vegetable Omelet',['Bird Egg','Goat Butter','Rock Salt','@greens']),
+ R(4,'Veggie Rice Balls',['Hylian Rice','@greens']),
+ R(5,'Copious Mushroom Skewers',['@mushroom x4']),
+ R(5,'Glazed Mushrooms',['Courser Bee Honey','@mushroom'],'energizing'),
+ R(6,'Glazed Veggies',['Courser Bee Honey','@vegetable'],'energizing'),
+ R(8,'Creamy Heart Soup',['Fresh Milk','Hydromelon','@radish','Voltfruit'],'hearty'),
+ /* sweets */
+ R(1,'Simmered Fruit',['@fruit']),
+ R(2,'Honey Candy',['Courser Bee Honey'],'energizing'),
+ R(2,'Hot Buttered Apple',['Apple','Goat Butter']),
+ R(3,'Apple Pie',['Apple','Cane Sugar','Goat Butter','Tabantha Wheat']),
+ R(3,'Carrot Cake',['Cane Sugar','@carrot','Goat Butter','Tabantha Wheat'],'hasty'),
+ R(3,'Egg Pudding',['Bird Egg','Cane Sugar','Fresh Milk']),
+ R(3,'Fried Bananas',['Cane Sugar','Mighty Bananas','Tabantha Wheat'],'mighty'),
+ R(3,'Fruit Pie',['Cane Sugar','Goat Butter','@fruit','Tabantha Wheat']),
+ R(3,'Nutcake',['Cane Sugar','Goat Butter','@nut','Tabantha Wheat']),
+ R(3,'Steamed Fruit',['@fruit','@greens']),
+ R(4,'Copious Simmered Fruit',['@fruit x4']),
+ R(4,'Egg Tart',['Bird Egg','Cane Sugar','Goat Butter','Tabantha Wheat']),
+ R(5,'Fruitcake',['Apple','Cane Sugar','@fruit','Tabantha Wheat']),
+ R(5,'Honeyed Apple',['Apple','Courser Bee Honey'],'energizing'),
+ R(5,'Honeyed Fruits',['Courser Bee Honey','@fruit'],'energizing'),
+ R(5,'Plain Crepe',['Bird Egg','Cane Sugar','Fresh Milk','Tabantha Wheat']),
+ R(10,'Honey Crepe',['Bird Egg','Cane Sugar','Courser Bee Honey','Fresh Milk','Tabantha Wheat'],'energizing'),
+ R(10,'Wildberry Crepe',['Bird Egg','Cane Sugar','Fresh Milk','Tabantha Wheat','Wildberry']),
+ /* other */
+ R(4,'Monster Cake',['Cane Sugar','Goat Butter','Monster Extract','Tabantha Wheat']),
+ R(4,'Monster Curry',['Goron Spice','Hylian Rice','Monster Extract']),
+ R(4,'Monster Rice Balls',['Hylian Rice','Monster Extract','Rock Salt']),
+ R(4,'Monster Soup',['Fresh Milk','Goat Butter','Monster Extract','Tabantha Wheat']),
+ R(4,'Monster Stew',['@meat','Monster Extract','@seafood']),
+ R(0.25,'Rock-Hard Food',['@gem']),
+ R(0.5,'Sauteed Nuts',['@nut']),
+ R(2,'Curry Pilaf',['Goat Butter','Goron Spice','Hylian Rice']),
+ R(2,'Curry Rice',['Goron Spice','Hylian Rice']),
+ R(2,'Omelet',['Bird Egg']),
+ R(2,'Wheat Bread',['Rock Salt','Tabantha Wheat']),
+ R(2.5,'Milk',['Fresh Milk']),
+ R(4,'Fried Egg and Rice',['Bird Egg','Hylian Rice']),
+ R(7,'Fairy Tonic',['Fairy'])
+];
+/* match the pot against the book, most specific recipe first */
+function matchRecipe(items){
+  let best=null, bestScore=-1;
+  for(const R of COOKBOOK){
+    const pool=items.slice();
+    let ok=true, specificity=0;
+    for(const need of R.need){
+      if(need.startsWith('@')){
+        const m=need.match(/^@(\w+)(?: x(\d+))?$/);
+        const cat=m[1], count=m[2]?parseInt(m[2]):1;
+        if(count>1){
+          const kinds=[...new Set(pool.filter(i=>inCat(i,cat)))];
+          if(kinds.length<count){ ok=false; break; }
+          for(let k=0;k<count;k++) pool.splice(pool.indexOf(kinds[k]),1);
+          specificity+=count*2;
+        } else {
+          const idx=pool.findIndex(i=>inCat(i,cat));
+          if(idx<0){ ok=false; break; }
+          pool.splice(idx,1); specificity+=1;
+        }
+      } else {
+        const idx=pool.indexOf(need);
+        if(idx<0){ ok=false; break; }
+        pool.splice(idx,1); specificity+=3;      /* an exact name is worth more */
+      }
+    }
+    if(!ok) continue;
+    const score=specificity*100+R.rec;
+    if(score>bestScore){ bestScore=score; best=R; }
+  }
+  return best;
+}
+console.log('cookbook loaded:',COOKBOOK.length,'recipes');
+</script>
+<script>
+"use strict";
+/* the pot now consults the cookbook */
+predictDish=function(){
+  if(!potContents.length) return {name:'—',hearts:0,eff:null,lv:0};
+  const items=potContents.slice();
+  const critters=items.filter(i=>inCat(i,'critter'));
+  const monster=items.filter(i=>inCat(i,'monster'));
+  const food=items.filter(i=>!inCat(i,'critter')&&!inCat(i,'monster')&&!inCat(i,'gem'));
+  /* an elixir is critters plus a monster part, and nothing edible */
+  if(critters.length&&!food.length){
+    if(!monster.length) return {name:'Dubious Food',hearts:1,eff:null,lv:0};
+    const effs=[...new Set(critters.map(k=>MATS[k]&&MATS[k].eff).filter(Boolean))];
+    if(effs.length!==1) return {name:'Dubious Food',hearts:1,eff:null,lv:0};
+    const eff=effs[0];
+    const pot=items.reduce((a,k)=>a+((MATS[k]&&MATS[k].pot)||0),0);
+    const NAMES={hasty:'Hasty Elixir',energizing:'Energizing Elixir',chilly:'Chilly Elixir',
+      spicy:'Spicy Elixir',electro:'Electro Elixir',sneaky:'Sneaky Elixir',mighty:'Mighty Elixir',
+      tough:'Tough Elixir',fireproof:'Fireproof Elixir',hearty:'Hearty Elixir',
+      enduring:'Enduring Elixir'};
+    return {name:NAMES[eff]||'Elixir',hearts:eff==='hearty'?99:0,eff,
+            lv:clamp(Math.ceil(pot/2),1,3),elixir:true};
+  }
+  if(critters.length&&food.length) return {name:'Dubious Food',hearts:1,eff:null,lv:0};
+  /* a fairy makes a tonic whatever else is in there */
+  if(items.includes('Fairy')) return {name:'Fairy Tonic',hearts:7,eff:null,lv:1};
+  /* monster parts with real food are dubious */
+  if(monster.length&&food.length&&!items.includes('Monster Extract'))
+    return {name:'Dubious Food',hearts:1,eff:null,lv:0};
+  const R=matchRecipe(items);
+  if(!R) return {name:'Dubious Food',hearts:1,eff:null,lv:0};
+  /* the effect carries only if nothing in the pot contradicts it */
+  const effs=[...new Set(items.map(k=>MATS[k]&&MATS[k].eff).filter(Boolean))];
+  let eff=R.eff||(effs.length===1?effs[0]:null);
+  if(effs.length>1&&!R.eff) eff=null;
+  const pot=items.reduce((a,k)=>a+((MATS[k]&&MATS[k].pot)||0),0);
+  const lv=clamp(Math.ceil(pot/2),1,3);
+  let hearts=R.rec;
+  if(R.rec>=99||eff==='hearty') hearts=99;
+  else hearts+=items.reduce((a,k)=>a+((MATS[k]&&MATS[k].h)||0),0)*0.25;
+  return {name:R.name||R.n, hearts:Math.round(hearts), eff, lv,
+          stam:items.reduce((a,k)=>a+((MATS[k]&&MATS[k].st)||0),0)};
+};
+/* the ingredients that only shops and cows provide */
+(function stockPantry(){
+  const PANTRY=['Rock Salt','Goron Spice','Hylian Rice','Tabantha Wheat','Goat Butter',
+                'Fresh Milk','Cane Sugar','Courser Bee Honey'];
+  for(const k in SHOP_STOCK){
+    if(k==='general') SHOP_STOCK[k]=SHOP_STOCK[k].concat(PANTRY.map(p=>[p,
+      p==='Courser Bee Honey'?24:p==='Goron Spice'?16:8]));
+  }
+  /* and some of it grows or is dropped out in the world */
+  let n=0;
+  for(const key of ['central','duel','hateno','lanayru','faron','ridge','akkala','woodland']){
+    const R=REGIONS[key]; if(!R) continue;
+    for(let i=0;i<18;i++){
+      const a=rnd()*TAU, r=Math.sqrt(rnd())*R.r;
+      const x=R.x+Math.cos(a)*r, z=R.z+Math.sin(a)*r;
+      if(groundAt(x,z)<waterAt(x,z)+2) continue;
+      const k=['Rock Salt','Hylian Rice','Tabantha Wheat','Courser Bee Honey',
+               'Acorn','Chickaloo Tree Nut','Fortified Pumpkin','Swift Carrot',
+               'Endura Carrot','Hearty Radish','Blue Nightshade','Silent Princess'][Math.floor(rnd()*12)];
+      const m=new THREE.Mesh(new THREE.IcosahedronGeometry(.32,0),matMesh(k));
+      m.position.set(x,groundAt(x,z)+.8,z); m.castShadow=true; scene.add(m);
+      forage.push({m,k,taken:false,x,z}); n++;
+    }
+  }
+  /* monster parts render down into Monster Extract at a pot */
+  console.log('pantry ingredients scattered:',n);
+})();
+</script>
