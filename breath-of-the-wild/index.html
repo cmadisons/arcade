@@ -4223,7 +4223,9 @@ function updatePlayer(dt){
     }
     /* shield surf start */
     if(!P.onGround&&keys.KeyZ&&curS()&&!P.gliding&&P.vel.y<-3) P.surfing=true;
-    const base=P.crouch?SNEAK:(sprint&&moving&&P.stam>0?RUN:WALK);
+    /* Night Speed Up - the Stealth, Dark and Tingle sets, after dark only */
+    const base=(P.crouch?SNEAK:(sprint&&moving&&P.stam>0?RUN:WALK))
+             * (typeof nightSpeedFactor==='function'?nightSpeedFactor():1);
     const speedBuff=P.buff==='hasty'?1+P.buffLv*.15:1;
     const target=(P.gliding?10.5:base)*speedBuff*(P.guard?.55:1);
     if(sprint&&moving&&P.onGround&&P.stam>0) drain(dt*STAM.sprint*stamFactor());
@@ -15542,6 +15544,146 @@ if(typeof refreshArmour==='function') refreshArmour();
     +(miss.length?(' | still generic: '+miss.join(', ')):''));
 })();
 </script>
+<script>
+/* ================= BATCH 82 — the armour sets finished =================
+   Read off the armour sheet. Three gaps closed.
+
+   Twelve pieces still had no colour of their own - every one of them a name
+   with an apostrophe in it, which the last block's table did not reach.
+
+   Seven set bonuses were wired (Snowquill, Voe, Flamebreaker, Rubber, Zora,
+   Climber's, Stealth) and the rest were not, so a full Barbarian Set hit no
+   harder than rags. The missing ones are here.
+
+   And the Radiant Set is the one armour whose whole point is what it looks
+   like after dark. */
+Object.assign(NAMECOL,{
+  "Soldier's Helm":0x6f7784,"Soldier's Armor":0x6f7784,"Soldier's Greaves":0x5e6673,
+  "Climber's Bandanna":0x4a5f52,
+  "Midna's Helmet":0x2b2230,
+  "Majora's Mask":0xc8702a,
+  "Tingle's Hood":0x4aae4a,"Tingle's Shirt":0x4aae4a,"Tingle's Tights":0x3f9a3f,
+  "Ravio's Hood":0x6a4a8a,
+  "Zant's Helmet":0x2b3c3c,
+  "Sheik's Mask":0xd6cec0
+});
+(function(){                       /* curly apostrophes, again */
+  for(const k of Object.keys(NAMECOL)){
+    const c=k.replace(/'/g,'’');
+    if(NAMECOL[c]===undefined) NAMECOL[c]=NAMECOL[k];
+  }
+})();
+
+/* ---- the set bonuses that were missing ---- */
+const SETBONUS={
+  barbarian   :'Attack Up',
+  phantom     :'Attack Up',
+  phantomganon:'Attack Up',
+  deity       :'Attack Up',
+  stealth     :'Night Speed Up',
+  dark        :'Night Speed Up',
+  tingle      :'Night Speed Up',
+  radiant     :'Disguise',
+  ancient     :'Ancient Proficiency',
+  wild        :'Master Sword Beam Up',
+  snowquill   :'Unfreezable',
+  voe         :'Heat Resistance',
+  flamebreaker:'Fireproof',
+  rubber      :'Unshockable',
+  zora        :'Swim Dash Stamina Up',
+  climb       :'Climbing Jump Stamina Up'
+};
+function wornSet(){                /* the set you are wearing all three of */
+  for(const k in SETBONUS) if(hasSet(k)) return k;
+  return null;
+}
+function setBonusName(){ const s=wornSet(); return s?SETBONUS[s]:null; }
+/* Attack Up: Barbarian, Phantom, Phantom Ganon and Fierce Deity */
+function attackSetMult(){
+  if(hasSet('deity'))        return 1.50;
+  if(hasSet('phantomganon')) return 1.30;
+  if(hasSet('barbarian')||hasSet('phantom')) return 1.20;
+  return 1;
+}
+/* Ancient Proficiency lifts ancient and guardian gear specifically */
+function ancientMult(w){
+  if(!hasSet('ancient')) return 1;
+  return /ancient|guardian/i.test(String(w||'')) ? 1.30 : 1;
+}
+/* Master Sword Beam Up */
+function beamMult(){ return hasSet('wild')?1.30:1; }
+/* Night Speed Up: Stealth, Dark and Tingle, and only after dark */
+function nightSpeedFactor(){
+  if(!isNight()) return 1;
+  return (hasSet('stealth')||hasSet('dark')||hasSet('tingle')) ? 1.30 : 1;
+}
+/* Disguise: the Radiant Set makes monsters slower to notice you */
+const _sneakSet=sneakBonus;
+sneakBonus=function(){
+  let v=_sneakSet.apply(this,arguments);
+  if(hasSet('radiant')) v-=.20;
+  return Math.max(.25,v);
+};
+/* fold Attack Up and Ancient Proficiency into the weapon the game reads */
+const _wStatSets=wStat;
+wStat=function(){
+  const s=_wStatSets.apply(this,arguments);
+  const m=attackSetMult()*ancientMult(s&&s.n), b=beamMult();
+  if(m===1&&b===1) return s;
+  const o=Object.assign({},s);
+  if(o.atk) o.atk=Math.round(o.atk*m);
+  if(b!==1&&/master sword/i.test(String(s&&s.n||''))) o.beam=(o.beam||1)*b;
+  return o;
+};
+
+/* ---- the Radiant Set glows in the dark ---- */
+const RADIANT_PARTS=['torso','waist','yoke','skirt','skirtFL','skirtFR','skirtBL','skirtBR',
+                     'padL','padR','sleeveL','sleeveR','thighML','thighMR','shinML','shinMR',
+                     'bootL','bootR','face','hair','fringe'];
+let _radOn=null;
+function radiantGlow(){
+  const on=hasSet('radiant')&&isNight();
+  if(on===_radOn) return;                     /* only touch materials when it changes */
+  _radOn=on;
+  for(const id of RADIANT_PARTS){
+    const m=linkRig.parts[id]; if(!m||!m.material) continue;
+    if(on){
+      if(m.material.emissive){
+        if(m.__radPrev===undefined) m.__radPrev=m.material.emissive.getHex();
+        m.material.emissive.setHex(0x2fd88a);   /* the bone-green it burns at night */
+      }
+    } else if(m.__radPrev!==undefined&&m.material.emissive){
+      m.material.emissive.setHex(m.__radPrev);
+    }
+  }
+}
+
+/* ---- tell the player when a bonus turns on ---- */
+let _lastBonus=null;
+function setBonusWatch(){
+  const b=setBonusName();
+  if(b===_lastBonus) return;
+  if(b) toast('Set bonus — '+b,'good');
+  _lastBonus=b;
+}
+if(typeof animate==='function'){
+  const _animSets=animate;
+  animate=function(dt,moving,speed){
+    const r=_animSets.apply(this,arguments);
+    try{ radiantGlow(); setBonusWatch(); }catch(e){}
+    return r;
+  };
+}
+if(typeof refreshArmour==='function') refreshArmour();
+(function(){
+  let miss=[];
+  for(const n in ARMOR){ if(n!=='None'&&NAMECOL[n]===undefined) miss.push(n); }
+  console.log('armour: '+(Object.keys(ARMOR).length-1)+' pieces, '
+    +Object.keys(SETBONUS).length+' set bonuses'
+    +(miss.length?(' | no colour: '+miss.join(', ')):' | every piece coloured'));
+})();
+</script>
+
 
 
 
