@@ -14989,26 +14989,43 @@ promptFor=function(it){
     const K={id:'k'+made,x,z,y:groundAt(x,z),type:pickKorokType(),found:false,parts:[],t:0};
     build(K); koroks.push(K); kAdd(K); made++;
   };
-  for(const [key,want] of DENSITY){
-    const R=REGIONS[key]; if(!R) continue;
-    const count=Math.round(want/total*900);
-    let placed=0, tries=0;
-    while(placed<count && tries++<count*80 && made<900){
-      const a=rnd()*TAU, r=Math.sqrt(rnd())*R.r;
-      const x=R.x+Math.cos(a)*r, z=R.z+Math.sin(a)*r;
+  /* ---- where the Korok seeds actually are ----
+     Read off the game's own seed map: every cream pin was thresholded out of the
+     image, touching pins split apart, and each centre turned into world coordinates.
+
+     The map was registered against two things that had to agree - all 136 real
+     shrine coordinates must land on map-land, and the map's coastline must line up
+     with Hyrule's.  Both pick the same transform, 4.042 world units to the pixel. */
+  const KOROK_PTS=[[-3169,-4421],[-3825,-4340],[-1375,-4340],[-3489,-4142],[-3478,-4294],[-3404,-4147],[1770,-4292],[3718,-4235],[2861,-4211],[2238,-4195],[-761,-4187],[1236,-4154],[-3688,-4114],[3167,-4114],[3974,-4115],[4116,-4080],[-2904,-4107],[-2804,-4018],[2724,-4090],[824,-4074],[-3033,-4001],[3305,-3985],[-2266,-3977],[-939,-3977],[4481,-3898],[4411,-3821],[-1675,-3888],[-3582,-3872],[-503,-3872],[4139,-3840],[1479,-3832],[-3258,-3807],[-268,-3792],[5068,-3790],[3798,-3783],[5488,-3766],[-3000,-3726],[-2013,-3685],[-3850,-3661],[3087,-3629],[5188,-3584],[5068,-3632],[4656,-3580],[-3590,-3556],[145,-3556],[4898,-3557],[5488,-3524],[-1626,-3500],[4029,-3475],[3866,-3500],[2197,-3492],[-495,-3452],[4219,-3451],[-3229,-3445],[-3118,-3372],[-1894,-3435],[2844,-3403],[-2766,-3395],[574,-3379],[832,-3330],[-2160,-3323],[2263,-3322],[-1602,-3290],[4381,-3257],[-3833,-3233],[4753,-3201],[-2249,-3201],[-2512,-3161],[-3630,-3152],[3976,-3152],[-1878,-3112],[-1189,-3112],[1284,-3112],[2692,-3113],[2541,-3089],[4664,-3096],[-744,-3080],[-433,-2933],[-453,-3054],[5036,-3047],[-2394,-3006],[4372,-2991],[-3567,-2934],[-2685,-2934],[-3744,-2918],[2266,-2905],[2218,-2777],[39,-2902],[-2143,-2886],[5124,-2878],[-2446,-2785],[-2372,-2653],[-2291,-2816],[-2235,-2684],[4097,-2821],[-3905,-2764],[2575,-2643],[2512,-2762],[-3097,-2756],[4704,-2756],[-1432,-2740],[4995,-2732],[-655,-2618],[-762,-2509],[-843,-2472],[-807,-2652],[-2055,-2651],[4332,-2651],[4526,-2635],[-3768,-2627],[-1165,-2610],[-3444,-2594],[-3242,-2578],[4025,-2562],[-2749,-2546],[-1682,-2538],[-2144,-2506],[2280,-2481],[-962,-2331],[-1088,-2406],[-2394,-2384],[2641,-2376],[-3889,-2368],[-1780,-2344],[-3243,-2296],[2804,-2295],[2158,-2287],[-413,-2287],[5181,-2287],[4130,-2279],[2999,-2271],[4316,-2263],[-3743,-2255],[3305,-2247],[-2822,-2239],[-2053,-2215],[3880,-2165],[-3905,-2158],[-2199,-2125],[-3525,-2118],[-1464,-2118],[-704,-2117],[-462,-2102],[-211,-2093],[2150,-2085],[-2377,-2044],[-1762,-2039],[-1786,-1930],[-3200,-1935],[-3192,-2040],[-2676,-2029],[2562,-1996],[2900,-1972],[-2996,-1917],[-1236,-1943],[-1324,-1875],[5350,-1916],[-1594,-1899],[4745,-1899],[2052,-1891],[-3647,-1891],[-3436,-1858],[3080,-1875],[3400,-1803],[3331,-1885],[-1925,-1867],[287,-1859],[171,-1860],[2319,-1859],[-477,-1859],[4364,-1778],[-2164,-1545],[-2326,-1747],[-2210,-1677],[-834,-1746],[4753,-1729],[-1434,-1665],[-1610,-1625],[-1604,-1724],[-308,-1722],[-2546,-1665],[-623,-1665],[1657,-1656],[3960,-1481],[3862,-1584],[3953,-1655],[2061,-1632],[2906,-1641],[2969,-1551],[5038,-1623],[-1892,-1494],[-114,-1495],[484,-1455],[3158,-1312],[3054,-1255],[3119,-1444],[3387,-1438],[-2515,-1431],[1479,-1422],[-2697,-1398],[-2852,-1359],[5375,-1398],[4753,-1385],[4555,-1380],[4695,-1297],[3750,-1333],[-1298,-1262],[-1413,-1327],[4073,-1317],[-470,-1309],[2796,-1309],[2012,-1285],[-2046,-1268],[3654,-1228],[2578,-1212],[-1763,-1164],[-3420,-1163],[1876,-1138],[2949,-1123],[4381,-1115],[-2507,-1114],[1196,-1099],[-138,-1082],[-632,-1067],[-405,-1058],[-3113,-1034],[5348,-1006],[4251,-986],[4204,-869],[3862,-986],[4907,-961],[976,-946],[3305,-929],[-89,-908],[-45,-826],[808,-897],[-3405,-889],[-2547,-856],[2327,-840],[1139,-824],[-2093,-694],[-2070,-808],[4615,-800],[2020,-792],[-1731,-760],[1325,-752],[-3255,-724],[-3099,-718],[-324,-735],[3014,-719],[-1456,-686],[-510,-578],[-539,-674],[1236,-643],[1314,-526],[889,-629],[2230,-630],[-2842,-637],[-2855,-547],[4704,-568],[4810,-478],[4550,-605],[4987,-606],[1470,-598],[1898,-598],[-308,-581],[-171,-473],[-16,-560],[-29,-420],[702,-533],[5380,-423],[5266,-529],[-1391,-525],[-3380,-508],[1034,-508],[-2650,-323],[-2662,-450],[2263,-436],[3977,-405],[-372,-359],[-495,-340],[3426,-380],[-1428,-368],[1147,-363],[-2913,-332],[-3034,-285],[-1876,-101],[-1850,-327],[-1787,-190],[4733,-296],[709,-282],[-2118,-291],[1737,-290],[363,-274],[3071,-258],[-184,-243],[-32,-250],[4146,-230],[4180,-84],[-1173,-209],[-3388,-194],[-2765,-184],[-2635,-116],[2716,-161],[-650,-41],[-531,-76],[-276,-96],[389,70],[470,-81],[348,-76],[3945,-80],[3160,-47],[-3453,-40],[64,-40],[4894,9],[4739,-31],[1729,-32],[-974,-27],[-1088,40],[1204,-7],[3605,24],[3386,25],[-3306,80],[-3220,32],[2012,89],[-769,105],[-3655,146],[1794,154],[-2927,170],[-1270,170],[3768,240],[3929,269],[3306,251],[1422,268],[-1755,275],[-908,311],[-913,443],[4761,331],[103,350],[200,452],[4947,348],[2213,371],[2374,364],[2068,424],[-97,454],[-86,361],[1026,397],[-2862,445],[-1392,445],[1252,445],[2723,453],[637,461],[-494,469],[4784,485],[-276,510],[-744,542],[-3646,550],[1503,567],[791,582],[-1344,721],[-1120,702],[-1450,597],[-1246,638],[3790,639],[-3859,648],[3557,647],[-1464,996],[-1369,962],[-1660,816],[-1681,662],[-1589,937],[-154,655],[3274,686],[3384,671],[4518,672],[-1859,680],[-720,696],[3118,807],[3023,699],[-2434,707],[-2330,807],[258,744],[-3470,768],[-510,777],[2619,777],[-809,801],[4850,809],[5092,825],[1950,844],[2088,924],[-2042,911],[-1837,960],[-1880,850],[-1960,1039],[3532,858],[4216,1000],[4383,987],[4067,880],[4176,862],[88,898],[936,898],[-422,914],[1737,930],[3322,930],[500,971],[-3679,987],[-713,1011],[4930,1011],[3888,1027],[2319,1044],[5221,1043],[2936,1153],[2770,1069],[2790,1201],[4599,1076],[-3738,1188],[-3807,1100],[-2337,1116],[-3110,1127],[-3112,1229],[-1594,1132],[-615,1141],[-2159,1148],[2222,1230],[-809,1278],[-888,1376],[-955,1240],[15,1286],[-4140,1293],[3055,1302],[823,1310],[-500,1328],[-549,1438],[-533,1719],[-374,1371],[-549,1572],[-146,1335],[3378,1359],[-2492,1367],[658,1471],[523,1508],[477,1386],[1608,1383],[2439,1525],[2406,1405],[2282,1650],[2405,1657],[-1205,1431],[4025,1432],[-736,1448],[5172,1464],[-2646,1496],[2804,1504],[2604,1527],[-1717,1608],[-1812,1517],[-1873,1656],[-1501,1583],[-1356,1552],[23,1569],[-2282,1605],[-2273,1758],[3270,1601],[3382,1672],[4736,1617],[4406,1645],[4463,1790],[1139,1642],[4098,1650],[-744,1666],[183,1691],[146,1814],[2578,1728],[2713,1697],[946,1937],[900,1696],[958,1801],[-3810,1731],[3168,1763],[-2483,1795],[2203,1804],[2278,1909],[-1925,1836],[1681,1844],[1931,1852],[1325,1860],[-3977,1867],[-3975,1970],[-822,1918],[-630,1914],[-469,1877],[-3526,1908],[2845,1908],[4187,1909],[-182,1925],[-38,1934],[3572,1941],[-1043,1938],[-1137,2004],[5100,1981],[670,1989],[3854,2151],[3947,1994],[3813,2017],[1436,2013],[1301,2028],[1142,2038],[-2530,2023],[-3121,2116],[-3248,2033],[-1481,2030],[-3598,2045],[2940,2057],[2951,2187],[3088,2080],[2943,2325],[-2047,2094],[-1193,2184],[-1250,2099],[-171,2150],[4535,2135],[2384,2135],[-3546,2352],[-3673,2282],[-3538,2205],[-3394,2166],[956,2396],[688,2384],[696,2181],[832,2342],[834,2211],[-947,2183],[1486,2207],[-2225,2239],[1301,2232],[-387,2285],[-242,2297],[2012,2264],[-728,2272],[4389,2288],[4720,2305],[1074,2305],[-1868,2337],[1269,2388],[3524,2385],[-1124,2442],[3144,2450],[3807,2450],[428,2474],[1512,2539],[1601,2471],[2966,2474],[-3792,2482],[1898,2607],[1746,2572],[1914,2484],[2149,2482],[-1472,2490],[-898,2560],[-782,2504],[-282,2518],[-182,2626],[-3267,2539],[621,2539],[1171,2547],[-1816,2572],[945,2566],[972,2699],[5278,2571],[2368,2579],[4130,2580],[-526,2603],[4357,2612],[834,2770],[784,2623],[-4116,2644],[-3590,2660],[203,2678],[4777,2668],[3694,2709],[2505,2717],[-2458,2725],[-2005,2831],[-1948,2725],[-1566,2757],[-1674,2840],[-1645,2953],[1446,2766],[4442,2796],[4573,2772],[646,2781],[2699,2782],[-748,2916],[-839,2793],[3128,2789],[3811,2942],[3660,2987],[3464,2823],[3533,2913],[1116,2852],[994,2879],[912,2965],[-4132,2895],[-1399,2911],[-1128,2926],[-1034,3210],[-1038,3075],[1535,2919],[-2266,3063],[-2211,2966],[3990,2966],[4056,3074],[2021,2995],[2099,3112],[4865,2991],[-179,3000],[-2782,3008],[551,3191],[589,3042],[634,3455],[714,3041],[598,3326],[493,3032],[-1497,3032],[1400,3122],[1157,3254],[1531,3155],[1414,3355],[1284,3029],[1300,3247],[1204,3088],[3019,3031],[2950,3128],[2295,3040],[-585,3052],[5230,3185],[5244,3306],[5181,3052],[1754,3072],[3370,3072],[3478,3152],[-4036,3088],[3807,3137],[7,3145],[888,3154],[4340,3153],[2522,3178],[1944,3206],[-1448,3194],[-4302,3250],[-1213,3250],[3055,3290],[4793,3299],[-1780,3323],[-1620,3330],[2812,3315],[-3162,3323],[-1997,3323],[226,3339],[994,3348],[2588,3366],[2744,3450],[2589,3481],[-3800,3380],[808,3412],[-388,3444],[4162,3452],[2926,3469],[23,3477],[-1335,3484],[1211,3485],[3516,3517],[-613,3525],[-766,3573],[-3630,3565],[-2021,3574],[1996,3574],[2578,3614],[1008,3718],[771,3892],[810,3628],[879,3732],[755,3776],[3871,3679],[-1706,3687],[1794,3703],[1353,3863],[1222,3893],[1236,3736],[1404,4013],[1472,3901],[-1416,3743],[-2499,3752],[3734,3760],[-308,3817],[-460,3784],[161,3784],[-2103,3792],[2182,3792],[2460,4185],[2420,3942],[2571,3880],[2299,4082],[2458,4082],[2400,3804],[-849,3816],[-3315,3841],[4744,3856],[3605,3881],[-2871,3897],[1966,3904],[1830,3950],[2934,3913],[-2337,3946],[509,3944],[477,4048],[700,4122],[620,3996],[1026,3962],[-1019,3993],[-914,3968],[-3606,4002],[-648,4034],[4090,4035],[2683,4099],[-1585,4131],[3823,4139],[2052,4139],[3257,4140],[-1316,4219],[1299,4229],[1397,4195],[1612,4212],[1704,4194],[-4277,4204],[4282,4204],[2796,4229],[-2046,4245],[347,4245],[-786,4277],[3960,4285],[2125,4334],[2505,4333],[3615,4345],[3503,4427],[185,4350],[-921,4382],[-3218,4382],[-349,4382],[-1440,4406],[2376,4431],[412,4439],[-3744,4455],[868,4495],[1511,4495],[2020,4506],[2173,4546],[1851,4524],[2788,4520],[-259,4568],[-569,4570],[-524,4659],[-2006,4584],[1105,4799],[1295,4707],[1202,4781],[1165,4605],[2481,4600],[3201,4616],[-3146,4633],[1688,4632],[4000,4632],[4453,4657],[881,4696],[1000,4672],[3742,4673],[3516,4681],[-762,4707],[-724,4828],[-1003,4713],[2452,4793],[2371,4708],[1510,4733],[1528,4879],[2148,4745],[2008,4799],[-3784,4762],[-2434,4803],[-2701,4835],[536,4888],[928,4993],[253,4972],[387,4923],[901,4879],[1055,4924],[756,4883],[651,4832],[3144,4859],[-3582,4867],[3823,4875],[7,4915],[-4318,4923],[2246,4972],[-1949,5045]];
+  /* a pin can sit on a rock in a lake or a ledge over the sea, but my water is
+     more generous than the real map's, so nudge a drowned one to the nearest shore */
+  const toShore=(x,z)=>{
+    if(groundAt(x,z) >= waterAt(x,z)+1) return [x,z];
+    for(let r=25;r<=220;r+=25)
+      for(let a=0;a<12;a++){
+        const t=a/12*TAU, nx=x+Math.cos(t)*r, nz=z+Math.sin(t)*r;
+        if(groundAt(nx,nz) >= waterAt(nx,nz)+1 && slopeAt(nx,nz)<=1.3) return [nx,nz];
+      }
+    return null;
+  };
+  let snapped=0, dropped=0;
+  for(const [px,pz] of KOROK_PTS){
+    if(made>=900) break;
+    const hit=toShore(px,pz);
+    if(!hit){ dropped++; continue; }
+    if(hit[0]!==px||hit[1]!==pz) snapped++;
+    spawn(hit[0],hit[1]);
+  }
+  console.log('Koroks from the map: '+made+' placed, '+snapped+' nudged ashore, '+dropped+' dropped');
+  /* the map merges pins that overlap exactly, so top the last few up beside real ones */
+  { let guard2=0;
+    while(made<900 && guard2++<40000){
+      const src=KOROK_PTS[(rnd()*KOROK_PTS.length)|0];
+      const x=src[0]+(rnd()*2-1)*70, z=src[1]+(rnd()*2-1)*70;
       if(groundAt(x,z) < waterAt(x,z)+2) continue;
       if(slopeAt(x,z) > 1.1) continue;
-      if(rnd()<0.66 && !nearMagnet(x,z)) continue;   /* most cling to something */
-      spawn(x,z); placed++;
-    }
-  }
-  let guard=0;
-  while(made<900 && guard++<60000){
-    const x=(rnd()*2-1)*4600, z=(rnd()*2-1)*4600;
-    if(groundAt(x,z) < waterAt(x,z)+2) continue;
-    if(slopeAt(x,z) > 1.1) continue;
-    spawn(x,z);
-  }
+      spawn(x,z);
+    } }
   for(const k in I) I[k].instanceMatrix.needsUpdate=true;
   const inWater=koroks.filter(K=>groundAt(K.x,K.z)<waterAt(K.x,K.z)).length;
   const tally={}; for(const K of koroks) tally[K.type]=(tally[K.type]||0)+1;
@@ -15016,3 +15033,330 @@ promptFor=function(it){
               '| kinds:',Object.keys(tally).length);
 })();
 </script>
+<script>
+/* ================= BATCH 79 — the sound of Hyrule =================
+   Group 1 of the accuracy list. All of it is synthesised at runtime through
+   the Web Audio API: there is not one sound file anywhere in this game.
+
+   What was already here: 32 one-shot effects and a full regional score.
+   What was missing, and is added below: footsteps that know what you are
+   standing on, ambient beds that follow the weather and the hour, a voice
+   for every kind of monster, and impacts that depend on what you hit. */
+
+/* ---- a more flexible noise source than the fixed bandpass we had ---- */
+function nzq(dur,vol,opt){
+  try{
+    const c=ac(), o=opt||{}, n=c.createBufferSource();
+    const len=Math.max(1,(c.sampleRate*dur)|0);
+    const b=c.createBuffer(1,len,c.sampleRate), d=b.getChannelData(0);
+    const sh=o.shape===undefined?2:o.shape;
+    for(let i=0;i<len;i++) d[i]=(Math.random()*2-1)*Math.pow(1-i/len,sh);
+    n.buffer=b;
+    const f=c.createBiquadFilter();
+    f.type=o.type||'bandpass'; f.Q.value=o.q||1;
+    f.frequency.setValueAtTime(o.freq||900,c.currentTime);
+    if(o.to) f.frequency.exponentialRampToValueAtTime(Math.max(40,o.to),c.currentTime+dur);
+    const g=c.createGain(); g.gain.value=vol;
+    n.connect(f); f.connect(g); g.connect(o.dest||sfxGain); n.start();
+  }catch(e){}
+}
+const R1=()=>Math.random();          /* never the game RNG — audio must not shift the world */
+
+/* ================= 1. FOOTSTEPS =================
+   What is under Link's boots, worked out from the same rules that colour the
+   terrain: the shoreline is sand, the desert is sand, anything cold enough for
+   snow to lie is snow, anything steep is bare rock, the rest is grass. */
+function surfaceAt(x,z){
+  if(P.inShrine||P.inRes||P.inBeast||P.inCastle) return 'stone';
+  const g=groundAt(x,z), w=waterAt(x,z);
+  if(P.swimming||g<w) return 'water';
+  if(g<w+2.0) return 'sand';                       /* the beach */
+  for(const k of ['gerudo','gerudoTown','wasteland']){
+    const Rg=REGIONS[k];
+    if(Rg&&Math.hypot(x-Rg.x,z-Rg.z)<(Rg.r||1200)*0.95) return 'sand';
+  }
+  if(tempAt(x,z,g)<0.5) return 'snow';
+  if(slopeAt(x,z)>0.80) return 'stone';
+  return 'grass';
+}
+const FOOT={
+  /* a soft brush with a little dry rustle over the top */
+  grass:v=>{ nzq(.085,.055*v,{freq:700+R1()*300,q:.9,shape:2.6});
+             nzq(.05,.028*v,{type:'highpass',freq:2800+R1()*900,shape:3}); },
+  /* a hard click and the thud of a boot behind it */
+  stone:v=>{ nzq(.045,.075*v,{freq:2000+R1()*600,q:2.4,shape:4});
+             tone(140+R1()*50,.055,'sine',.035*v,88); },
+  /* no click at all: everything above 1 kHz is swallowed */
+  sand :v=>{ nzq(.14,.052*v,{type:'lowpass',freq:850+R1()*250,q:.5,shape:1.6}); },
+  /* the squeak of compacting snow, with a muffled body under it */
+  snow :v=>{ nzq(.07,.050*v,{freq:2500+R1()*800,q:1.7,shape:3.2});
+             nzq(.11,.026*v,{type:'lowpass',freq:480,shape:2}); },
+  /* a splash: broadband, and the filter falls as the water closes over */
+  water:v=>{ nzq(.26,.090*v,{type:'lowpass',freq:1900,to:380,q:.7,shape:1.3});
+             tone(820+R1()*380,.10,'sine',.030*v,400); },
+  wood :v=>{ tone(250+R1()*60,.07,'triangle',.050*v,165);
+             nzq(.05,.038*v,{freq:1300+R1()*400,q:1.5,shape:3}); }
+};
+let _stepDist=0, _lastFX=null, _lastFZ=0, _stepL=false;
+function footAudio(dt,moving,speed){
+  if(!P.playing||P.dead) { _lastFX=null; return; }
+  if(_lastFX===null){ _lastFX=P.pos.x; _lastFZ=P.pos.z; return; }
+  const dx=P.pos.x-_lastFX, dz=P.pos.z-_lastFZ;
+  _lastFX=P.pos.x; _lastFZ=P.pos.z;
+  if(P.gliding||P.climbing||(!P.onGround&&!P.swimming)){ _stepDist=0; return; }
+  _stepDist+=Math.hypot(dx,dz);
+  /* a run covers more ground per pace than a walk, and swimming is slower still */
+  const stride=P.swimming?2.9:(speed>7?2.35:(P.crouch?1.15:1.6));
+  if(_stepDist<stride) return;
+  _stepDist=0;
+  _stepL=!_stepL;
+  const surf=surfaceAt(P.pos.x,P.pos.z);
+  /* left and right are not identical - alternate the level slightly */
+  const v=(P.crouch?0.45:(speed>7?1.0:0.78))*(_stepL?1:0.88);
+  (FOOT[surf]||FOOT.grass)(v);
+}
+/* landing sound should know the surface too */
+const _sfx79=sfx;
+sfx=function(k){
+  if(k==='land'&&P.playing){
+    const surf=surfaceAt(P.pos.x,P.pos.z);
+    (FOOT[surf]||FOOT.grass)(1.8);
+    if(surf!=='water'&&surf!=='sand') tone(90,.10,'sine',.05,55);
+    return;
+  }
+  return _sfx79(k);
+};
+
+/* ================= 4. AMBIENT BEDS =================
+   Three looping noise beds - wind, rain and moving water - whose gains follow
+   where you are and what the sky is doing, plus birds by day and crickets at
+   night, scheduled rather than looped so they never sound mechanical. */
+const AMB={ready:false};
+function ambInit(){
+  if(AMB.ready) return;
+  try{
+    const c=ac();
+    const buf=c.createBuffer(1,(c.sampleRate*3)|0,c.sampleRate), d=buf.getChannelData(0);
+    for(let i=0;i<d.length;i++) d[i]=Math.random()*2-1;
+    AMB.bus=c.createGain(); AMB.bus.gain.value=1; AMB.bus.connect(c.destination);
+    const bed=(type,freq,q)=>{
+      const s=c.createBufferSource(); s.buffer=buf; s.loop=true;
+      const f=c.createBiquadFilter(); f.type=type; f.frequency.value=freq; f.Q.value=q||.7;
+      const g=c.createGain(); g.gain.value=0;
+      s.connect(f); f.connect(g); g.connect(AMB.bus); s.start();
+      return {g,f};
+    };
+    AMB.wind =bed('lowpass', 430,.6);
+    AMB.rain =bed('highpass',1500,.5);
+    AMB.water=bed('bandpass',720,.9);
+    AMB.ready=true;
+  }catch(e){}
+}
+function nearWater(x,z){                 /* how loud should running water be here */
+  let best=1e9;
+  for(let r=8;r<=90;r+=14)
+    for(let a=0;a<8;a++){
+      const t=a/8*TAU, nx=x+Math.cos(t)*r, nz=z+Math.sin(t)*r;
+      if(groundAt(nx,nz)<waterAt(nx,nz)){ best=Math.min(best,r); break; }
+    }
+  return best>90?0:1-best/90;
+}
+let _ambT=0, _wet=0;
+function ambAudio(dt){
+  if(!P.playing) return;
+  ambInit(); if(!AMB.ready) return;
+  const c=ac(), now=c.currentTime, T=.5;
+  const set=(bed,v)=>{ try{ bed.g.gain.setTargetAtTime(Math.max(0,v),now,T); }catch(e){} };
+  const indoors=!!(P.inShrine||P.inRes||P.inBeast||P.inCastle);
+  const rain=(typeof raining!=='undefined'&&raining)?1:0;
+  const storm=(typeof storming!=='undefined'&&storming)?1:0;
+  /* wind rises with altitude and with the storm, and is muffled indoors */
+  const alt=clamp((P.pos.y-60)/420,0,1);
+  set(AMB.wind, indoors?0.006:(0.012+alt*0.05+rain*0.02+storm*0.03));
+  set(AMB.rain, indoors?rain*0.008:rain*(0.035+storm*0.03));
+  _ambT-=dt;
+  if(_ambT<=0){ _ambT=1.1; _wet=indoors?0:nearWater(P.pos.x,P.pos.z); }
+  set(AMB.water, P.swimming?0.05:_wet*0.045);
+  /* birds by day, crickets by night — only outside, only in green country */
+  if(!indoors&&!rain&&Math.random()<dt*(isNight()?0.9:1.3)){
+    const surf=surfaceAt(P.pos.x,P.pos.z);
+    if(surf==='grass'){
+      if(isNight()){
+        /* a cricket: a short trill of clicks */
+        const n=3+((Math.random()*3)|0);
+        for(let i=0;i<n;i++) setTimeout(()=>tone(4300+R1()*500,.012,'square',.012),i*38);
+      } else {
+        /* a bird: two or three notes that step up, then a fall */
+        const base=1900+R1()*1200, n=2+((Math.random()*2)|0);
+        for(let i=0;i<n;i++)
+          setTimeout(()=>tone(base*(1+i*.18),.07,'sine',.020,base*(1+i*.18)*(i===n-1?.72:1.15)),i*95);
+      }
+    }
+  }
+}
+
+/* ================= 5. ENEMY VOCALISATIONS =================
+   Ten voices, chosen off the enemy's type name so every monster in the game
+   gets one, with a different cry for noticing you, swinging, being hurt and
+   dying. Pitch follows body size, so a Lynel and a Bokoblin are never
+   mistaken for one another. */
+function voiceOf(t){
+  t=String(t||'');
+  if(/lynel/i.test(t))                    return 'lynel';
+  if(/hinox|talus|molduga|ganon/i.test(t))return 'giant';
+  if(/guardian|sentry|decayed|scout/i.test(t)) return 'guardian';
+  if(/stal/i.test(t))                     return 'stal';
+  if(/keese/i.test(t))                    return 'keese';
+  if(/chu/i.test(t))                      return 'chu';
+  if(/lizal/i.test(t))                    return 'lizal';
+  if(/wizz/i.test(t))                     return 'wizz';
+  if(/moblin/i.test(t))                   return 'moblin';
+  if(/octo/i.test(t))                     return 'octo';
+  return 'boko';
+}
+/* base pitch and character per voice */
+const VOICE={
+  boko    :{f:300,w:'sawtooth',g:.055},
+  moblin  :{f:170,w:'sawtooth',g:.070},
+  lizal   :{f:420,w:'square',  g:.045},
+  lynel   :{f:110,w:'sawtooth',g:.095},
+  giant   :{f:70, w:'sawtooth',g:.105},
+  stal    :{f:520,w:'square',  g:.040},
+  keese   :{f:1500,w:'square', g:.028},
+  chu     :{f:240,w:'sine',    g:.045},
+  wizz    :{f:640,w:'triangle',g:.050},
+  guardian:{f:900,w:'square',  g:.050},
+  octo    :{f:380,w:'triangle',g:.040}
+};
+function enemyVoice(E,ev){
+  try{
+    if(!E||!E.alive&&ev!=='die') return;
+    const v=voiceOf(E.t), V=VOICE[v]||VOICE.boko;
+    const j=0.92+R1()*0.18;                    /* no two of a kind sound alike */
+    const f=V.f*j;
+    if(v==='guardian'){                        /* machines, not throats */
+      if(ev==='alert'){ tone(f,.30,'square',V.g,f*2.1); }
+      else if(ev==='attack'){ tone(f*2,.5,'sawtooth',V.g*.9,f*3.4); }
+      else if(ev==='hurt'){ nzq(.12,.07,{freq:1800,q:2,shape:3}); tone(f*.7,.12,'square',V.g*.7,f*.4); }
+      else { tone(f*1.6,.9,'sawtooth',V.g,60); nzq(.7,.16,{freq:400,q:.5,shape:1.2}); }
+      return;
+    }
+    if(v==='chu'){                             /* wet, boneless */
+      if(ev==='die'){ nzq(.35,.11,{type:'lowpass',freq:900,to:200,q:.8,shape:1.4}); }
+      else { nzq(.16,.06,{type:'lowpass',freq:700+R1()*300,to:300,q:.9,shape:1.8});
+             tone(f,.14,'sine',V.g*.7,f*.6); }
+      return;
+    }
+    if(v==='keese'){                           /* a shriek, nothing more */
+      tone(f,ev==='die'?.22:.11,'square',V.g,ev==='die'?f*.35:f*1.5);
+      nzq(.06,.02,{type:'highpass',freq:4000,shape:3});
+      return;
+    }
+    if(v==='stal'){                            /* bone on bone */
+      const n=ev==='die'?7:3;
+      for(let i=0;i<n;i++)
+        setTimeout(()=>nzq(.05,.05,{freq:900+R1()*1400,q:3,shape:3.5}),i*45);
+      if(ev==='die') tone(180,.4,'square',.035,70);
+      return;
+    }
+    /* the throated ones: a grunt that bends, longer and lower as it dies */
+    switch(ev){
+      case 'alert':  tone(f,.20,V.w,V.g,f*1.45); break;
+      case 'attack': tone(f*1.15,.26,V.w,V.g*1.15,f*.62);
+                     nzq(.10,.030,{freq:f*4,q:1.2,shape:3}); break;
+      case 'hurt':   tone(f*1.3,.16,V.w,V.g,f*.55);
+                     nzq(.07,.035,{freq:f*3,q:1.5,shape:3}); break;
+      case 'die':    tone(f*1.1,.55,V.w,V.g*1.1,f*.28);
+                     setTimeout(()=>tone(f*.6,.35,V.w,V.g*.6,f*.2),180); break;
+      case 'idle':   tone(f*.9,.13,V.w,V.g*.45,f*.75); break;
+    }
+  }catch(e){}
+}
+/* hook the voices onto what actually happens to an enemy */
+if(typeof hitEnemy==='function'){
+  const _hit=hitEnemy;
+  hitEnemy=function(E,dmg,nx,nz,el){
+    const wasAlive=E&&E.alive, before=E?E.hp:0;
+    const r=_hit.apply(this,arguments);
+    if(wasAlive&&E&&E.hp<before&&E.alive) enemyVoice(E,'hurt');
+    return r;
+  };
+}
+if(typeof killEnemy==='function'){
+  const _kill=killEnemy;
+  killEnemy=function(E){ enemyVoice(E,'die'); return _kill.apply(this,arguments); };
+}
+/* noticing you, and the occasional grunt while hunting */
+let _voiceT=0;
+function voiceAudio(dt){
+  if(!P.playing) return;
+  _voiceT-=dt;
+  for(const E of enemies){
+    if(!E||!E.alive) continue;
+    const hot=E.state==='chase'||E.state==='attack'||E.aggroT>0;
+    if(hot&&!E._sawYou){ E._sawYou=true; if(Math.hypot(E.pos.x-P.pos.x,E.pos.z-P.pos.z)<70) enemyVoice(E,'alert'); }
+    if(!hot) E._sawYou=false;
+  }
+  if(_voiceT<=0){
+    _voiceT=2.2+Math.random()*3.4;
+    const near=enemies.filter(E=>E&&E.alive&&!E.asleep&&
+      Math.hypot(E.pos.x-P.pos.x,E.pos.z-P.pos.z)<55);
+    if(near.length) enemyVoice(near[(Math.random()*near.length)|0],'idle');
+  }
+}
+
+/* ================= 2. IMPACTS THAT KNOW WHAT THEY HIT =================
+   The swing was one noise whatever you held; now the weapon's weight and the
+   thing it lands on both change it. */
+function swingSound(w){
+  const nm=String(w&&(w.name||w)||'');
+  if(/boulder|hammer|sledge|hinox|great|claymore|edge of dual/i.test(nm)){
+    nzq(.30,.11,{type:'lowpass',freq:900,to:260,q:.6,shape:1.5}); tone(120,.22,'sine',.05,60);
+  } else if(/spear|halberd|pitchfork|rod|trident/i.test(nm)){
+    nzq(.12,.07,{freq:2600,to:1400,q:2.2,shape:3});
+  } else if(/rod|wand|fire|ice|light/i.test(nm)){
+    tone(700,.24,'triangle',.05,1500); nzq(.18,.04,{type:'highpass',freq:2400,shape:2});
+  } else {
+    nzq(.16,.10,{freq:1500,to:900,q:.8,shape:2.4});
+  }
+}
+function impactSound(mat,dmg){
+  const v=clamp((dmg||10)/40,.4,1.6);
+  switch(mat){
+    case 'metal': tone(1100,.14,'square',.055*v,700); nzq(.16,.09*v,{freq:2600,q:3,shape:3}); break;
+    case 'stone': nzq(.20,.13*v,{type:'lowpass',freq:1100,to:300,q:.8,shape:2}); tone(150,.16,'square',.05*v,80); break;
+    case 'wood' : nzq(.14,.10*v,{freq:600,q:1.4,shape:2.6}); tone(230,.12,'triangle',.05*v,140); break;
+    case 'bone' : for(let i=0;i<3;i++) setTimeout(()=>nzq(.05,.06*v,{freq:1200+R1()*1200,q:3,shape:3.5}),i*40); break;
+    case 'gel'  : nzq(.22,.09*v,{type:'lowpass',freq:800,to:220,q:.9,shape:1.5}); break;
+    default     : tone(180,.13,'square',.055*v,95); nzq(.11,.085*v,{freq:520,q:1.1,shape:2.4});
+  }
+}
+function matOf(E){
+  const t=String(E&&E.t||'');
+  if(/guardian|sentry|decayed|scout/i.test(t)) return 'metal';
+  if(/talus|golem/i.test(t)) return 'stone';
+  if(/stal/i.test(t)) return 'bone';
+  if(/chu/i.test(t)) return 'gel';
+  return 'flesh';
+}
+if(typeof hitEnemy==='function'){
+  const _hit2=hitEnemy;
+  hitEnemy=function(E,dmg,nx,nz,el){
+    impactSound(matOf(E),dmg);
+    return _hit2.apply(this,arguments);
+  };
+}
+
+/* ---- drive it all from the frame that already knows dt ---- */
+if(typeof animate==='function'){
+  const _anim=animate;
+  animate=function(dt,moving,speed){
+    const r=_anim.apply(this,arguments);
+    try{ footAudio(dt,moving,speed); ambAudio(dt); voiceAudio(dt); }catch(e){}
+    return r;
+  };
+}
+console.log('audio: footsteps on '+Object.keys(FOOT).length+' surfaces, '
+  +Object.keys(VOICE).length+' monster voices, ambient beds live');
+</script>
+
