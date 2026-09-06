@@ -4242,7 +4242,7 @@ function updatePlayer(dt){
       if(!P.onGround){
         const imp=-P.vel.y;
         if(imp>24&&!P.gliding) damage((Math.floor((imp-24)/7)+1)*HEART,'the fall');
-        sfx('land'); P.noise=Math.max(P.noise,.7);
+        sfx('land'); P.noise=Math.max(P.noise,.7*sneakBonus());
       }
       P.pos.y=ng; P.vel.y=0; P.onGround=true;
       if(sl>1.3){normalAt(P.pos.x,P.pos.z,nrm);P.pos.x+=nrm.x*7*dt;P.pos.z+=nrm.z*7*dt;}
@@ -4297,7 +4297,10 @@ function updatePlayer(dt){
   updateClimate(dt);
   /* noise: sprinting is loud, crouching is quiet */
   const speed=Math.hypot(P.vel.x,P.vel.z);
-  P.noise=Math.max(P.noise*Math.pow(.2,dt), P.crouch?.05:(speed>9?.9:speed>3?.45:.15));
+  /* Stealth armour makes you quieter, not just harder to see: it damps the
+     noise you actually make, which is what the Sheikah set is for. */
+  P.noise=Math.max(P.noise*Math.pow(.2,dt),
+    (P.crouch?.05:(speed>9?.9:speed>3?.45:.15))*sneakBonus());
   /* facing + rig */
   if(moving&&!P.climbing&&!P.surfing) P.yaw=aLerp(P.yaw,Math.atan2(tv.x,tv.z),1-Math.pow(.0005,dt));
   if(aiming||P.guard) P.yaw=aLerp(P.yaw,P.look.yaw+Math.PI,1-Math.pow(.00001,dt));
@@ -4415,7 +4418,7 @@ function swing(){
   const w=curW(); if(!w){ punch(); return; }
   const S=WEAPONS[w.n];
   P.swingT=.34; P.comboT=.6; P.comboI=(P.comboI+1)%3;
-  sfx('swing'); P.noise=1;
+  sfx('swing'); P.noise=Math.max(P.noise,sneakBonus());
   const reach=3.6+S.len*.9, arc=S.hand===2?.05:(S.hand===3?.55:.28);
   /* a skeleton already on the ground gets destroyed for good — checked first, so a
      single swing can never both knock one apart and finish it */
@@ -4455,7 +4458,7 @@ function chargeRelease(){
   const w=curW(); if(!w) return;
   const S=WEAPONS[w.n];
   if(S.hand===2||S.hand===1){
-    P.spinT=.5; sfx('spin'); P.noise=1;
+    P.spinT=.5; sfx('spin'); P.noise=Math.max(P.noise,sneakBonus());
     drain(STAM.charge*(S.hand===2?2.4:1.6));
     for(const E of enemies){ if(!E.alive||E.dormant)continue;
       const d=E.pos.distanceTo(P.pos);
@@ -4579,7 +4582,7 @@ function releaseArrow(){
   m.position.copy(P.pos).add(new THREE.Vector3(0,1.8,0)).addScaledVector(dir,1.4);
   scene.add(m);
   arrows.push({m,v:dir.multiplyScalar(70),life:6,atk:B.atk,el:A.el,type:P.ai});
-  degrade(b,'bows'); sfx('bow'); P.noise=.5; updateGear();
+  degrade(b,'bows'); sfx('bow'); P.noise=Math.max(P.noise,.5*sneakBonus()); updateGear();
 }
 function updateArrows(dt){
   for(let i=arrows.length-1;i>=0;i--){
@@ -15683,6 +15686,418 @@ if(typeof refreshArmour==='function') refreshArmour();
     +(miss.length?(' | no colour: '+miss.join(', ')):' | every piece coloured'));
 })();
 </script>
+<script>
+/* ================= BATCH 83 — the chemistry engine =================
+   Group 2. Fire spread, updrafts, Stasis, Magnesis, Cryonis and shield
+   surfing were already here. What was missing was the thing underneath them:
+   a single answer to "what is this made of", and the three consequences that
+   follow from it - it burns, it conducts, it freezes. */
+
+/* ---- 1. what things are made of ---- */
+const MATTER={
+  wood :{burns:1.0, conducts:0,   freezes:.3, mass:1.0},
+  metal:{burns:0,   conducts:1.0, freezes:.6, mass:2.4},
+  stone:{burns:0,   conducts:0,   freezes:.4, mass:3.2},
+  cloth:{burns:1.3, conducts:0,   freezes:.5, mass:0.4},
+  flesh:{burns:0.6, conducts:.7,  freezes:1.0, mass:1.6},
+  water:{burns:0,   conducts:1.0, freezes:1.0, mass:1.0},
+  ice  :{burns:0,   conducts:.3,  freezes:0,   mass:1.4}
+};
+const RE_WOOD =/branch|torch|club|wood|oar|mop|broom|farm|boomerang|bow|spike|korok/i;
+const RE_METAL=/iron|steel|knight|royal|soldier|guardian|ancient|edge|blade|sword|scimitar|claymore|halberd|spear|trident|forked|throwing|lid|frying|ladle|pitchfork|rod|shield|drillshaft|windcleaver|moonlight/i;
+const RE_STONE=/stone|rock|boulder|talus|slate/i;
+function matterOf(name){
+  const n=String(name||'');
+  /* an axe head is iron whatever the haft is called, and "Woodcutter's Axe"
+     would otherwise be read as wood and never draw a bolt */
+  if(/axe|hammer|sledge|scythe|sickle/i.test(n)) return 'metal';
+  if(RE_WOOD.test(n))  return 'wood';
+  if(RE_STONE.test(n)) return 'stone';
+  if(RE_METAL.test(n)) return 'metal';
+  return 'wood';
+}
+const isMetal=n=>matterOf(n)==='metal';
+/* is the player carrying or wearing anything that conducts? */
+function playerConducts(){
+  const w=curW(); if(w&&isMetal(w.n)) return true;
+  const s=curS&&curS(); if(s&&isMetal(s.n||s)) return true;
+  if(P.wetT>0||P.swimming) return true;
+  for(const k of SLOTS){ const a=P.armor[k];
+    if(a&&a!=='None'&&/ancient|guardian|soldier|knight|royal|phantom|flamebreaker/i.test(a)) return true; }
+  return false;
+}
+function enemyConducts(E){
+  if(!E) return false;
+  if(E.weapon&&isMetal(E.weapon)) return true;
+  if(/guardian|sentry|decayed|scout/i.test(String(E.t))) return true;
+  return groundAt(E.pos.x,E.pos.z)<waterAt(E.pos.x,E.pos.z)+.6;   /* standing in water */
+}
+
+/* ---- 6. wind ---- */
+const WIND={a:0, t:0, x:1, z:0, str:1};
+function updateWind(dt){
+  WIND.t+=dt;
+  /* a slow turn with a slower wobble on top, so gusts are never periodic */
+  WIND.a=WIND.t*0.08+Math.sin(WIND.t*0.031)*1.7+Math.sin(WIND.t*0.011)*2.4;
+  WIND.x=Math.cos(WIND.a); WIND.z=Math.sin(WIND.a);
+  const alt=clamp((P.pos.y-60)/420,0,1);
+  const wet=(typeof raining!=='undefined'&&raining)?1:0;
+  const st =(typeof storming!=='undefined'&&storming)?1:0;
+  WIND.str=0.5+alt*1.3+wet*0.7+st*1.6;
+}
+/* fire leans downwind, and spreads that way */
+function windSpreadFire(dt){
+  if(typeof fires==='undefined'||!fires.length) return;
+  if(typeof raining!=='undefined'&&raining) return;
+  for(const F of fires){
+    if(F.life<1) continue;
+    if(Math.random()>dt*0.30*WIND.str) continue;
+    const d=3.5+Math.random()*3.5;
+    igniteAt(F.x+WIND.x*d, F.z+WIND.z*d);
+  }
+}
+/* and light things get shoved along the ground */
+function windPushBodies(dt){
+  if(typeof bodies==='undefined') return;
+  for(const b of bodies){
+    if(!b||b.pin||b.held) continue;
+    const m=b.mass||1; if(m>1.2) continue;              /* only light things move */
+    const f=dt*WIND.str*2.2/m;
+    b.vel.x+=WIND.x*f; b.vel.z+=WIND.z*f;
+  }
+}
+
+/* ---- 4. electricity conducts through metal and water ---- */
+function conductShock(x,z,from,depth){
+  depth=depth||0; if(depth>2) return 0;
+  let hit=0;
+  for(const E of enemies){
+    if(!E||!E.alive||E===from||E._conducted) continue;
+    const d=Math.hypot(E.pos.x-x,E.pos.z-z);
+    if(d>9) continue;
+    if(!enemyConducts(E)) continue;                    /* only through a conductor */
+    E._conducted=true; hit++;
+    try{ applyElement(E,'shock'); }catch(e){}
+    hit+=conductShock(E.pos.x,E.pos.z,E,depth+1);
+  }
+  /* and back to the player, if he is the one standing in the puddle */
+  if(depth===0&&playerConducts()&&Math.hypot(P.pos.x-x,P.pos.z-z)<9&&from){
+    try{ applyPlayerElement('shock'); }catch(e){}
+  }
+  return hit;
+}
+if(typeof applyElement==='function'){
+  const _applyEl=applyElement;
+  applyElement=function(E,el){
+    const r=_applyEl.apply(this,arguments);
+    if(el==='shock'&&E&&!E._conducting){
+      E._conducting=true;
+      for(const e2 of enemies) if(e2) e2._conducted=false;
+      E._conducted=true;
+      const n=conductShock(E.pos.x,E.pos.z,E,0);
+      if(n) toast('The current jumps to '+n+' more','good');
+      E._conducting=false;
+    }
+    return r;
+  };
+}
+
+/* ---- 5. metal draws lightning in a storm ---- */
+let _boltT=6;
+function lightningTick(dt){
+  const st=(typeof storming!=='undefined'&&storming);
+  if(!st||P.inShrine||P.inRes||P.inBeast||P.inCastle){ _boltT=5+Math.random()*5; return; }
+  _boltT-=dt; if(_boltT>0) return;
+  _boltT=6+Math.random()*8;
+  /* it wants metal: the player first, then any monster carrying it */
+  let tx,tz,onPlayer=false,victim=null;
+  if(playerConducts()&&Math.random()<0.72){ tx=P.pos.x; tz=P.pos.z; onPlayer=true; }
+  else {
+    const cands=enemies.filter(E=>E&&E.alive&&E.weapon&&isMetal(E.weapon)&&
+      Math.hypot(E.pos.x-P.pos.x,E.pos.z-P.pos.z)<120);
+    if(cands.length){ victim=cands[(Math.random()*cands.length)|0]; tx=victim.pos.x; tz=victim.pos.z; }
+    else return;                                    /* no metal about: no strike */
+  }
+  strikeLightning(tx,tz,onPlayer,victim);
+}
+function strikeLightning(x,z,onPlayer,victim){
+  try{
+    const y=groundAt(x,z);
+    const g=new THREE.Group();
+    const m=new THREE.MeshBasicMaterial({color:0xdff0ff});
+    const col=new THREE.Mesh(new THREE.CylinderGeometry(.30,.10,240,6),m);
+    col.position.set(x,y+120,z); g.add(col);
+    const li=new THREE.PointLight(0xdff0ff,7,90); li.position.set(x,y+6,z); g.add(li);
+    scene.add(g);
+    setTimeout(()=>{ try{scene.remove(g);}catch(e){} },160);
+    sfx('thunder');
+    if(onPlayer){
+      toast('Lightning! Put the metal away','bad');
+      applyPlayerElement('shock');
+    } else if(victim){ applyElement(victim,'shock'); hitEnemy(victim,40,0,0,'shock'); }
+    igniteAt(x,z);
+    for(const e2 of enemies) if(e2) e2._conducted=false;
+    conductShock(x,z,victim||null,0);
+  }catch(e){}
+}
+/* a warning first, the way the real game flashes your weapon */
+let _warnT=0;
+function lightningWarn(dt){
+  const st=(typeof storming!=='undefined'&&storming);
+  _warnT-=dt;
+  if(st&&playerConducts()&&_warnT<=0&&_boltT<2.2){
+    _warnT=1.0; toast('Your metal is sparking','bad');
+  }
+}
+
+/* ---- 7 & 8. pick a thing up, throw it, and let the momentum land ---- */
+let carried=null;
+function nearestBody(){
+  if(typeof bodies==='undefined') return null;
+  let best=null,bd=4.2;
+  for(const b of bodies){
+    if(!b||b.pin||b.held||!b.mesh) continue;
+    const d=b.mesh.position.distanceTo(P.pos);
+    if(d<bd){ bd=d; best=b; }
+  }
+  return best;
+}
+function grabOrThrow(){
+  if(!P.playing) return;
+  if(carried){ throwCarried(); return; }
+  const b=nearestBody();
+  if(!b){ toast('Nothing here to pick up'); return; }
+  if((b.mass||1)>3.4){ toast('Too heavy to lift'); return; }
+  carried=b; b.held=true; b.vel.set(0,0,0); b.angVel.set(0,0,0);
+  sfx('pickup');
+}
+function throwCarried(){
+  const b=carried; if(!b) return;
+  carried=null; b.held=false;
+  const dir=new THREE.Vector3(); cam.getWorldDirection(dir);
+  /* a heavy thing leaves your hands slower - that is the whole of the feel */
+  const power=26/Math.sqrt(b.mass||1);
+  b.vel.copy(dir).multiplyScalar(power); b.vel.y+=3;
+  b.angVel.set((Math.random()-.5)*9,(Math.random()-.5)*9,(Math.random()-.5)*9);
+  b.thrownT=2.5; b.thrower=1;
+  sfx('swing');
+}
+function carryTick(dt){
+  if(!carried) return;
+  const dir=new THREE.Vector3(); cam.getWorldDirection(dir);
+  const p=P.pos.clone().addScaledVector(dir,2.0); p.y+=1.1;
+  carried.mesh.position.lerp(p,1-Math.pow(.001,dt));
+  carried.vel.set(0,0,0);
+}
+/* momentum transfer: what it weighs times how fast it is going */
+function bodyImpacts(dt){
+  if(typeof bodies==='undefined') return;
+  for(const b of bodies){
+    if(!b||b.held||!b.mesh) continue;
+    if(b.thrownT>0) b.thrownT-=dt;
+    const sp=b.vel.length();
+    if(sp<6) continue;
+    for(const E of enemies){
+      if(!E||!E.alive) continue;
+      if(b.mesh.position.distanceTo(E.pos)>1.6+(E.s||1)) continue;
+      if(b._hitCd>0) continue;
+      const p=(b.mass||1)*sp;                       /* momentum */
+      const dmg=Math.round(clamp(p*0.9,4,90));
+      const nx=b.vel.x/sp, nz=b.vel.z/sp;
+      try{ hitEnemy(E,dmg,nx,nz,null); }catch(e){}
+      /* equal and opposite: the thing bounces, the monster is shoved */
+      E.vel.x+=nx*p*0.10; E.vel.z+=nz*p*0.10; E.stun=Math.max(E.stun||0,.5);
+      b.vel.multiplyScalar(-.28); b._hitCd=.4;
+      toast('Struck for '+dmg,'good');
+    }
+    if(b._hitCd>0) b._hitCd-=dt;
+    /* a stone thrown hard enough strikes sparks; wood catches light in fire */
+    if(sp>16&&matterOf(b.tag)==='stone'&&Math.random()<dt*3) sfx('clang');
+  }
+}
+addEventListener('keydown',e=>{
+  if(e.code==='KeyG'&&P.playing&&!paused){ e.preventDefault(); grabOrThrow(); }
+});
+
+/* ---- drive the lot ---- */
+if(typeof animate==='function'){
+  const _animChem=animate;
+  animate=function(dt,moving,speed){
+    const r=_animChem.apply(this,arguments);
+    try{
+      updateWind(dt); windSpreadFire(dt); windPushBodies(dt);
+      lightningTick(dt); lightningWarn(dt);
+      carryTick(dt); bodyImpacts(dt);
+    }catch(e){}
+    return r;
+  };
+}
+console.log('chemistry: '+Object.keys(MATTER).length+' materials, wind, conduction, '
+  +'lightning on metal, throwing with momentum');
+</script>
+<script>
+/* ================= BATCH 84 — wind-ups, recovery and dying =================
+   Group 3. The walk and run cycles, the climb, swim and glide poses and the
+   blending between them were already here - makeAnim carries a fade and
+   playClip crossfades on it. Three things were not.
+
+   A monster's swing had no readable wind-up and no recovery, so there was
+   nothing to time a dodge against. Nothing fell over when it died; it simply
+   stopped. And Link died between one frame and the next. */
+
+/* ---- 4. wind-up, strike, recovery ---- */
+const ATK_WINDUP=.30;                 /* the hit only lands below .28 */
+function attackPhases(dt){
+  for(const E of enemies){
+    if(!E||!E.alive) continue;
+    const t=E.atkT||0;
+    /* --- the tell --- */
+    if(t>ATK_WINDUP){
+      if(!E._telegraphed){
+        E._telegraphed=true;
+        try{ enemyVoice(E,'attack'); }catch(e){}
+        /* it rears back and reddens: the whole point is that you can see it */
+        E._flash=.18;
+      }
+    }
+    /* --- it has just finished swinging: the opening --- */
+    if(E._patk2>0 && t<=0){
+      E.recT=E.T&&E.T.heavy?.85:.55;      /* heavy things take longer to recover */
+      E._telegraphed=false;
+    }
+    E._patk2=t;
+    if(E.recT>0){
+      E.recT-=dt;
+      if(E.recT<=0) E.recT=0;
+    }
+    if(E._flash>0){
+      E._flash-=dt;
+      const on=E._flash>0;
+      try{
+        const body=E.g.userData.body;
+        if(body&&body.material){
+          if(on&&E.__col===undefined){ E.__col=body.material.color.getHex();
+            body.material.color.setHex(0xff6a4a); }
+          else if(!on&&E.__col!==undefined){ body.material.color.setHex(E.__col); E.__col=undefined; }
+        }
+      }catch(e){}
+    }
+  }
+}
+/* hitting something in its recovery frames hurts more - this is the counter window */
+if(typeof hitEnemy==='function'){
+  const _hitRec=hitEnemy;
+  hitEnemy=function(E,dmg,nx,nz,el){
+    if(E&&E.recT>0&&dmg>0){
+      dmg=Math.round(dmg*1.5);
+      toast('Counter!','good');
+      arguments[1]=dmg;
+    }
+    return _hitRec.apply(this,arguments);
+  };
+}
+
+/* ---- 5. ragdoll on death ---- */
+const ragdolls=[];
+function startRagdoll(g,dir,scale){
+  if(!g) return;
+  const r={g, vel:new THREE.Vector3((dir&&dir.x||0)*6+(Math.random()-.5)*3,
+                                     7+Math.random()*3,
+                                    (dir&&dir.z||0)*6+(Math.random()-.5)*3),
+    spin:new THREE.Vector3((Math.random()-.5)*7,(Math.random()-.5)*4,(Math.random()-.5)*7),
+    life:2.6, sink:0, s:scale||1};
+  ragdolls.push(r);
+  if(!g.parent) scene.add(g);
+}
+function updateRagdolls(dt){
+  for(let i=ragdolls.length-1;i>=0;i--){
+    const r=ragdolls[i], g=r.g;
+    r.vel.y-=34*dt;
+    g.position.addScaledVector(r.vel,dt);
+    g.rotation.x+=r.spin.x*dt; g.rotation.y+=r.spin.y*dt; g.rotation.z+=r.spin.z*dt;
+    const gy=groundAt(g.position.x,g.position.z);
+    if(g.position.y<gy){
+      g.position.y=gy;
+      if(r.vel.y<-2){ r.vel.y=-r.vel.y*.30;          /* one bounce, no more */
+        r.vel.x*=.5; r.vel.z*=.5; r.spin.multiplyScalar(.45); }
+      else { r.vel.set(0,0,0); r.spin.multiplyScalar(Math.pow(.02,dt));
+        /* settle face down rather than standing in the ground */
+        g.rotation.x=lerp(g.rotation.x,Math.PI*.5,1-Math.pow(.02,dt)); }
+    }
+    r.life-=dt;
+    if(r.life<1){                                    /* sink away and go */
+      r.sink+=dt*1.5; g.position.y-=dt*1.5;
+      g.traverse(o=>{ if(o.isMesh&&o.material&&o.material.transparent!==undefined){
+        o.material.transparent=true; o.material.opacity=Math.max(0,r.life); } });
+    }
+    if(r.life<=0){ try{scene.remove(g);}catch(e){} ragdolls.splice(i,1); }
+  }
+}
+if(typeof killEnemy==='function'){
+  const _killRag=killEnemy;
+  killEnemy=function(E){
+    const g=E&&E.g, stal=E&&E.T&&E.T.stal&&!E.finished;
+    const dir=(E&&E.pos&&P.pos)?new THREE.Vector3(E.pos.x-P.pos.x,0,E.pos.z-P.pos.z).normalize()
+                               :new THREE.Vector3();
+    const r=_killRag.apply(this,arguments);
+    /* a Stalkoblin only falls apart and puts itself back together - leave it be */
+    if(!stal&&g){
+      /* the game may already have taken it off the scene; give it back for the fall */
+      startRagdoll(g,dir,E.s||1);
+    }
+    return r;
+  };
+}
+
+/* ---- and Link goes down before the screen comes up ---- */
+let dyingT=0, _dyArgs=null;
+if(typeof die==='function'){
+  const _dieAnim=die;
+  die=function(title,src){
+    if(P.dead||dyingT>0) return;
+    dyingT=1.0; _dyArgs=[title,src];
+    P.playing=false;                              /* he stops taking orders at once */
+    try{ document.exitPointerLock&&document.exitPointerLock(); }catch(e){}
+    try{ sfx('hurt'); }catch(e){}
+    return;
+  };
+  window.__realDie=_dieAnim;
+}
+function dyingTick(dt){
+  if(dyingT<=0) return;
+  const was=dyingT; dyingT-=dt;
+  /* he pitches forward onto the ground over about a second */
+  const t=clamp(1-dyingT/1.0,0,1);
+  try{
+    player.rotation.x=-t*Math.PI*.48;
+    player.position.y=lerp(player.position.y,groundAt(P.pos.x,P.pos.z)+.35,1-Math.pow(.02,dt));
+  }catch(e){}
+  if(was>0&&dyingT<=0){
+    dyingT=0;
+    try{ player.rotation.x=0; }catch(e){}
+    if(window.__realDie&&_dyArgs){ window.__realDie(_dyArgs[0],_dyArgs[1]); _dyArgs=null; }
+  }
+}
+/* standing back up has to undo the fall */
+if(typeof respawn==='function'){
+  const _resp=respawn;
+  respawn=function(){ dyingT=0; _dyArgs=null;
+    try{ player.rotation.x=0; }catch(e){}
+    return _resp.apply(this,arguments); };
+}
+
+if(typeof animate==='function'){
+  const _animG3=animate;
+  animate=function(dt,moving,speed){
+    const r=_animG3.apply(this,arguments);
+    try{ attackPhases(dt); updateRagdolls(dt); dyingTick(dt); }catch(e){}
+    return r;
+  };
+}
+console.log('animation: attack wind-ups + recovery counters, ragdolls, dying collapse');
+</script>
+
+
 
 
 
