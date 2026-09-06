@@ -188,6 +188,7 @@
   <div id="prompt" class="sh"></div>
   <div id="subtitle"><span class="who"></span><span class="txt"></span></div>
   <svg id="crosshair" viewBox="0 0 26 26" fill="none" stroke="#f2e7cf" stroke-width="1.3"><circle cx="13" cy="13" r="7"/><path d="M13 0v5M13 21v5M0 13h5M21 13h5"/></svg>
+  <div id="sensor" style="position:absolute;left:50%;top:calc(50% + 118px);transform:translateX(-50%);font-family:var(--ui);font-size:14px;letter-spacing:.18em;text-transform:uppercase;color:var(--cyan);opacity:0;transition:opacity .2s;text-shadow:0 2px 6px #000"></div>
   <div id="toasts"></div>
   <div id="vig"></div><div id="hurt"></div><div id="flurry"></div><div id="chill"></div><div id="blaze"></div>
 </div>
@@ -3996,7 +3997,7 @@ const P={
 const maxHP=()=>P.hearts*HEART;
 const maxStam=()=>STAM_MAX+P.vessels*200;
 const curW=()=>P.weapons[P.wi], curB=()=>P.bows[P.bi], curS=()=>P.shields[P.si];
-const wStat=()=>{const w=curW();return w?WEAPONS[w.n]:{atk:1,dur:1,hand:1,col:0x998877,len:.9};};
+var wStat=()=>{const w=curW();return w?WEAPONS[w.n]:{atk:1,dur:1,hand:1,col:0x998877,len:.9};};
 const SLOTS=['head','body','legs'];
 function worn(){ return SLOTS.map(k=>ARMOR[P.armor[k]]).filter(Boolean); }
 function setCount(n){ return worn().filter(a=>a.set===n).length; }
@@ -12211,4 +12212,347 @@ updateArrows=function(dt){
 };
 const _updateBeastsFish=updateBeasts;
 updateBeasts=function(dt){ _updateBeastsFish(dt); updateFish(dt); };
+</script>
+<script>
+"use strict";
+/* ================= ROADMAP 14 — weapon modifiers ================= */
+/* Weapons roll a bonus the way they do in the real game. Yellow text in the
+   slot, and the bonus actually applies. */
+const MODIFIERS={
+  none        :{n:'',              w:52},
+  attackUp    :{n:'Attack Up',     w:14, tiers:[.15,.30,.50]},
+  durabilityUp:{n:'Durability Up', w:12, tiers:[.5,1.0,1.8]},
+  critical    :{n:'Critical Hit',  w:7,  tiers:[.10,.18,.25]},
+  longThrow   :{n:'Long Throw',    w:5,  tiers:[.4,.8,1.4]},
+  quickShot   :{n:'Quick Shot',    w:4,  tiers:[.2,.35,.5]},
+  multiShot   :{n:'Multi-Shot',    w:3,  tiers:[1,2,2]},
+  guardUp     :{n:'Guard Up',      w:3,  tiers:[.3,.6,1.0]}
+};
+const MOD_TOTAL=Object.values(MODIFIERS).reduce((a,m)=>a+m.w,0);
+function rollModifier(kind){
+  let r=rnd()*MOD_TOTAL;
+  for(const k in MODIFIERS){ r-=MODIFIERS[k].w; if(r<=0){
+    if(k==='none') return null;
+    if(kind!=='bow'&&(k==='quickShot'||k==='multiShot')) return null;
+    if(kind!=='shield'&&k==='guardUp') return null;
+    if(kind==='shield'&&(k==='attackUp'||k==='critical'||k==='longThrow')) return null;
+    const tier=rnd()<.6?0:(rnd()<.7?1:2);
+    return {k, tier, v:MODIFIERS[k].tiers[tier], label:MODIFIERS[k].n+' '+'+'.repeat(tier+1)};
+  }}
+  return null;
+}
+/* every weapon, bow and shield picks up its modifier as it enters the pouch */
+const _giveMod=give;
+give=function(n,count){
+  const before={w:P.weapons.length,b:P.bows.length,s:P.shields.length};
+  _giveMod(n,count);
+  if(P.weapons.length>before.w){ const it=P.weapons[P.weapons.length-1];
+    it.mod=rollModifier('weapon');
+    if(it.mod){ if(it.mod.k==='durabilityUp') it.d=Math.round(it.d*(1+it.mod.v));
+      toast(n+' — '+it.mod.label,'good'); } }
+  if(P.bows.length>before.b){ const it=P.bows[P.bows.length-1];
+    it.mod=rollModifier('bow');
+    if(it.mod){ if(it.mod.k==='durabilityUp') it.d=Math.round(it.d*(1+it.mod.v));
+      toast(n+' — '+it.mod.label,'good'); } }
+  if(P.shields.length>before.s){ const it=P.shields[P.shields.length-1];
+    it.mod=rollModifier('shield');
+    if(it.mod){ if(it.mod.k==='durabilityUp') it.d=Math.round(it.d*(1+it.mod.v));
+      toast(n+' — '+it.mod.label,'good'); } }
+};
+/* attack up and critical hits feed into every swing */
+const _wStatMod=wStat;
+wStat=function(){
+  const base=_wStatMod();
+  const w=curW();
+  if(!w||!w.mod) return base;
+  const out=Object.assign({},base);
+  if(w.mod.k==='attackUp') out.atk=Math.round(out.atk*(1+w.mod.v));
+  if(w.mod.k==='critical'&&rnd()<w.mod.v){ out.atk=Math.round(out.atk*2); out.crit=true; }
+  return out;
+};
+/* multi-shot and quick-shot on bows */
+const _releaseMod=releaseArrow;
+releaseArrow=function(){
+  const b=curB();
+  if(b&&b.mod&&b.mod.k==='multiShot'){
+    const extra=b.mod.v;
+    const B=BOWS[b.n];
+    const saved=B.mult; B.mult=(B.mult||1)+extra;
+    _releaseMod(); B.mult=saved; return;
+  }
+  _releaseMod();
+};
+/* guard up on shields */
+const _blockedMod=blockedBy;
+blockedBy=function(atk){
+  const s=curS();
+  if(s&&s.mod&&s.mod.k==='guardUp'&&P.guard){
+    const G=SHIELDS[s.n];
+    const saved=G.grd; G.grd=Math.round(G.grd*(1+s.mod.v));
+    const r=_blockedMod(atk); G.grd=saved; return r;
+  }
+  return _blockedMod(atk);
+};
+/* long throw */
+const _throwMod=throwWeapon;
+throwWeapon=function(){
+  const w=curW();
+  const boost=(w&&w.mod&&w.mod.k==='longThrow')?w.mod.v:0;
+  _throwMod();
+  if(boost&&thrown.length) thrown[thrown.length-1].v.multiplyScalar(1+boost);
+};
+/* show the modifier in the gear slot */
+const _gearMod=updateGear;
+updateGear=function(){
+  _gearMod();
+  const slots=document.querySelectorAll('#gear .slot');
+  const items=[curW(),curB(),curS()];
+  for(let i=0;i<3&&i<slots.length;i++){
+    const it=items[i];
+    if(it&&it.mod){
+      slots[i].insertAdjacentHTML('beforeend',
+        '<div style="position:absolute;bottom:4px;left:0;right:0;text-align:center;'+
+        'font-family:var(--ui);font-size:8.5px;letter-spacing:.04em;color:#e8d24a;'+
+        'text-shadow:0 1px 2px #000">'+it.mod.label+'</div>');
+    }
+  }
+};
+
+/* ================= ROADMAP 17 — Sheikah Sensor, Hero's Path, stamps ====== */
+P.sensorTarget=null; P.stamps=[]; P.path=[];
+const SENSOR_TARGETS=['Shrine','Korok Seed','Tower','Divine Beast','Great Fairy','Memory'];
+function cycleSensor(){
+  const i=SENSOR_TARGETS.indexOf(P.sensorTarget);
+  P.sensorTarget=(i+1>=SENSOR_TARGETS.length)?null:SENSOR_TARGETS[i+1];
+  toast(P.sensorTarget?('Sensor: '+P.sensorTarget):'Sensor off');
+  sfx('click');
+}
+function nearestOfType(kind){
+  let best=null,bd=1e9;
+  const consider=(x,z)=>{const d=Math.hypot(x-P.pos.x,z-P.pos.z); if(d<bd){bd=d;best={x,z,d};}};
+  if(kind==='Shrine'){ for(const D of SHRINE_DEFS) if(!P.genDone[D.id]&&!SEALED[D.id]) consider(D.x,D.z);
+    for(const s of SHRINES) if(!P.shrines[s.id]) consider(s.x,s.z); }
+  else if(kind==='Korok Seed'){ for(const K of kNear(P.pos.x,P.pos.z)) if(!K.found) consider(K.x,K.z); }
+  else if(kind==='Tower'){ for(const t of TOWERS) if(!P.towers[t.id]) consider(t.x,t.z); }
+  else if(kind==='Divine Beast'){ for(const B of BEASTS) consider(B.x,B.z); }
+  else if(kind==='Great Fairy'){ for(const F of FAIRIES) if(!P.fairies[F.n]) consider(F.x,F.z); }
+  else if(kind==='Memory'){ for(const M of memorySites) if(!P.memories[M.n]) consider(M.x,M.z); }
+  return best;
+}
+let sensorBeep=0;
+function updateSensor(dt){
+  if(!P.sensorTarget||!P.playing) { $('#sensor')&&($('#sensor').style.opacity=0); return; }
+  const t=nearestOfType(P.sensorTarget);
+  const el=$('#sensor');
+  if(!el) return;
+  if(!t){ el.style.opacity=.5; el.textContent=P.sensorTarget+' — none left'; return; }
+  el.style.opacity=1;
+  el.textContent=P.sensorTarget+'  ·  '+Math.round(t.d)+' m';
+  sensorBeep-=dt;
+  if(sensorBeep<=0&&t.d<400){ sensorBeep=clamp(t.d/220,.18,1.6); tone(1400,.05,'square',.03); }
+}
+/* Hero's Path: the last stretch of where you have walked, drawn on the map */
+function trackPath(){
+  if(!P.playing||P.inShrine||P.inRes||P.inBeast||P.inCastle) return;
+  const last=P.path[P.path.length-1];
+  if(!last||Math.hypot(last[0]-P.pos.x,last[1]-P.pos.z)>18){
+    P.path.push([Math.round(P.pos.x),Math.round(P.pos.z)]);
+    if(P.path.length>1400) P.path.shift();
+  }
+}
+setInterval(trackPath,900);
+</script>
+<script>
+"use strict";
+/* ================= ROADMAP 19 — the Lost Woods ================= */
+/* Fog you cannot see through, and only a torch tells you the way: carry a lit
+   one and watch which way the embers blow. Stray off the path and it puts you
+   back at the entrance. */
+const LOSTWOODS={x:REGIONS.woodland.x+120, z:REGIONS.woodland.z+520, r:340};
+(function buildLostWoods(){
+  const L=LOSTWOODS;
+  /* the winding correct route, entrance to the forest */
+  L.path=[[0,0],[0,-70],[60,-120],[60,-190],[-20,-240],[-20,-320],[70,-370],[70,-440]];
+  L.path=L.path.map(p=>[L.x+p[0],L.z+p[1]]);
+  L.exit=L.path[L.path.length-1];
+  const g=new THREE.Group(); world.add(g);
+  /* dead trees crowding the whole area */
+  const trunk=new THREE.CylinderGeometry(.5,.7,14,6);
+  const m=new THREE.MeshLambertMaterial({color:0x33291f,flatShading:true});
+  const inst=new THREE.InstancedMesh(trunk,m,900); inst.count=0; inst.frustumCulled=false;
+  inst.castShadow=true; scene.add(inst);
+  const d=new THREE.Object3D();
+  for(let i=0;i<900;i++){
+    const a=rnd()*TAU, r=Math.sqrt(rnd())*L.r;
+    const x=L.x+Math.cos(a)*r, z=L.z+Math.sin(a)*r;
+    let onPath=false;
+    for(const p of L.path) if(Math.hypot(p[0]-x,p[1]-z)<26){ onPath=true; break; }
+    if(onPath) continue;
+    d.position.set(x,groundAt(x,z)+7,z); d.rotation.set(0,rnd()*TAU,0);
+    d.scale.setScalar(.7+rnd()*.7); d.updateMatrix();
+    inst.setMatrixAt(inst.count++,d.matrix);
+  }
+  inst.instanceMatrix.needsUpdate=true;
+  /* braziers marking the way, lit only once you are on the path */
+  L.torches=[];
+  for(const p of L.path){
+    const t=new THREE.Group(); t.position.set(p[0],groundAt(p[0],p[1]),p[1]); world.add(t);
+    cyl(t,.5,4,0,2,0,MAT.wood);
+    const fl=new THREE.Mesh(new THREE.ConeGeometry(.7,1.6,7),
+      new THREE.MeshBasicMaterial({color:0xff8a2b}));
+    fl.position.y=4.6; t.add(fl);
+    const li=new THREE.PointLight(0xff8a2b,1.6,26); li.position.y=4.6; t.add(li);
+    L.torches.push({g:t,fl,li,x:p[0],z:p[1]});
+  }
+  IA({kind:'lostwoods',x:L.x,z:L.z,y:groundAt(L.x,L.z)+2,r:20,label:'The Lost Woods'});
+  console.log('Lost Woods built:',inst.count,'trees,',L.path.length,'waypoints');
+})();
+function updateLostWoods(dt){
+  const L=LOSTWOODS;
+  if(P.inShrine||P.inRes||P.inBeast||P.inCastle) return;
+  const d=Math.hypot(P.pos.x-L.x,P.pos.z-L.z);
+  const inside=d<L.r;
+  if(!inside){ if(L.was){ L.was=false; L.stage=0; } return; }
+  if(!L.was){ L.was=true; L.stage=0;
+    toast('The fog closes in — follow the embers','bad');
+    cut('','The trees look the same in every direction. Only a lit torch will tell you which way the wind is going.',{t:4}); }
+  /* thick fog while you are in here */
+  fogVolume.material.opacity=Math.max(fogVolume.material.opacity,.8);
+  scene.fog.density=Math.max(scene.fog.density,.02);
+  /* the next waypoint you must reach */
+  const next=L.path[Math.min(L.stage,L.path.length-1)];
+  const dn=Math.hypot(P.pos.x-next[0],P.pos.z-next[1]);
+  if(dn<20){
+    L.stage++;
+    if(L.stage>=L.path.length){
+      L.stage=L.path.length;
+      if(!P.lostWoodsDone){ P.lostWoodsDone=true;
+        sfx('orb');
+        cut('','The fog thins. The Korok Forest opens out ahead of you.',{t:4});
+        toast('You found the way through','good'); }
+    } else { toast('The embers drift on'); sfx('click'); }
+  }
+  /* a lit torch shows the direction: the flame leans toward the next waypoint */
+  const w=curW();
+  const lit=w&&WEAPONS[w.n]&&WEAPONS[w.n].torch&&P.torchLit;
+  for(let i=0;i<L.torches.length;i++){
+    const t=L.torches[i];
+    const on=lit&&i<=L.stage;
+    t.fl.visible=on; t.li.intensity=on?1.6:0;
+  }
+  if(lit&&L.stage<L.path.length){
+    const dir=new THREE.Vector3(next[0]-P.pos.x,0,next[1]-P.pos.z).normalize();
+    if(P.torchLight) P.torchLight.position.copy(P.pos).add(new THREE.Vector3(0,2,0)).addScaledVector(dir,1.6);
+  }
+  /* wander too far off the route and the woods put you back */
+  let nearest=1e9;
+  for(const p of L.path) nearest=Math.min(nearest,Math.hypot(P.pos.x-p[0],P.pos.z-p[1]));
+  if(nearest>90&&!P.lostWoodsDone){
+    P.pos.set(L.path[0][0],groundAt(L.path[0][0],L.path[0][1])+1,L.path[0][1]);
+    P.vel.set(0,0,0); L.stage=0;
+    toast('You are back where you started','bad'); sfx('break');
+  }
+}
+
+/* ================= ROADMAP 9 — the day in an NPC's life ================= */
+/* Everyone has somewhere to be at each hour: work in the morning, the village
+   centre at midday, home and asleep after dark. */
+(function giveSchedules(){
+  for(const N of npcs){
+    N.home=N.home||new THREE.Vector3(N.pos.x,N.pos.y,N.pos.z);
+    const a=rnd()*TAU;
+    N.spotWork =[N.home.x+Math.cos(a)*26,      N.home.z+Math.sin(a)*26];
+    N.spotSocial=[N.home.x+Math.cos(a+2.1)*14, N.home.z+Math.sin(a+2.1)*14];
+    N.spotBed  =[N.home.x,                     N.home.z];
+    N.wakeAt=6+rnd()*1.5;
+    N.bedAt=20+rnd()*2;
+  }
+  console.log('daily schedules given to',npcs.length,'people');
+})();
+function npcSchedule(N,hour){
+  if(hour<N.wakeAt||hour>N.bedAt) return {at:N.spotBed, sleeping:true};
+  if(hour<11) return {at:N.spotWork,   sleeping:false};
+  if(hour<15) return {at:N.spotSocial, sleeping:false};
+  if(hour<N.bedAt-2) return {at:N.spotWork, sleeping:false};
+  return {at:N.spotSocial, sleeping:false};
+}
+const _updateNPCsSched=updateNPCs;
+updateNPCs=function(dt){
+  const hour=((P.time/DAY_LEN)%1)*24;
+  for(const N of npcs){
+    if(Math.hypot(N.pos.x-P.pos.x,N.pos.z-P.pos.z)>320) continue;
+    const s=npcSchedule(N,hour);
+    N.tx=s.at[0]; N.tz=s.at[1];
+    N.wt=99;                              // the schedule overrides idle wandering
+    if(s.sleeping!==N.sleeping){
+      N.sleeping=s.sleeping;
+      N.g.rotation.z=s.sleeping?1.4:0;    // lie down
+    }
+  }
+  _updateNPCsSched(dt);
+};
+/* asleep, they will not talk to you */
+const _talkSched=talkTo;
+talkTo=function(N){
+  if(N.sleeping){ toast(N.name+' is asleep'); return; }
+  _talkSched(N);
+};
+</script>
+<script>
+"use strict";
+/* ---- wiring modifiers, sensor, Lost Woods and schedules in ---- */
+addEventListener('keydown',e=>{
+  if(!P.playing) return;
+  if(e.code==='KeyV') cycleSensor();
+  if(e.code==='KeyB'){ P.stamps.push([Math.round(P.pos.x),Math.round(P.pos.z)]);
+    toast('Stamp placed — '+P.stamps.length); sfx('click'); }
+});
+const _updateBeastsFinal=updateBeasts;
+updateBeasts=function(dt){
+  _updateBeastsFinal(dt);
+  updateSensor(dt);
+  updateLostWoods(dt);
+};
+/* Hero's Path and stamps drawn on the Sheikah map */
+const _drawBigMapPath=drawBigMap;
+drawBigMap=function(){
+  _drawBigMapPath();
+  if(!mapRevealed) return;
+  const c=$('#bigmap').getContext('2d');
+  /* the road you have walked */
+  if(P.path.length>1){
+    c.save();
+    c.strokeStyle='rgba(232,163,60,.75)'; c.lineWidth=2; c.lineJoin='round';
+    c.beginPath();
+    for(let i=0;i<P.path.length;i++){
+      const [mx,my]=w2m(P.path[i][0],P.path[i][1]);
+      const sx=mx/MAPS*BIGMAP, sy=my/MAPS*BIGMAP;
+      i?c.lineTo(sx,sy):c.moveTo(sx,sy);
+    }
+    c.stroke(); c.restore();
+  }
+  /* your own stamps */
+  const M=$('#markers');
+  for(const [sx,sz] of P.stamps){
+    const [mx,my]=w2m(sx,sz);
+    const d=document.createElement('div');
+    d.className='mk on'; d.style.left=(mx/MAPS*100)+'%'; d.style.top=(my/MAPS*100)+'%';
+    d.innerHTML='<div class="dot" style="background:#63d6e2"></div><div class="tip">Stamp</div>';
+    M.appendChild(d);
+  }
+};
+/* the keys list on the title screen */
+(function(){
+  const k=$('#keys');
+  if(k) k.insertAdjacentHTML('beforeend',
+    '<div><span>Sheikah Sensor</span><k>V</k></div>'+
+    '<div><span>Map stamp</span><k>B</k></div>'+
+    '<div><span>Leave a dungeon</span><k>X</k></div>');
+})();
+const _newGameFinal=newGame;
+newGame=function(){
+  _newGameFinal();
+  P.sensorTarget=null; P.stamps=[]; P.path=[];
+  P.lostWoodsDone=false; LOSTWOODS.stage=0; LOSTWOODS.was=false;
+};
 </script>
