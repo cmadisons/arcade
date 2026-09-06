@@ -1478,6 +1478,15 @@ function groundAt(x,z){
   }
   return n ? sum/n : FIELD;
 }
+/* the surface you actually stand on: a room's floor when you are in one,
+   the terrain when you are not */
+function floorUnder(x,z){
+  if(P.inShrine) return P.inShrine.floorY;
+  if(P.inRes)    return RES.floorY;
+  if(P.inBeast&&P.inBeast.floorY!==undefined)  return P.inBeast.floorY;
+  if(P.inCastle&&P.inCastle.floorY!==undefined) return P.inCastle.floorY;
+  return groundAt(x,z);
+}
 function slopeAt(x,z){const e=2.2;
   const dx=(groundAt(x+e,z)-groundAt(x-e,z))/(2*e), dz=(groundAt(x,z+e)-groundAt(x,z-e))/(2*e);
   return Math.hypot(dx,dz);}
@@ -4172,7 +4181,12 @@ function updatePlayer(dt){
     if(moving){P.vel.x+=tv.x*14*dt;P.vel.z+=tv.z*14*dt;}
     P.vel.y+=GRAV*dt;
     P.pos.addScaledVector(P.vel,dt);
-    const ng=groundAt(P.pos.x,P.pos.z);
+    /* Indoors, the floor is the only ground there is.  The Resurrection room
+       and every shrine room are built at real world coordinates a long way
+       from the Plateau - the Shrine of Resurrection sits where the terrain is
+       665 m up - so grounding against the terrain threw you hundreds of metres
+       above the ceiling.  That is the "wake up floating over the roof" bug. */
+    const ng=floorUnder(P.pos.x,P.pos.z);
     if(P.pos.y<=ng){P.pos.y=ng;P.vel.y=0;P.onGround=true;}else P.onGround=false;
     if(sl<.2&&sp<3){P.surfing=false;}
     if(!keys.KeyZ||!curS()){P.surfing=false;}
@@ -4201,7 +4215,12 @@ function updatePlayer(dt){
     } else drain(dt*STAM.climb*.18);
     if(raining&&!P.inShrine){ P.slip=(P.slip||0)+dt;
       if(P.slip>1.2){P.slip=0;P.pos.y-=3.2;toast('Your hands slip in the rain','bad');} }
-    const ng=groundAt(P.pos.x,P.pos.z);
+    /* Indoors, the floor is the only ground there is.  The Resurrection room
+       and every shrine room are built at real world coordinates a long way
+       from the Plateau - the Shrine of Resurrection sits where the terrain is
+       665 m up - so grounding against the terrain threw you hundreds of metres
+       above the ceiling.  That is the "wake up floating over the roof" bug. */
+    const ng=floorUnder(P.pos.x,P.pos.z);
     const st=structTopAt(P.pos.x,P.pos.z,P.pos.y);
     if(P.stam<=0){P.climbing=false;toast('Out of stamina','bad');}
     else if(st!==null&&P.pos.y>=st-.5){        // hauled yourself over the parapet
@@ -4237,7 +4256,12 @@ function updatePlayer(dt){
     if(!P.onGround&&wall&&P.vel.y<2&&moving&&P.stam>0&&!P.gliding) P.climbing=true;
     if(P.onGround&&wall&&moving&&P.stam>0) P.climbing=true;
     P.pos.addScaledVector(P.vel,dt);
-    const ng=groundAt(P.pos.x,P.pos.z);
+    /* Indoors, the floor is the only ground there is.  The Resurrection room
+       and every shrine room are built at real world coordinates a long way
+       from the Plateau - the Shrine of Resurrection sits where the terrain is
+       665 m up - so grounding against the terrain threw you hundreds of metres
+       above the ceiling.  That is the "wake up floating over the roof" bug. */
+    const ng=floorUnder(P.pos.x,P.pos.z);
     if(P.pos.y<=ng+.02){
       if(!P.onGround){
         const imp=-P.vel.y;
@@ -16096,6 +16120,135 @@ if(typeof animate==='function'){
 }
 console.log('animation: attack wind-ups + recovery counters, ragdolls, dying collapse');
 </script>
+<script>
+/* ================= BATCH 85 — cel shading, rim light, wind in the grass ====
+   Group 7. BotW's whole look is a flat colour ramp with a bright edge where
+   the light wraps round. The game was drawing smooth Lambert with no rim at
+   all, which is why it read as "3D shapes" rather than as Zelda.
+
+   MeshLambertMaterial shades per vertex in three r128, so the fragment
+   shader has no normal to work with. Both varyings are injected here. */
+const CEL={bands:4.0, rim:0.55, rimPow:0.62, on:true};
+const CEL_UNIFORMS={ uTime:{value:0}, uWind:{value:new THREE.Vector2(1,0)}, uWindStr:{value:1} };
+
+const CEL_VERT_HEAD=`
+varying vec3 vCelN; varying vec3 vCelV;`;
+const CEL_VERT_BODY=`
+  vCelN = normalize(normalMatrix * objectNormal);
+  vCelV = -(modelViewMatrix * vec4(transformed,1.0)).xyz;`;
+const CEL_FRAG_HEAD=`
+varying vec3 vCelN; varying vec3 vCelV;
+uniform float uCelBands; uniform float uCelRim; uniform float uCelRimPow;`;
+const CEL_FRAG_BODY=`
+  {
+    /* quantise the brightness into flat bands, keeping the hue */
+    float l = dot(gl_FragColor.rgb, vec3(0.299,0.587,0.114));
+    if(l > 0.0015){
+      float q = floor(l * uCelBands + 0.5) / uCelBands;
+      gl_FragColor.rgb *= clamp(q / l, 0.55, 1.7);
+    }
+    /* and a cool rim where the surface turns away from the eye */
+    float rim = 1.0 - max(dot(normalize(vCelN), normalize(vCelV)), 0.0);
+    rim = smoothstep(uCelRimPow, 1.0, rim);
+    gl_FragColor.rgb += vec3(0.34,0.42,0.52) * rim * uCelRim;
+  }`;
+
+/* grass, bushes and leaves lean on the wind; the sway is by world position so
+   neighbouring tufts are never in step */
+const WIND_VERT_BODY=`
+  {
+    vec4 wp = modelMatrix * vec4(transformed,1.0);
+    float h = clamp(transformed.y * 1.2, 0.0, 1.4);
+    float p = wp.x * 0.09 + wp.z * 0.11 + uTime * 1.9;
+    float gust = 0.55 + 0.45 * sin(uTime * 0.37 + wp.x * 0.01);
+    float amp = h * 0.30 * uWindStr * gust;
+    transformed.x += uWind.x * amp * (0.65 + 0.35 * sin(p));
+    transformed.z += uWind.y * amp * (0.65 + 0.35 * sin(p * 1.3 + 1.7));
+  }`;
+
+function shade(mat,opts){
+  if(!mat||mat.__celled) return mat;
+  mat.__celled=true;
+  const wantWind=!!(opts&&opts.wind);
+  const prev=mat.onBeforeCompile;
+  mat.onBeforeCompile=function(shader){
+    try{
+      if(prev) prev.call(this,shader);
+      shader.uniforms.uCelBands={value:CEL.bands};
+      shader.uniforms.uCelRim={value:CEL.rim};
+      shader.uniforms.uCelRimPow={value:CEL.rimPow};
+      shader.uniforms.uTime=CEL_UNIFORMS.uTime;
+      shader.uniforms.uWind=CEL_UNIFORMS.uWind;
+      shader.uniforms.uWindStr=CEL_UNIFORMS.uWindStr;
+      let v=shader.vertexShader;
+      v='uniform float uTime; uniform vec2 uWind; uniform float uWindStr;'+CEL_VERT_HEAD+'\n'+v;
+      v=v.replace('#include <begin_vertex>',
+                  '#include <begin_vertex>'+(wantWind?WIND_VERT_BODY:'')+CEL_VERT_BODY);
+      shader.vertexShader=v;
+      let f=shader.fragmentShader;
+      f=CEL_FRAG_HEAD+'\n'+f;
+      /* dithering is the last thing the built-in chain does, so go after it */
+      if(f.indexOf('#include <dithering_fragment>')>=0)
+        f=f.replace('#include <dithering_fragment>','#include <dithering_fragment>'+CEL_FRAG_BODY);
+      else f=f.replace(/\}\s*$/, CEL_FRAG_BODY+'\n}');
+      shader.fragmentShader=f;
+    }catch(e){}
+  };
+  mat.needsUpdate=true;
+  return mat;
+}
+/* everything already built */
+function shadeExisting(){
+  let n=0, w=0;
+  const windy=new Set();
+  try{
+    for(const k in I){ if(I[k]&&I[k].material) windy.add(I[k].material); }
+  }catch(e){}
+  scene.traverse(o=>{
+    if(!o.isMesh&&!o.isInstancedMesh) return;
+    const list=Array.isArray(o.material)?o.material:[o.material];
+    for(const m of list){
+      if(!m||m.__celled) continue;
+      /* flat unlit things - fire, the glowing eye, the sky - must stay flat */
+      if(m.isMeshBasicMaterial) continue;
+      const isVeg=windy.has(m);
+      shade(m,{wind:isVeg});
+      n++; if(isVeg) w++;
+    }
+  });
+  return [n,w];
+}
+/* and anything made from here on */
+(function(){
+  for(const name of ['MeshLambertMaterial','MeshPhongMaterial','MeshStandardMaterial']){
+    const Orig=THREE[name]; if(!Orig) continue;
+    function Patched(p){ const m=new Orig(p); shade(m); return m; }
+    Patched.prototype=Orig.prototype;
+    THREE[name]=Patched;
+    THREE[name].__orig=Orig;
+  }
+})();
+
+const _shaded=shadeExisting();
+console.log('cel shading applied to '+_shaded[0]+' materials, '+_shaded[1]+' of them wind-swayed');
+
+/* drive the shader clock and hand it the wind the chemistry engine already has */
+if(typeof animate==='function'){
+  const _animArt=animate;
+  animate=function(dt,moving,speed){
+    const r=_animArt.apply(this,arguments);
+    try{
+      CEL_UNIFORMS.uTime.value+=dt;
+      if(typeof WIND!=='undefined'){
+        CEL_UNIFORMS.uWind.value.set(WIND.x,WIND.z);
+        CEL_UNIFORMS.uWindStr.value=clamp(WIND.str*0.6,0.2,3.0);
+      }
+    }catch(e){}
+    return r;
+  };
+}
+</script>
+
 
 
 
