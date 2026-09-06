@@ -464,12 +464,48 @@ const WEAPONS={
   'Farming Hoe'          :{atk:2, dur:22, hand:2, col:0x6b4a2a, len:1.5}
 };
 const BOWS={
-  "Traveler's Bow" :{atk:5, dur:30, col:0xb9884a, mult:1},
-  'Boko Bow'       :{atk:3, dur:20, col:0x7d5a30, mult:1},
-  'Old Wooden Bow' :{atk:3, dur:15, col:0x6b4a2a, mult:1},
-  "Knight's Bow"   :{atk:26,dur:40, col:0xc6ccd4, mult:1},
-  'Forest Dweller’s Bow':{atk:12,dur:36,col:0x5d7a3a, mult:1}
+  /* Every bow in the game, with its real damage, shot count and durability.
+     mult is how many arrows leave the string for one arrow spent - the game
+     had the field but never read it, so a Lynel bow fired a single shaft. */
+  'Wooden Bow'            :{atk:4,  dur:20, col:0x6b4a2a, mult:1},
+  "Traveler's Bow"        :{atk:5,  dur:22, col:0xb9884a, mult:1},
+  'Boko Bow'              :{atk:6,  dur:15, col:0x7d5a30, mult:1},
+  'Duplex Bow'            :{atk:14, dur:18, col:0x8a7a5c, mult:2},
+  'Golden Bow'            :{atk:14, dur:60, col:0xd8b24a, mult:1, zoom:1},
+  'Phrenic Bow'           :{atk:10, dur:45, col:0x9a8ac4, mult:1, zoom:1},
+  "Soldier's Bow"         :{atk:14, dur:36, col:0x6f7784, mult:1},
+  'Spiked Boko Bow'       :{atk:18, dur:20, col:0x8a5a30, mult:1},
+  'Lizal Bow'             :{atk:14, dur:25, col:0x4a7a4a, mult:1},
+  'Strengthened Lizal Bow':{atk:20, dur:30, col:0x3f8a5a, mult:1},
+  'Swallow Bow'           :{atk:9,  dur:30, col:0x8ab4d8, mult:1},
+  'Falcon Bow'            :{atk:20, dur:50, col:0x6f9ad8, mult:1},
+  "Knight's Bow"          :{atk:26, dur:48, col:0xc6ccd4, mult:1},
+  'Dragon Bone Boko Bow'  :{atk:36, dur:30, col:0x5a4a3a, mult:1},
+  'Steel Lizal Bow'       :{atk:36, dur:50, col:0x7a9aa4, mult:1},
+  "Forest Dweller's Bow"  :{atk:15, dur:35, col:0x5d7a3a, mult:3},
+  'Silver Bow'            :{atk:25, dur:40, col:0xd0d6dc, mult:1},
+  'Great Eagle Bow'       :{atk:28, dur:60, col:0x3f93bc, mult:3},
+  'Royal Bow'             :{atk:38, dur:60, col:0x2b3a68, mult:1},
+  "Royal Guard's Bow"     :{atk:50, dur:20, col:0x3a4a7a, mult:1},
+  /* the ancient bow shoots flat - no drop to lead */
+  'Ancient Bow'           :{atk:44, dur:120,col:0x9ed3c6, mult:1, straight:1},
+  'Lynel Bow'             :{atk:10, dur:35, col:0x8a3a2a, mult:3},
+  'Mighty Lynel Bow'      :{atk:20, dur:35, col:0xa04a32, mult:3},
+  /* the savage sometimes rolls a five-shot string instead of three */
+  'Savage Lynel Bow'      :{atk:32, dur:45, col:0xc2503a, mult:3, roll5:1},
+  /* amiibo: never runs out of light arrows */
+  'Twilight Bow'          :{atk:30, dur:100,col:0x2f5a3a, mult:1, light:1},
+  'Bow of Light'          :{atk:100,dur:100,col:0xf0e8b0, mult:1, light:1}
 };
+/* curly apostrophes and the old name for the wooden bow both still resolve */
+(function(){
+  for(const k of Object.keys(BOWS)){
+    const c=k.replace(/'/g,'\u2019');
+    if(BOWS[c]===undefined) BOWS[c]=BOWS[k];
+  }
+  BOWS['Old Wooden Bow']=BOWS['Wooden Bow'];
+})();
+
 const SHIELDS={
   'Pot Lid'            :{grd:1, dur:10, col:0x8f96a0},
   'Wooden Shield'      :{grd:2, dur:12, col:0x7a5a34},
@@ -4595,23 +4631,43 @@ function releaseArrow(){
   if(!aiming) return;
   aiming=false; $('#crosshair').classList.remove('show'); refreshHeld();
   const b=curB(); if(!b) return;
-  if(arrowCount(P.ai)<=0){ cycleArrow(); if(arrowCount(P.ai)<=0){toast('Out of arrows','bad');return;} }
-  P.arrows[P.ai]--;
-  const A=ARROWS[P.ai], B=BOWS[b.n];
+  const B=BOWS[b.n];
+  /* The Twilight Bow and the Bow of Light never run dry - they draw their own
+     light arrows, so they neither need nor spend anything from the quiver. */
+  if(!B.light){
+    if(arrowCount(P.ai)<=0){ cycleArrow(); if(arrowCount(P.ai)<=0){toast('Out of arrows','bad');return;} }
+    P.arrows[P.ai]--;                       /* one arrow spent, however many fly */
+  }
+  const A=B.light?{el:null,col:0xf4eec0}:ARROWS[P.ai];
+  /* the Savage Lynel bow sometimes rolls a five-shot string instead of three */
+  let shots=B.mult||1;
+  if(B.roll5&&Math.random()<0.20) shots=5;
   const dir=new THREE.Vector3(-Math.sin(P.look.yaw)*Math.cos(P.look.pitch),
     Math.sin(P.look.pitch)+.05,-Math.cos(P.look.yaw)*Math.cos(P.look.pitch)).normalize();
-  const m=new THREE.Mesh(new THREE.CylinderGeometry(.04,.04,1.2,5),
-    new THREE.MeshLambertMaterial({color:A.col}));
-  if(A.el) m.material.emissive=new THREE.Color(A.col);
-  m.position.copy(P.pos).add(new THREE.Vector3(0,1.8,0)).addScaledVector(dir,1.4);
-  scene.add(m);
-  arrows.push({m,v:dir.multiplyScalar(70),life:6,atk:B.atk,el:A.el,type:P.ai});
+  const side=new THREE.Vector3().crossVectors(dir,new THREE.Vector3(0,1,0)).normalize();
+  const up=new THREE.Vector3().crossVectors(side,dir).normalize();
+  for(let k=0;k<shots;k++){
+    /* a fan, centred on the crosshair: one arrow flies true, the rest spread */
+    const off=shots===1?0:(k-(shots-1)/2);
+    const spread=B.straight?0.012:0.030;
+    const d=dir.clone()
+      .addScaledVector(side,off*spread)
+      .addScaledVector(up,(Math.random()-.5)*spread*0.5).normalize();
+    const m=new THREE.Mesh(new THREE.CylinderGeometry(.04,.04,1.2,5),
+      new THREE.MeshLambertMaterial({color:A.col}));
+    if(A.el||B.light) m.material.emissive=new THREE.Color(A.col);
+    m.position.copy(P.pos).add(new THREE.Vector3(0,1.8,0)).addScaledVector(d,1.4);
+    scene.add(m);
+    arrows.push({m,v:d.multiplyScalar(B.straight?95:70),life:6,atk:B.atk,
+                 el:A.el,type:B.light?'Arrow':P.ai,flat:!!B.straight});
+  }
+  if(shots>1) toast(shots+'-shot','good');
   degrade(b,'bows'); sfx('bow'); P.noise=Math.max(P.noise,.5*sneakBonus()); updateGear();
 }
 function updateArrows(dt){
   for(let i=arrows.length-1;i>=0;i--){
     const a=arrows[i];
-    a.v.y+=GRAV*dt*.6;
+    a.v.y+=GRAV*dt*(a.flat?.06:.6);   /* an ancient arrow flies almost flat */
     a.m.position.addScaledVector(a.v,dt);
     a.m.lookAt(a.m.position.clone().add(a.v)); a.m.rotateX(Math.PI/2);
     a.life-=dt;
