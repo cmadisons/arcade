@@ -902,6 +902,17 @@ function warpXZ(x,z){
   return [x+dx/ws, z+dz/ws];
 }
 const HOPS=[];
+/* Coordinates taken from the game's own map are already correct, so they must
+   not go through the region warp — that exists only to move my earlier guesses. */
+const hconeRaw=(n,x,z,r,h,p)=>HOPS.push({n,x,z,r,f:(px,pz)=>{const d=Math.hypot(px-x,pz-z);
+  return d>=r?0:h*Math.pow(smooth(1-d/r),p||1);}});
+const hflatRaw=(n,x,z,r,y,k)=>HOPS.push({n,x,z,r,flat:true,f:(px,pz,h)=>{const d=Math.hypot(px-x,pz-z);
+  return d>=r?h:lerp(h,y,smooth(1-d/r)*(k===undefined?1:k));}});
+const hbasinRaw=(n,x,z,r,h)=>hconeRaw(n,x,z,r,-h);
+const hriverRaw=(n,pts,r,depth)=>HOPS.push({n,x:pts[0][0],z:pts[0][1],r:1e9,poly:1,
+  f:(px,pz)=>{let b=1e9; for(let i=0;i<pts.length-1;i++){
+    const sg=seg(px,pz,pts[i][0],pts[i][1],pts[i+1][0],pts[i+1][1]); if(sg.d<b)b=sg.d;}
+    return b>=r?0:-depth*smooth(1-b/r)*smooth(1-b/r);}});
 const hcone=(n,rx,rz,r,h,p)=>{const[x,z]=warpXZ(rx,rz);
   HOPS.push({n,x,z,r,f:(px,pz)=>{const d=Math.hypot(px-x,pz-z);
   return d>=r?0:h*Math.pow(smooth(1-d/r),p||1);}});};
@@ -1125,6 +1136,60 @@ HOPS.push({n:'159 coastal shelving', x:0,z:0,r:1e9, flat:true,
 
 HOPS.push({n:'160 coastal grading',    x:0,z:0,r:1e9, flat:true, f:(x,z,h)=>
   (h>HWATER-14&&h<HWATER+10)? lerp(h,HWATER-3,.5) : h});
+/* ---- passes 163-180: the coastline, read off the game's own map ----
+   Hyrule is not a square of land. The sea wraps the whole eastern edge from
+   Akkala down through Lanayru and Necluda, turns west along the southern
+   shore as the Faron Sea, and the north-west is snowfield running off the
+   edge. These passes cut the real shape. */
+const coastFall=(n,pts,r,depth)=>HOPS.push({n,x:pts[0][0],z:pts[0][1],r:1e9,poly:1,flat:true,
+  f:(px,pz,h)=>{
+    let best=1e9, side=1;
+    for(let i=0;i<pts.length-1;i++){
+      const a=pts[i], b=pts[i+1];
+      const sg=seg(px,pz,a[0],a[1],b[0],b[1]);
+      if(sg.d<best){ best=sg.d;
+        /* which side of the line are we on */
+        side=Math.sign((b[0]-a[0])*(pz-a[1])-(b[1]-a[1])*(px-a[0]))||1; }
+    }
+    if(side<0) return h;                       /* inland, untouched */
+    const t=clamp(1-best/r,0,1);
+    return lerp(h, depth, smooth(t)*0.97);     /* seaward, falls away */
+  }});
+/* 163 the eastern shore, Akkala down to Necluda */
+coastFall('163 eastern shore',
+  [[4150,-3900],[4380,-3100],[4520,-2200],[4600,-1200],[4680,-200],
+   [4720,700],[4700,1600],[4600,2500],[4400,3200]], 900, HWATER-70);
+/* 164 the Akkala Sea, which cuts deep into the north-east */
+hflatRaw('164 Akkala Sea',        4250,-3350, 620, HWATER-60, .95);
+hbasinRaw('165 Akkala inlet',     3950,-3050, 380, 90);
+/* 166 the southern shore and the Faron Sea */
+coastFall('166 southern shore',
+  [[4400,3200],[3400,3700],[2400,3950],[1400,4050],[400,4000],[-600,3800]], 800, HWATER-70);
+hflatRaw('167 Faron Sea',         1800,4250, 900, HWATER-70, .95);
+hflatRaw('168 Necluda Sea',       4450,2100, 700, HWATER-65, .95);
+hflatRaw('169 Lanayru Sea',       4550,600,  700, HWATER-65, .95);
+/* 170-173 the water inland: Lake Hylia, the Wetlands, the great rivers */
+hflatRaw('170 Lake Hylia basin',   700,2050, 520, HWATER-46, .92);
+hconeRaw('171 Hylia island',       700,2000, 90,  62, 1.6);
+hflatRaw('172 Lanayru Wetlands',  2500,-900, 620, HWATER-6, .85);
+hriverRaw('173 Hylia River, lower',[[2380,-500],[1900,300],[1400,900],[900,1600],[700,2000]],150,90);
+/* 174-176 the north-west, which runs off the edge as snowfield */
+hflatRaw('174 Hebra snowfield edge',-4300,-3400, 800, 520, .55);
+hconeRaw('175 Tabantha cliffs',    -4400,-1800, 700, 180, 1.2);
+hriverRaw('176 Tanagar Canyon',    [[-2500,-900],[-2900,-1900],[-3100,-2900]], 170, 320);
+/* 177-179 the south-west: the desert floor, and its edge */
+hflatRaw('177 Gerudo Desert floor',-3300,2600, 1500, HWATER+52, .92);
+hflatRaw('178 Gerudo Wasteland',  -4400,3400, 900,  HWATER+44, .9);
+coastFall('179 south-western edge',
+  [[-600,3800],[-1800,3900],[-3000,3900],[-4400,3800]], 700, HWATER-40);
+/* 180 the shoreline itself: a beach rather than a cliff into the sea */
+/* 180 Lake Hylia is a lake, not a trench. Four rivers converge on it and each
+   was carving its own depth, so the bed is levelled and the island rebuilt. */
+hflatRaw('180 Lake Hylia bed',   700,2100, 560, HWATER-34, .99);
+hconeRaw('181 Hylia island',     640,2260, 110, 74, 1.7);
+hflatRaw('182 Hylia island top', 640,2260, 46, HWATER+22, .95);
+HOPS.push({n:'183 beaches', x:0,z:0,r:1e9, flat:true, f:(x,z,h)=>
+  (h>HWATER-9&&h<HWATER+7)? lerp(h,HWATER-2,.6) : h});
 /* 161 settlement levelling — runs last, so nothing ends up built on a cliff */
 const SETTLE=[[3050,-2600,150,90],[REGIONS.kakariko.x,REGIONS.kakariko.z,150,122],
   [REGIONS.hateno.x,REGIONS.hateno.z,180,110],[REGIONS.lurelin.x,REGIONS.lurelin.z,140,46],
@@ -1133,6 +1198,15 @@ const SETTLE=[[3050,-2600,150,90],[REGIONS.kakariko.x,REGIONS.kakariko.z,150,122
   [REGIONS.castle.x,REGIONS.castle.z,180,215]];
 /* 162 shrine elevation anchors — the ground matches the real altitude at all 136 */
 HOPS.push({n:'162 shrine elevation anchors', x:0,z:0,r:1e9, flat:true, f:(x,z,h)=>anchorH(x,z,h,190)});
+/* 184 the islands, raised last so nothing carves them under again */
+hconeRaw('184 Hylia island',      640,2260, 120, 90, 1.6);
+hflatRaw('185 Hylia island top',  640,2260, 44,  HWATER+24, .97);
+hconeRaw('186 Eventide Island',   4737,3772, 180, 70, 1.5);
+hflatRaw('187 Eventide top',      4737,3772, 90,  HWATER+26, .9);
+hconeRaw('188 Tingel Island',     4709,-1310,150, 60, 1.5);
+hflatRaw('189 Tingel top',        4709,-1310,70,  HWATER+22, .9);
+hconeRaw('190 Tenoko Island',     4011,2990, 130, 55, 1.5);
+hflatRaw('191 Tenoko top',        4011,2990, 60,  HWATER+20, .9);
 const SETTLE_W=SETTLE.map(q=>{const[a,b]=warpXZ(q[0],q[1]);return [a,b,q[2],q[3]];});
 HOPS.push({n:'161 settlement levelling', x:0,z:0,r:1e9, flat:true, f:(x,z,h)=>{
   for(const [sx,sz,r,y] of SETTLE_W){
@@ -14639,4 +14713,306 @@ updatePlayer=function(dt){
   }
   groundGuarantee();
 };
+</script>
+<script>
+"use strict";
+/* ============ every place named on the map ============ */
+/* The map labels these; they are now real locations you can walk to, find on
+   the Sheikah map, and have the Sensor point you toward. */
+const PLACES_NAMED=[
+ ['Hebra Mountains',      -3500,-3900,'mountain'],
+ ['Tabantha Tundra',      -2600,-3000,'snow'],
+ ['Tabantha Frontier',    -3900,-1400,'plain'],
+ ['Rito Village',         -3656,-1758,'village'],
+ ['Gerudo Highlands',     -3600,1300, 'mountain'],
+ ['Gerudo Desert',        -3300,2900, 'desert'],
+ ['Gerudo Town',          -3816,2819, 'village'],
+ ['Great Hyrule Forest',   600,-3200,'forest'],
+ ['Korok Forest',          471,-2168,'forest'],
+ ['Eldin Mountains',      1900,-3600,'mountain'],
+ ['Death Mountain',       2500,-3800,'volcano'],
+ ['Eldin Canyon',         2500,-2000,'canyon'],
+ ['Goron City',           2320,-3820,'village'],
+ ['Deep Akkala',          3900,-3700,'plain'],
+ ['Akkala Highlands',     4100,-2700,'plain'],
+ ['Akkala Sea',           4400,-3300,'sea'],
+ ['Lanayru Wetlands',     2500,-900, 'wetland'],
+ ['Lanayru Great Spring', 3600,-800, 'spring'],
+ ['Mount Lanayru',        3750,-1500,'mountain'],
+ ['Lanayru Sea',          4550,600,  'sea'],
+ ['Zora’s Domain',        3323,-518, 'village'],
+ ['Hyrule Ridge',         -2215,-372,'plain'],
+ ['Hyrule Field',          300,-500, 'plain'],
+ ['Lookout Landing',       100,-1150,'outpost'],
+ ['Hyrule Castle',        -254,-1077,'castle'],
+ ['Kakariko Village',     1841,891,  'village'],
+ ['West Necluda',         1900,1500, 'plain'],
+ ['East Necluda',         3300,2400, 'plain'],
+ ['Hateno Village',       3388,2215, 'village'],
+ ['Necluda Sea',          4450,2100, 'sea'],
+ ['Lake Hylia',            700,2100, 'lake'],
+ ['Faron Grasslands',     1500,3300, 'plain'],
+ ['Faron Sea',            1800,4250, 'sea'],
+ ['Lurelin Village',      2834,3312, 'village'],
+ ['Dueling Peaks',        1346,1599, 'mountain'],
+ ['Great Plateau',        PCX,PCZ,   'plateau']
+];
+(function markPlaces(){
+  let n=0;
+  for(const [name,x,z,kind] of PLACES_NAMED){
+    if(Math.abs(x)>5000||Math.abs(z)>5000) continue;
+    PLACES[name]=PLACES[name]||{x,z};
+    const y=groundAt(x,z);
+    /* a signpost on land, nothing out at sea */
+    if(kind!=='sea'&&y>waterAt(x,z)+1){
+      const g=new THREE.Group(); g.position.set(x,y,z); world.add(g);
+      cyl(g,.22,4,0,2,0,MAT.wood);
+      const board=box(g,4.4,1.2,.3,0,4.2,0,MAT.wood2);
+      board.rotation.y=rnd()*.6-.3;
+      g.traverse(o=>{if(o.isMesh)o.castShadow=true;});
+    }
+    IA({kind:'place',name,place:kind,x,z,y:y+2,r:kind==='sea'?400:120,label:name});
+    n++;
+  }
+  console.log('named places from the map:',n);
+})();
+/* Lookout Landing, the one place on this map that has no counterpart yet */
+(function buildLookoutLanding(){
+  const x=100,z=-1150,y=groundAt(x,z);
+  if(y<waterAt(x,z)+1) return;
+  const g=new THREE.Group(); g.position.set(x,y,z); world.add(g);
+  const wall=new THREE.MeshLambertMaterial({color:0x9a8f7a});
+  /* a ring of palisade with a gate */
+  for(let i=0;i<24;i++){
+    const a=i/24*TAU;
+    if(a>1.1&&a<1.5) continue;                    /* the gateway */
+    box(g,1.2,6,1.2,Math.cos(a)*30,3,Math.sin(a)*30,wall,-a);
+  }
+  /* the tower at its middle */
+  cyl(g,5,22,0,11,0,MAT.sheikah);
+  const eye=new THREE.Mesh(new THREE.SphereGeometry(1.2,14,11),MAT.glowB);
+  eye.position.y=23; g.add(eye);
+  const li=new THREE.PointLight(0x63d6e2,2,70); li.position.y=23; g.add(li);
+  addStruct({x,z,r:5.4,base:y,top:y+22,plat:5});
+  /* huts and a cooking pot inside the walls */
+  for(let i=0;i<7;i++){
+    const a=i/7*TAU+.4, r=16;
+    const hx=Math.cos(a)*r, hz=Math.sin(a)*r;
+    box(g,6,4,6,hx,2,hz,MAT.wood,-a);
+    const roof=new THREE.Mesh(new THREE.ConeGeometry(4.8,2.6,4),MAT.wood2);
+    roof.position.set(hx,5.3,hz); roof.rotation.y=Math.PI/4; roof.castShadow=true; g.add(roof);
+    addStruct({x:x+hx,z:z+hz,r:3.4,base:y,top:y+4,plat:2.8});
+  }
+  addFire(x+10,z+10,true,'lookout');
+  for(let i=0;i<9;i++){
+    const a=rnd()*TAU, r=rnd()*24;
+    makeNPC({x:x+Math.cos(a)*r,z:z+Math.sin(a)*r,kind:'villager',
+             name:'Lookout Guard',cloth:0x5a6a7a,hair:0x3a2a1a});
+  }
+  IA({kind:'village',name:'Lookout Landing',x,z,y:y+2,r:34,label:'Lookout Landing'});
+  console.log('Lookout Landing built');
+})();
+/* the Sensor and the map both know about them */
+const _sensorTargets=SENSOR_TARGETS.slice();
+SENSOR_TARGETS.length=0;
+SENSOR_TARGETS.push(..._sensorTargets,'Named place');
+const _nearestOfType=nearestOfType;
+nearestOfType=function(kind){
+  if(kind==='Named place'){
+    let best=null,bd=1e9;
+    for(const [name,x,z] of PLACES_NAMED){
+      const d=Math.hypot(x-P.pos.x,z-P.pos.z);
+      if(d<bd&&d>40){bd=d;best={x,z,d};}
+    }
+    return best;
+  }
+  return _nearestOfType(kind);
+};
+const _drawBigMapPlaces=drawBigMap;
+drawBigMap=function(){
+  _drawBigMapPlaces();
+  if(!mapRevealed) return;
+  const c=$('#bigmap').getContext('2d');
+  c.save();
+  c.font='11px "Barlow Condensed", sans-serif';
+  c.textAlign='center';
+  for(const [name,x,z,kind] of PLACES_NAMED){
+    const [mx,my]=w2m(x,z);
+    const sx=mx/MAPS*BIGMAP, sy=my/MAPS*BIGMAP;
+    c.fillStyle=kind==='sea'||kind==='lake'?'rgba(150,200,230,.85)':'rgba(232,214,170,.9)';
+    c.shadowColor='rgba(0,0,0,.9)'; c.shadowBlur=3;
+    c.fillText(name,sx,sy);
+  }
+  c.restore();
+};
+const _promptPlace=promptFor;
+promptFor=function(it){
+  if(it&&it.kind==='place') return '<b>'+it.name+'</b>';
+  return _promptPlace(it);
+};
+</script>
+<script>
+"use strict";
+/* ============ Koroks, redistributed from the seed map ============
+   Read off the pin map: they are not spread evenly. Central Hyrule and
+   Necluda are thick with them, the Gerudo sand and the seas nearly bare,
+   and everywhere they hug roads, bridges, peaks and ruins rather than
+   sitting in open ground. */
+(function redistributeKoroks(){
+  const I=window.__korokMeshes;
+  if(!I){ console.warn('korok meshes missing, redistribution skipped'); return; }
+  const DENSITY=[
+    ['central',   120], ['duel',       90], ['lanayru',  85], ['akkala',   80],
+    ['faron',      75], ['gerudo',     45], ['wasteland',30], ['hebra',    70],
+    ['ridge',      65], ['eldin',      65], ['hateno',   60], ['woodland', 55],
+    ['tabantha',   55], ['hylia',      30], ['plateau',  25], ['korok',    20]
+  ];
+  const magnets=[];
+  for(const k in REGIONS) magnets.push([REGIONS[k].x,REGIONS[k].z,140]);
+  for(const t of TOWERS)  magnets.push([t.x,t.z,120]);
+  for(const st of STABLES)magnets.push([st.x,st.z,110]);
+  for(const D of SHRINE_DEFS) magnets.push([D.x,D.z,90]);
+  const nearMagnet=(x,z)=>{
+    for(let i=0;i<magnets.length;i++){
+      const m=magnets[i], dx=x-m[0], dz=z-m[1];
+      if(dx*dx+dz*dz < m[2]*m[2]) return true;
+    }
+    return false;
+  };
+  /* take the old ones away */
+  for(const K of koroks) for(const [mesh,idx] of K.parts) hideInstance(mesh,idx);
+  koroks.length=0; kBuckets.clear(); korokShootables.length=0;
+
+  const d=new THREE.Object3D();
+  const put=(m,x,y,z,sc,ry)=>{
+    if(m.count>=m.instanceMatrix.count) return -1;
+    d.position.set(x,y,z); d.rotation.set(0,ry===undefined?rnd()*TAU:ry,0);
+    d.scale.setScalar(sc); d.updateMatrix();
+    m.setMatrixAt(m.count++, d.matrix); return m.count-1;
+  };
+  /* the same twenty-one kinds, rebuilt at a new spot */
+  function build(K){
+    const {x,z,y,type}=K;
+    switch(type){
+      case 'rock': K.parts.push([I.rock,put(I.rock,x,y+1.0,z,.8+rnd()*.5)]);
+        K.hint='Lift the rock'; break;
+      case 'hiddenRock': K.wall=addCracked(x,y,z-3,rnd()*TAU,5,4,'korok');
+        K.parts.push([I.rock,put(I.rock,x,y+1.0,z,.9)]);
+        K.needBomb=true; K.hint='Blast the wall, then lift the rock'; break;
+      case 'flowers': { const a0=rnd()*TAU;
+        for(let k=0;k<6;k++){ const px=x+Math.cos(a0)*k*6, pz=z+Math.sin(a0)*k*6;
+          K.parts.push([I.flow,put(I.flow,px,groundAt(px,pz)+.6,pz,1)]); }
+        K.endPos=[x+Math.cos(a0)*30,z+Math.sin(a0)*30];
+        K.hint='Follow the flowers'; break; }
+      case 'balloon': case 'balloons': { const n=type==='balloon'?1:(3+Math.floor(rnd()*3));
+        K.targets=[];
+        for(let k=0;k<n;k++){ const px=x+(rnd()-.5)*7, pz=z+(rnd()-.5)*7, py=y+7+rnd()*5;
+          K.parts.push([I.balloon,put(I.balloon,px,py,pz,.9)]);
+          K.targets.push({x:px,y:py,z:pz,hit:false}); }
+        korokShootables.push(K);
+        K.hint=n>1?('Pop all '+n+' balloons'):'Shoot the balloon'; break; }
+      case 'acorn': { const py=y+8+rnd()*3;
+        K.parts.push([I.acorn,put(I.acorn,x,py,z,1)]);
+        K.targets=[{x,y:py,z,hit:false}]; korokShootables.push(K);
+        K.hint='Shoot the acorn'; break; }
+      case 'jumpingAcorn': { K.targets=[];
+        for(let k=0;k<2;k++){ const px=x+(k?2.6:-2.6), py=y+7+rnd()*2;
+          K.parts.push([I.acorn,put(I.acorn,px,py,z,1)]);
+          K.targets.push({x:px,y:py,z,hit:false}); }
+        korokShootables.push(K); K.hint='Shoot both acorns'; break; }
+      case 'peakSparkles': K.parts.push([I.spark,put(I.spark,x,y+1.4,z,1)]);
+        K.peak=true; K.hint='Examine the sparkles'; break;
+      case 'waterRing': for(let k=0;k<7;k++){ const a=k/7*TAU;
+          const px=x+Math.cos(a)*3.2, pz=z+Math.sin(a)*3.2;
+          K.parts.push([I.lily,put(I.lily,px,waterAt(px,pz)+.1,pz,1)]); }
+        K.dive=true; K.hint='Dive into the ring'; break;
+      case 'iceSparkles': K.parts.push([I.ice,put(I.ice,x,y+1.6,z,1.2)]);
+        K.needMelt=true; K.hint='Melt the ice'; break;
+      case 'timedRing': { K.parts.push([I.stump,put(I.stump,x,y+.35,z,1)]);
+        const a0=rnd()*TAU, dist=34+rnd()*22;
+        const rx=x+Math.cos(a0)*dist, rz=z+Math.sin(a0)*dist;
+        K.ring=[rx,rz];
+        K.parts.push([I.ring,put(I.ring,rx,groundAt(rx,rz)+2.6,rz,1)]);
+        K.raceTime=Math.max(6,dist/6.5);
+        K.hint='Step on the stump, then race to the ring'; break; }
+      case 'metalBlock': K.cube=addMetal(x-4,y,z,1.8,1.8,1.8,'korok');
+        K.slot=[x+4,z]; K.parts.push([I.peb,put(I.peb,x+4,y+.2,z,1.6)]);
+        K.magnet=true; K.hint='Set the block in the empty space'; break;
+      case 'chainedBall': K.ball=addBoulder(x-5,y,z,1.2,'korok');
+        K.slot=[x+4,z]; K.parts.push([I.stump,put(I.stump,x+4,groundAt(x+4,z)+.35,z,1.2)]);
+        K.magnet=true; K.hint='Lift the ball onto the stump'; break;
+      case 'rockPattern': { const gapI=Math.floor(rnd()*7);
+        for(let k=0;k<7;k++){ if(k===gapI) continue;
+          const a2=k/7*TAU, px=x+Math.cos(a2)*3.4, pz=z+Math.sin(a2)*3.4;
+          K.parts.push([I.peb,put(I.peb,px,groundAt(px,pz)+.4,pz,1.0)]); }
+        const ga=gapI/7*TAU;
+        K.slot=[x+Math.cos(ga)*3.4,z+Math.sin(ga)*3.4];
+        K.ball=addBoulder(x+Math.cos(ga+2.4)*9,y,z+Math.sin(ga+2.4)*9,1.0,'korok');
+        K.magnet=true; K.hint='Complete the circle with the loose rock'; break; }
+      case 'rockCircle': for(let k=0;k<8;k++){ const a2=k/8*TAU;
+          const px=x+Math.cos(a2)*4.0, pz=z+Math.sin(a2)*4.0;
+          K.parts.push([I.peb,put(I.peb,px,groundAt(px,pz)+.5,pz,1.2)]); }
+        K.slot=[x,z]; K.ball=addBoulder(x+11,y,z,1.1,'korok');
+        K.magnet=true; K.hint='Get a rock into the middle of the circle'; break;
+      case 'rockPit': { const px=x+5, pz=z;
+        K.parts.push([I.ring,put(I.ring,px,groundAt(px,pz)+.3,pz,1.1)]);
+        K.slot=[px,pz]; K.ball=addBoulder(x-5,y,z,2.0,'korok');
+        K.magnet=true; K.hint='Push the boulder into the hole'; break; }
+      case 'numberedFlowers': { const a0=rnd()*TAU;
+        K.steps=[]; K.stepAt=0;
+        for(let k=0;k<5;k++){
+          const px=x+Math.cos(a0+k*.7)*(8+k*7), pz=z+Math.sin(a0+k*.7)*(8+k*7);
+          for(let f=0;f<=k;f++)
+            K.parts.push([I.flow,put(I.flow,px+(f-k/2)*.8,groundAt(px,pz)+.6,pz,1)]);
+          K.steps.push([px,pz]); }
+        K.hint='Walk the flowers in order, one bloom to five'; break; }
+      case 'fruitMatch': { K.targets=[];
+        for(let k=0;k<3;k++){ const px=x+(k-1)*7, py=y+6.5;
+          K.parts.push([I.balloon,put(I.balloon,px,py,z,.55)]);
+          if(k===1) K.targets.push({x:px,y:py,z,hit:false}); }
+        korokShootables.push(K);
+        K.hint='Shoot the fruit that does not match'; break; }
+      case 'fruitOffering': K.parts.push([I.stump,put(I.stump,x,y+.35,z,1.1)]);
+        K.offering=true; K.hint='Offer an apple'; break;
+      case 'movingSparkles': K.parts.push([I.spark,put(I.spark,x,y+1.2,z,1)]);
+        K.moving=true; K.mx=x; K.mz=z; K.ma=rnd()*TAU; K.midx=K.parts[0][1];
+        K.hint='Chase the sparkle'; break;
+      default:
+        for(const sg of[-1,1]) K.parts.push([I.peb,put(I.peb,x+sg*2.6,groundAt(x+sg*2.6,z)+.4,z,1.1)]);
+        K.parts.push([I.rock,put(I.rock,x,y+.9,z+3.2,.75)]);
+        K.hint='Complete the pair'; break;
+    }
+  }
+  const total=DENSITY.reduce((a,d)=>a+d[1],0);
+  let made=0;
+  const spawn=(x,z)=>{
+    const K={id:'k'+made,x,z,y:groundAt(x,z),type:pickKorokType(),found:false,parts:[],t:0};
+    build(K); koroks.push(K); kAdd(K); made++;
+  };
+  for(const [key,want] of DENSITY){
+    const R=REGIONS[key]; if(!R) continue;
+    const count=Math.round(want/total*900);
+    let placed=0, tries=0;
+    while(placed<count && tries++<count*80 && made<900){
+      const a=rnd()*TAU, r=Math.sqrt(rnd())*R.r;
+      const x=R.x+Math.cos(a)*r, z=R.z+Math.sin(a)*r;
+      if(groundAt(x,z) < waterAt(x,z)+2) continue;
+      if(slopeAt(x,z) > 1.1) continue;
+      if(rnd()<0.66 && !nearMagnet(x,z)) continue;   /* most cling to something */
+      spawn(x,z); placed++;
+    }
+  }
+  let guard=0;
+  while(made<900 && guard++<60000){
+    const x=(rnd()*2-1)*4600, z=(rnd()*2-1)*4600;
+    if(groundAt(x,z) < waterAt(x,z)+2) continue;
+    if(slopeAt(x,z) > 1.1) continue;
+    spawn(x,z);
+  }
+  for(const k in I) I[k].instanceMatrix.needsUpdate=true;
+  const inWater=koroks.filter(K=>groundAt(K.x,K.z)<waterAt(K.x,K.z)).length;
+  const tally={}; for(const K of koroks) tally[K.type]=(tally[K.type]||0)+1;
+  console.log('Koroks redistributed:',koroks.length,'| in water:',inWater,
+              '| kinds:',Object.keys(tally).length);
+})();
 </script>
