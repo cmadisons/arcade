@@ -634,13 +634,47 @@ const BOWS={
 })();
 
 const SHIELDS={
-  'Pot Lid'            :{grd:1, dur:10, col:0x8f96a0},
-  'Wooden Shield'      :{grd:2, dur:12, col:0x7a5a34},
-  'Boko Shield'        :{grd:3, dur:5,  col:0x6d5231},
-  "Traveler's Shield"  :{grd:4, dur:12, col:0xb8944c},
-  'Kite Shield'        :{grd:6, dur:20, col:0x9aa8b4},
-  'Hylian Shield'      :{grd:90,dur:800,col:0x3f6cb0}
+  /* guard value, durability, and how well it surfs.  surf 1.0 is a plain
+     board; the Daybreaker and the Mind's Eye are built for it, and the
+     Hylian Shield is a slab of iron that scrapes. */
+  'Pot Lid'                 :{grd:3, dur:12, col:0x8f96a0, surf:0.75},
+  'Wooden Shield'           :{grd:3, dur:12, col:0x7a5a34, surf:1.00},
+  'Rusty Shield'            :{grd:6, dur:8,  col:0x9c6b4b, surf:0.85},
+  'Boko Shield'             :{grd:4, dur:6,  col:0x6d5231, surf:0.90},
+  'Spiked Boko Shield'      :{grd:8, dur:10, col:0x86603a, surf:0.85},
+  'Dragonbone Boko Shield'  :{grd:20,dur:16, col:0x9c9482, surf:0.85},
+  "Traveler's Shield"       :{grd:4, dur:12, col:0xb8944c, surf:1.00},
+  "Soldier's Shield"        :{grd:14,dur:20, col:0x8f98a4, surf:0.95},
+  "Knight's Shield"         :{grd:26,dur:28, col:0xd6dee6, surf:0.95},
+  'Royal Shield'            :{grd:55,dur:36, col:0x2b3a68, surf:1.00},
+  "Royal Guard's Shield"    :{grd:70,dur:12, col:0x3a4a7a, surf:1.00},
+  'Hylian Shield'           :{grd:90,dur:800,col:0x3f6cb0, surf:0.55},
+  "Forest Dweller's Shield" :{grd:12,dur:32, col:0x5d7a3a, surf:1.10},
+  'Gerudo Shield'           :{grd:20,dur:26, col:0x46bdb2, surf:1.05},
+  'Radiant Shield'          :{grd:55,dur:32, col:0xd6cba4, surf:1.00},
+  'Kite Shield'             :{grd:12,dur:20, col:0x9aa8b4, surf:1.00},
+  'Emblazoned Shield'       :{grd:14,dur:22, col:0xb04a3a, surf:1.00},
+  'Silver Shield'           :{grd:40,dur:32, col:0xd0d6dc, surf:1.00},
+  "Shield of the Mind's Eye":{grd:12,dur:40, col:0x8ab4d8, surf:1.30},
+  'Lizal Shield'            :{grd:10,dur:14, col:0x4a7a4a, surf:0.95},
+  'Reinforced Lizal Shield' :{grd:18,dur:18, col:0x3f8a5a, surf:0.95},
+  'Steel Lizal Shield'      :{grd:32,dur:24, col:0x7a9aa4, surf:0.90},
+  'Ancient Shield'          :{grd:44,dur:56, col:0x9ed3c6, surf:1.00},
+  'Guardian Shield'         :{grd:24,dur:16, col:0x86b8ac, surf:0.95},
+  'Guardian Shield+'        :{grd:36,dur:22, col:0x9ed3c6, surf:0.95},
+  'Guardian Shield++'       :{grd:46,dur:28, col:0xb4e0d4, surf:0.95},
+  'Daybreaker'              :{grd:44,dur:60, col:0xd8b24a, surf:1.35},
+  'Lynel Shield'            :{grd:32,dur:18, col:0x8a3a2a, surf:0.95},
+  'Mighty Lynel Shield'     :{grd:42,dur:22, col:0xa04a32, surf:0.95},
+  'Savage Lynel Shield'     :{grd:58,dur:28, col:0xc2503a, surf:0.95}
 };
+(function(){
+  for(const k of Object.keys(SHIELDS)){
+    const c=k.replace(/'/g,'\u2019');
+    if(SHIELDS[c]===undefined) SHIELDS[c]=SHIELDS[k];
+  }
+})();
+
 const ARMOR={
   /* every set, headgear, tunic and greave in the game */
   'None':{def:0},
@@ -4340,7 +4374,9 @@ function updatePlayer(dt){
     normalAt(P.pos.x,P.pos.z,nrm);
     P.vel.x+= -nrm.x*46*dt; P.vel.z+= -nrm.z*46*dt;
     const sp=Math.hypot(P.vel.x,P.vel.z);
-    if(sp>SURF_SPD){P.vel.x*=SURF_SPD/sp;P.vel.z*=SURF_SPD/sp;}
+    /* a board built for surfing carries you faster than a slab of iron */
+    const _sh=curS(), _top=SURF_SPD*((_sh&&SHIELDS[_sh.n]&&SHIELDS[_sh.n].surf)||1);
+    if(sp>_top){P.vel.x*=_top/sp;P.vel.z*=_top/sp;}
     if(moving){P.vel.x+=tv.x*14*dt;P.vel.z+=tv.z*14*dt;}
     P.vel.y+=GRAV*dt;
     P.pos.addScaledVector(P.vel,dt);
