@@ -812,7 +812,10 @@ function anchorH(x,z,h,R){
     const w=Math.pow(1-d/R,2)/(d2*0.001+0.01);
     wsum+=w; asum+=w*S.alt; near++;
   }
-  if(!near) return h;
+  /* every anchor in range can sit exactly at the cutoff, where the weight is
+     zero.  near>0 but wsum===0, and asum/wsum is 0/0 - one NaN in the whole
+     world, at (-3010,2310), and standing on it meant standing on nothing. */
+  if(!near || !(wsum>0)) return h;
   const target=asum/wsum;
   const pull=clamp(wsum/(wsum+0.25),0,0.985);
   return lerp(h,target,pull);
@@ -1459,8 +1462,21 @@ function triAt(H,W,i,j,fx,fz){
 function groundAt(x,z){
   const gx=(x-PCX+HALF)/CELL, gz=(z-PCZ+HALF)/CELL;
   const i=Math.floor(gx), j=Math.floor(gz);
-  if(i<0||j<0||i>=GRID-1||j>=GRID-1) return hyruleAt(x,z);
-  return triAt(HM,GRID,i,j,gx-i,gz-j);
+  const h=(i<0||j<0||i>=GRID-1||j>=GRID-1) ? hyruleAt(x,z)
+                                           : triAt(HM,GRID,i,j,gx-i,gz-j);
+  /* There is always ground.  Nothing downstream - standing, swimming, the
+     camera - behaves sanely on a NaN, and a single bad cell used to mean
+     falling through the world, so no non-finite height ever leaves here. */
+  if(isFinite(h)) return h;
+  let sum=0, n=0;
+  for(const [ox,oz] of [[26,0],[-26,0],[0,26],[0,-26]]){
+    const gx2=(x+ox-PCX+HALF)/CELL, gz2=(z+oz-PCZ+HALF)/CELL;
+    const i2=Math.floor(gx2), j2=Math.floor(gz2);
+    const v=(i2<0||j2<0||i2>=GRID-1||j2>=GRID-1) ? hyruleAt(x+ox,z+oz)
+                                                 : triAt(HM,GRID,i2,j2,gx2-i2,gz2-j2);
+    if(isFinite(v)){ sum+=v; n++; }
+  }
+  return n ? sum/n : FIELD;
 }
 function slopeAt(x,z){const e=2.2;
   const dx=(groundAt(x+e,z)-groundAt(x-e,z))/(2*e), dz=(groundAt(x,z+e)-groundAt(x,z-e))/(2*e);
@@ -15359,4 +15375,173 @@ if(typeof animate==='function'){
 console.log('audio: footsteps on '+Object.keys(FOOT).length+' surfaces, '
   +Object.keys(VOICE).length+' monster voices, ambient beds live');
 </script>
+<script>
+/* ================= BATCH 80 — Link with nothing on =================
+   With no armour equipped the game dressed him in a skin-coloured tunic:
+   the shoulder pads, yoke and four skirt panels were all still there, just
+   recoloured. That is not what he looks like at the start of the game.
+
+   Undressed, Link is bare-chested with the sheath strap still crossing him,
+   navy shorts, bare feet, and the Sheikah Slate on his hip. */
+const LINK_BARE={
+  shorts :0x3c4a6b,      /* the navy shorts */
+  shortsT:0x6a7fa8,      /* their lighter piping */
+  skin   :0xe9c39c
+};
+/* pieces that only exist because a shirt is being worn */
+const SHIRT_PARTS=['yoke','padL','padR','skirt','skirtFL','skirtFR','skirtBL','skirtBR'];
+const SLEEVES=['sleeveL','sleeveR'];
+function applyBareLook(){
+  try{
+    const bareTop =!P.armor.body||P.armor.body==='None';
+    const bareLegs=!P.armor.legs||P.armor.legs==='None';
+    /* --- top --- */
+    for(const id of SHIRT_PARTS) rigShow(linkRig,id,!bareTop);
+    for(const id of SLEEVES)     rigShow(linkRig,id,!bareTop);
+    if(bareTop){
+      rigSkin(linkRig,'torso',LINK_BARE.skin);
+      rigSkin(linkRig,'waist',LINK_BARE.skin);
+    }
+    /* --- legs: shorts to the knee, then bare shin and a bare foot --- */
+    if(bareLegs){
+      rigSkin(linkRig,'thighML',LINK_BARE.shorts);
+      rigSkin(linkRig,'thighMR',LINK_BARE.shorts);
+      rigSkin(linkRig,'shinML',LINK_BARE.skin);
+      rigSkin(linkRig,'shinMR',LINK_BARE.skin);
+      for(const id of ['bootL','bootR']) rigSkin(linkRig,id,LINK_BARE.skin);
+      for(const id of ['cuffBL','cuffBR']) rigShow(linkRig,id,false);
+      for(const id of ['cuffL','cuffR']) rigShow(linkRig,id,false);
+    } else {
+      for(const id of ['cuffBL','cuffBR','cuffL','cuffR']) rigShow(linkRig,id,true);
+    }
+  }catch(e){}
+}
+/* the Slate rides on his hip from the moment he picks it up */
+(function(){
+  try{
+    const B=linkRig.bones;
+    if(!B||!B.hips) return;
+    const g=new THREE.Group();
+    g.position.set(.26,-.10,.03); g.rotation.set(0,0,-.10);
+    B.hips.add(g);
+    const shell=new THREE.MeshLambertMaterial({color:0x4e535c,flatShading:true});
+    const face =new THREE.MeshLambertMaterial({color:0x2a2e34,flatShading:true});
+    const glow =new THREE.MeshBasicMaterial({color:0x63d6e2});
+    const amber=new THREE.MeshBasicMaterial({color:0xd8963a});
+    const bx=(s,c,m)=>{const q=new THREE.Mesh(new THREE.BoxGeometry(s[0],s[1],s[2]),m);
+      q.position.set(c[0],c[1],c[2]); q.castShadow=true; g.add(q); return q;};
+    bx([.17,.28,.045],[0,0,0],shell);             /* the body */
+    bx([.14,.24,.012],[0,0,.030],face);           /* the dark screen */
+    bx([.055,.055,.010],[0,.02,.040],glow);       /* the eye */
+    bx([.020,.020,.010],[-.05,-.09,.040],amber);  /* the runes down one side */
+    bx([.020,.020,.010],[-.05,-.05,.040],amber);
+    rig.slate=g; g.visible=false;
+  }catch(e){}
+})();
+/* keep it in step with the loadout and with whether he has the Slate at all */
+if(typeof refreshArmour==='function'){
+  const _refreshArm=refreshArmour;
+  refreshArmour=function(){ const r=_refreshArm.apply(this,arguments); applyBareLook(); return r; };
+  refreshArmour();
+}
+if(typeof animate==='function'){
+  const _animBare=animate;
+  animate=function(dt,moving,speed){
+    const r=_animBare.apply(this,arguments);
+    if(rig.slate) rig.slate.visible=!!P.hasSlate&&!P.gliding;
+    return r;
+  };
+}
+console.log('Link: bare-chested default look + Sheikah Slate on the hip');
+</script>
+<script>
+/* ================= BATCH 81 — every armour its own colour =================
+   96 pieces of armour were in the game but only eleven had a colour of their
+   own; the rest fell through to a generic brown or a set default, so a
+   Flamebreaker and a Salvager Vest looked the same. Read off the armour
+   sheet: each set now carries the colour it actually has in BotW. */
+Object.assign(NAMECOL,{
+  /* --- the starting rags --- */
+  'Old Shirt':0xc9c0ab,'Well-Worn Trousers':0xb9a681,
+  'Warm Doublet':0x3f6a8c,'Archaic Warm Greaves':0x6a5a44,
+  /* --- Hylian: plain green cloth --- */
+  'Hylian Hood':0x3f7a4a,'Hylian Tunic':0x3f7a4a,'Hylian Trousers':0x8a7a5a,
+  /* --- Climbing: dark olive leather with orange buckles --- */
+  'Climbing Gear':0x53614a,'Climbing Boots':0x46523f,
+  /* --- Sheikah stealth: near-black blue with a white eye --- */
+  'Stealth Mask':0x2b3442,'Stealth Chest Guard':0x2b3442,'Stealth Tights':0x232b36,
+  /* --- Zora: blue scale and silver fins --- */
+  'Zora Helm':0x3f93bc,'Zora Armor':0x3f93bc,'Zora Greaves':0x35809f,
+  /* --- Gerudo: turquoise silk and gold --- */
+  'Gerudo Veil':0x46bdb2,'Gerudo Top':0x46bdb2,'Gerudo Sirwal':0x3aa79d,
+  /* --- Desert Voe: pale blue-grey plate --- */
+  'Desert Voe Headband':0x6d8ba4,'Desert Voe Spaulder':0x6d8ba4,'Desert Voe Trousers':0x5c7891,
+  /* --- Flamebreaker: scorched iron and dull red --- */
+  'Flamebreaker Helm':0x6f2f22,'Flamebreaker Armor':0x6f2f22,'Flamebreaker Boots':0x5b2619,
+  /* --- Snowquill: deep teal with white down --- */
+  'Snowquill Headdress':0x2f6f63,'Snowquill Tunic':0x2f6f63,'Snowquill Trousers':0x275c52,
+  /* --- Radiant: bone over black --- */
+  'Radiant Mask':0xd6cba4,'Radiant Shirt':0xd6cba4,'Radiant Tights':0x2a2a2e,
+  /* --- Rubber: insulating yellow --- */
+  'Rubber Helm':0xd9c246,'Rubber Armor':0xd9c246,'Rubber Tights':0xc2ad3c,
+  /* --- Barbarian: hide, fur and horn --- */
+  'Barbarian Helm':0x7d5334,'Barbarian Armor':0x7d5334,'Barbarian Leg Wraps':0x69452b,
+  /* --- Ancient: mint alloy lit with orange --- */
+  'Ancient Helm':0x9ed3c6,'Ancient Cuirass':0x9ed3c6,'Ancient Greaves':0x86b8ac,
+  /* --- of the Wild: the green set --- */
+  'Cap of the Wild':0x2f6a3a,'Tunic of the Wild':0x2f6a3a,'Trousers of the Wild':0x2f6a3a,
+  /* --- Dark: unrelieved black --- */
+  'Dark Hood':0x24242a,'Dark Tunic':0x24242a,'Dark Trousers':0x1e1e23,
+  /* --- Salvager: sun-bleached red canvas --- */
+  'Salvager Headwear':0x8a4634,'Salvager Vest':0x8a4634,'Salvager Trousers':0x73392a,
+  /* --- odds and ends --- */
+  'Nintendo Switch Shirt':0xd83b3b,
+  'Island Lobster Shirt':0x2f9fd8,
+  'Sand Boots':0xc2a774,'Snow Boots':0xdfe4ea,
+  'Korok Mask':0x5fae3f,
+  'Thunder Helm':0xc9a23a,
+  /* --- monster masks: the colour of the thing they came off --- */
+  'Bokoblin Mask':0x9a5a3a,'Lizalfos Mask':0x4a7a4a,
+  'Moblin Mask':0x7a5a8a,'Lynel Mask':0x8a3a2a,
+  /* --- Royal Guard: navy and gold --- */
+  'Royal Guard Cap':0x2b3a68,'Royal Guard Uniform':0x2b3a68,'Royal Guard Boots':0x24325a,
+  /* --- Phantom: grey steel --- */
+  'Phantom Helmet':0x4c4c56,'Phantom Armor':0x4c4c56,'Phantom Greaves':0x40404a,
+  /* --- Phantom Ganon: black shot through with violet --- */
+  'Phantom Ganon Skull':0x3a2a4a,'Phantom Ganon Armor':0x3a2a4a,'Phantom Ganon Greaves':0x30223e,
+  /* --- the amiibo heroes, each its own green --- */
+  'Cap of Time':0x3f7a3a,'Tunic of Time':0x3f7a3a,'Trousers of Time':0x35682f,
+  'Cap of the Wind':0x4f9a4a,'Tunic of the Wind':0x4f9a4a,'Trousers of the Wind':0x428440,
+  'Cap of Twilight':0x2f5a3a,'Tunic of Twilight':0x2f5a3a,'Trousers of Twilight':0x274c31,
+  'Cap of the Sky':0x5aa85a,'Tunic of the Sky':0x5aa85a,'Trousers of the Sky':0x4c9150,
+  'Cap of the Hero':0x2f7a4a,'Tunic of the Hero':0x2f7a4a,'Trousers of the Hero':0x286640,
+  /* --- Fierce Deity: white and blue --- */
+  'Fierce Deity Mask':0xdcd6c2,'Fierce Deity Armor':0xdcd6c2,'Fierce Deity Boots':0xc4bda8,
+  /* --- Divine Helms, one per beast --- */
+  'Vah Ruta Divine Helm':0x3f93bc,'Vah Rudania Divine Helm':0x9a4a2a,
+  'Vah Naboris Divine Helm':0xc9a23a,'Vah Medoh Divine Helm':0x8ab4d8,
+  /* --- jewellery keeps its stone --- */
+  'Amber Earrings':0xd8963a,'Opal Earrings':0xbfe3ea,'Topaz Earrings':0xe0c23a,
+  'Sapphire Circlet':0x3f7fd8,'Ruby Circlet':0xd83f4a,'Diamond Circlet':0xe8f0f4
+});
+/* curly and straight apostrophes have bitten three times already, so accept both */
+(function(){
+  for(const k of Object.keys(NAMECOL)){
+    const straight=k.replace(/[‘’ʼ]/g,"'");
+    const curly   =k.replace(/'/g,'’');
+    if(NAMECOL[straight]===undefined) NAMECOL[straight]=NAMECOL[k];
+    if(NAMECOL[curly]===undefined)    NAMECOL[curly]=NAMECOL[k];
+  }
+})();
+if(typeof refreshArmour==='function') refreshArmour();
+(function(){
+  let have=0, miss=[];
+  for(const n in ARMOR){ if(n==='None') continue;
+    if(NAMECOL[n]!==undefined) have++; else miss.push(n); }
+  console.log('armour colours: '+have+' of '+(Object.keys(ARMOR).length-1)+' named'
+    +(miss.length?(' | still generic: '+miss.join(', ')):''));
+})();
+</script>
+
+
 
