@@ -14419,3 +14419,224 @@ updateBeasts=function(dt){
   updateBodies(dt); updateRopes(dt); updateCloth(dt);
 };
 </script>
+<script>
+"use strict";
+/* ============ Divine Beasts: multi-floor, and the rotation moves rooms ==== */
+/* Each beast is three decks joined by shafts. Turning the map rotates the
+   whole hull, which swings the decks and opens paths that were walls. */
+(function rebuildBeasts(){
+  for(const id in BEAST_ROOMS){
+    const room=BEAST_ROOMS[id];
+    const g=room.g, rx=room.rx, rz=room.rz;
+    const shell=new THREE.MeshLambertMaterial({color:0x2f3a36});
+    const acc=new THREE.MeshBasicMaterial({color:0xff9a2e});
+    /* two more decks above the hall, each a proper room with doors */
+    const decks=[
+      {y:22, w:52, d:110, doors:['n','s'], name:'upper deck'},
+      {y:44, w:40, d:80,  doors:['s'],     name:'crown'}
+    ];
+    room.decks=[{y:0,w:room.W,d:room.L}];
+    for(const D of decks){
+      buildInterior(g,0,D.y,0,D.w,D.d,16,{mat:shell,doors:D.doors,gap:8});
+      room.decks.push(D);
+      /* side chambers off each deck */
+      for(const side of[-1,1]){
+        buildInterior(g,side*(D.w/2+15),D.y,-20,26,30,14,
+          {mat:shell,doors:[side<0?'e':'w']});
+      }
+    }
+    /* shafts between the decks: ladders of platforms you climb */
+    const shaft=(x,z,y0,y1)=>{
+      for(let y=y0+3;y<y1;y+=3){
+        const step=box(g,5,.5,5,x,y,z,shell);
+        addPlatform(rx+x,rz+z,2.5,2.5,y,'beamstep');
+      }
+    };
+    shaft(-20,-40,0,22); shaft(20,40,0,22);
+    shaft(0,-30,22,44);
+    /* the rotation actually moves the decks, so paths open and close */
+    room.movingParts=[];
+    for(let i=0;i<6;i++){
+      const a=i/6*TAU;
+      const arm=box(g,20,1.4,6,Math.cos(a)*16,11,Math.sin(a)*16,shell,-a);
+      addPlatform(rx+Math.cos(a)*16,rz+Math.sin(a)*16,10,3,11.7,'beastarm');
+      room.movingParts.push({mesh:arm,base:a,r:16,y:11});
+    }
+    /* terminals spread across the three decks rather than all on one */
+    const extra=[[0,24,-30],[0,46,-20]];
+    extra.forEach((sp,i)=>{
+      const t=new THREE.Group(); t.position.set(sp[0],sp[1],sp[2]); g.add(t);
+      cyl(t,3,2,0,1,0,new THREE.MeshLambertMaterial({color:0x6f7a72}));
+      const orb=new THREE.Mesh(new THREE.SphereGeometry(1.4,14,11),acc);
+      orb.position.y=3.2; t.add(orb);
+      const li=new THREE.PointLight(0xff9a2e,2,36); li.position.y=3.2; t.add(li);
+      room.terms.push({orb,li,on:false});
+      IA({kind:'beastTerm',beast:id,idx:room.terms.length-1,
+          x:rx+sp[0],z:rz+sp[2],y:sp[1],r:5,label:'Activate the terminal'});
+    });
+    room.floors=3;
+  }
+  console.log('Divine Beasts rebuilt: three decks, side chambers, shafts and moving arms');
+})();
+/* turning the map swings the arms and the whole hull */
+const _beastMapMulti=beastMap;
+beastMap=function(id){
+  _beastMapMulti(id);
+  const room=BEAST_ROOMS[id];
+  if(!room||!room.movingParts) return;
+  const turn=room.tilt||0;
+  for(const p of room.movingParts){
+    const a=p.base+turn;
+    p.mesh.position.set(Math.cos(a)*p.r,p.y,Math.sin(a)*p.r);
+    p.mesh.rotation.y=-a;
+    /* the platform follows its arm, so a path that was there is not any more */
+    for(const pf of platforms){
+      if(pf.tag!=='beastarm') continue;
+      const dx=pf.x-(room.rx+Math.cos(p.base+turn-Math.PI/6)*p.r);
+      if(Math.abs(dx)<1){ pf.x=room.rx+Math.cos(a)*p.r; pf.z=room.rz+Math.sin(a)*p.r; }
+    }
+  }
+  /* re-place every arm platform from scratch, which is simpler and correct */
+  let i=0;
+  for(const pf of platforms){
+    if(pf.tag!=='beastarm') continue;
+    const p=room.movingParts[i++ % room.movingParts.length];
+    if(!p) break;
+    const a=p.base+turn;
+    pf.x=room.rx+Math.cos(a)*p.r; pf.z=room.rz+Math.sin(a)*p.r;
+  }
+};
+
+/* ============ Hyrule Castle as a warren ============ */
+(function expandCastle(){
+  const g=CASTLE.g;
+  const stone=new THREE.MeshLambertMaterial({color:0x7a7468});
+  const dark =new THREE.MeshLambertMaterial({color:0x4a4640});
+  const gold =new THREE.MeshLambertMaterial({color:0xc9a86a});
+  /* the rooms the castle really has, on five levels */
+  const more=[
+    ['Gatehouse',        0,  -18, -230, 30, 30, 14, ['n','s']],
+    ['West Passage',   -40,    0, -120, 20, 70, 12, ['n','s','e']],
+    ['East Passage',    40,    0, -120, 20, 70, 12, ['n','s','w']],
+    ['The Kitchen',    -52,   18,  -60, 28, 30, 12, ['e']],
+    ['Guards’ Barracks',52,   18,  -60, 28, 30, 12, ['w']],
+    ['The Dungeon',      0,  -36,  -60, 34, 44, 12, ['n']],
+    ['Observation Room',-46,  54,   -8, 26, 26, 12, ['e','s']],
+    ['King’s Study',    46,   54,   -8, 26, 26, 12, ['w','s']],
+    ['The Library',    -52,   36,   58, 30, 40, 14, ['e','n']],
+    ['Princess Zelda’s Room',52,72,  58, 26, 30, 12, ['w']],
+    ['The Docks',       -70,  10,  100, 40, 50, 14, ['e']],
+    ['First Gatehouse', -80, -10, -180, 22, 22, 26, ['e']],
+    ['Second Gatehouse', 80, -10, -180, 22, 22, 26, ['w']],
+    ['Lockup',           0,  -36,   10, 24, 24, 10, ['n']]
+  ];
+  for(const [name,x,y,z,w,d,h,doors] of more){
+    buildInterior(g,x,y,z,w,d,h,{mat:name==='The Dungeon'||name==='Lockup'?dark:stone,doors,gap:6});
+    CASTLE.rooms.push({name,x,y,z,w,d,h});
+    IA({kind:'castleRoom',name,x:CASTLE.rx+x,z:CASTLE.rz+z,y,r:Math.min(w,d)/2,label:name});
+  }
+  /* the stairs and ramps that join them */
+  const ramp=(x1,y1,z1,x2,y2,z2,wid)=>{
+    const dx=x2-x1, dy=y2-y1, dz=z2-z1;
+    const len=Math.hypot(dx,dz), steps=Math.max(2,Math.ceil(len/3));
+    for(let i=0;i<=steps;i++){
+      const t=i/steps, px=x1+dx*t, py=y1+dy*t, pz=z1+dz*t;
+      box(g,wid,.6,3.4,px,py,pz,stone);
+      addPlatform(CASTLE.rx+px,CASTLE.rz+pz,wid/2,1.8,py+.3,'castleramp');
+    }
+  };
+  ramp(0,-18,-214, 0,0,-190, 8);       /* gatehouse up into the entrance hall */
+  ramp(0,0,-140, -40,0,-140, 7);       /* into the west passage */
+  ramp(0,0,-140,  40,0,-140, 7);       /* and the east */
+  ramp(-40,0,-86, -52,18,-72, 7);      /* west passage to the kitchen */
+  ramp( 40,0,-86,  52,18,-72, 7);      /* east passage to the barracks */
+  ramp(0,0,-130,  0,-36,-80, 8);       /* down into the dungeon */
+  ramp(0,36,-4,  -46,54,-8, 7);        /* dining hall to the observation room */
+  ramp(0,36,-4,   46,54,-8, 7);        /* and the king's study */
+  ramp(-46,54,4, -52,36,40, 7);        /* down to the library */
+  ramp( 46,54,4,  52,72,44, 7);        /* up to Zelda's room */
+  ramp(-52,36,76, -70,10,80, 7);       /* library down to the docks */
+  ramp(0,36,20,   0,-36,0,  7);        /* dining hall down to the lockup */
+  ramp(-80,-10,-170, 0,-18,-230, 7);   /* the outer gatehouses */
+  ramp( 80,-10,-170, 0,-18,-230, 7);
+  /* what is in the rooms */
+  for(let i=0;i<26;i++){                     /* the library's shelves */
+    const bx=-52+((i%2)?12:-12), bz=44+Math.floor(i/2)*3;
+    box(g,8,7,1.2,bx,36+3.5,bz,new THREE.MeshLambertMaterial({color:0x5b4126}));
+  }
+  const bed=box(g,4,1.4,7,52,72+.7,58,new THREE.MeshLambertMaterial({color:0xc4c0d8}));
+  const desk=box(g,4,2,2,46,54+1,-8,MAT.wood);
+  for(let i=0;i<8;i++){                       /* cells in the dungeon */
+    const cx=-14+(i%4)*9, cz=-72+Math.floor(i/4)*18;
+    for(let b=0;b<5;b++) cyl(g,.16,8,cx-2+b,-36+4,cz,MAT.metal);
+  }
+  /* treasure worth the climb */
+  const loot=[['Royal Guard Cap',46,54,-8],['Royal Guard Uniform',-52,36,58],
+              ['Royal Guard Boots',52,72,58],['Hylian Shield',0,-36,-60],
+              ['Royal Claymore',52,18,-60],['Royal Bow',-46,54,-8],
+              ['Knight’s Shield',0,-36,10],['Diamond',-70,10,100]];
+  for(const [item,x,y,z] of loot){
+    const c=new THREE.Group(); c.position.set(x,y,z); g.add(c);
+    box(c,1.9,1.1,1.3,0,.55,0,MAT.wood);
+    const lid=box(c,1.9,.5,1.3,0,1.3,0,MAT.wood2);
+    const co={g:c,lid,item,opened:false};
+    IA({kind:'castleChest',obj:co,x:CASTLE.rx+x,z:CASTLE.rz+z,y,r:3.4,label:'Open the chest'});
+  }
+  /* Guardians patrolling the halls */
+  for(const [x,y,z] of [[0,0,-160],[-40,0,-120],[40,0,-120],[0,36,-20],[0,-36,-60]]){
+    const E=makeEnemy({t:rnd()<.5?'scoutII':'scoutIII',x:CASTLE.rx+x,z:CASTLE.rz+z});
+    E.pos.set(CASTLE.rx+x,y,CASTLE.rz+z); E.home.copy(E.pos); E.castleY=y;
+  }
+  console.log('Hyrule Castle expanded to',CASTLE.rooms.length,'rooms across five levels');
+})();
+const _interactCastleChest=interact;
+interact=function(){
+  const it=nearest;
+  if(it&&it.kind==='castleChest'){
+    if(it.obj.opened) return;
+    it.obj.opened=true; it.obj.lid.rotation.x=-1.1;
+    give(it.obj.item); sfx('open'); return;
+  }
+  _interactCastleChest();
+};
+const _promptCastleChest=promptFor;
+promptFor=function(it){
+  if(it&&it.kind==='castleChest') return it.obj.opened?'':'<b>E</b> Open the chest';
+  return _promptCastleChest(it);
+};
+
+/* ============ there is always ground under you ============ */
+/* A last-resort floor: whatever happens, you never fall out of the world. */
+function groundGuarantee(){
+  let lowest=-160;
+  if(P.inShrine) lowest=P.inShrine.floorY-40;
+  else if(P.inRes) lowest=RES.floorY-40;
+  else if(liveBeast) lowest=liveBeast.floorY-40;
+  else if(inCastle) lowest=-90;
+  else if(TRIAL.active) lowest=TRIAL.floorY-40;
+  if(P.pos.y>lowest&&isFinite(P.pos.y)) return;
+  /* put them back on something solid */
+  let y;
+  if(P.inShrine){ P.pos.copy(P.inShrine.entry); y=P.inShrine.floorY; }
+  else if(P.inRes){ P.pos.copy(RES.wake); y=RES.floorY; }
+  else if(liveBeast){ P.pos.copy(liveBeast.entry); y=liveBeast.floorY; }
+  else if(inCastle){ P.pos.copy(CASTLE.entry); y=0; }
+  else if(TRIAL.active){ P.pos.copy(TRIAL.entry); y=TRIAL.floorY; }
+  else {
+    const t=P.travel&&P.travel.length?P.travel[P.travel.length-1]
+           :{x:LM.resurrection.x,z:LM.resurrection.z-14};
+    P.pos.set(t.x,groundAt(t.x,t.z)+1.5,t.z); y=P.pos.y;
+  }
+  P.pos.y=y+1; P.vel.set(0,0,0); P.onGround=true;
+  if(!P.dead) toast('The ground caught you');
+}
+const _updatePlayerGround=updatePlayer;
+updatePlayer=function(dt){
+  _updatePlayerGround(dt);
+  if(!isFinite(P.pos.x)||!isFinite(P.pos.y)||!isFinite(P.pos.z)){
+    P.pos.set(LM.tower.x,groundAt(LM.tower.x,LM.tower.z)+2,LM.tower.z);
+    P.vel.set(0,0,0);
+  }
+  groundGuarantee();
+};
+</script>
