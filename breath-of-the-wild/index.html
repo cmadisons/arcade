@@ -300,6 +300,16 @@
   <p id="talkText" style="font-style:italic"></p>
   <div class="btnrow" id="talkChoices"></div>
 </div></div>
+<div class="screen" id="amiibo"><div class="panel" style="max-width:880px">
+  <div class="eyebrow">Sheikah Slate · amiibo Rune</div>
+  <h2 id="amiiboTitle">amiibo</h2>
+  <p id="amiiboBlurb">Each one can be tapped once a day. Tap it and see what it gives you.</p>
+  <div id="amiiboGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:8px;margin-bottom:18px;max-height:46vh;overflow:auto"></div>
+  <div class="btnrow">
+    <button class="act primary" id="btnAllAmiibo">ALL AMIIBOS</button>
+    <button class="act" id="btnAmiiboClose">Close</button>
+  </div>
+</div></div>
 <div id="loading"><div class="l">Sculpting the plateau…</div></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -12916,4 +12926,198 @@ const _updateBeastsAll=updateBeasts;
 updateBeasts=function(dt){ _updateBeastsAll(dt); updateTrial(dt); };
 (function(){ const k=$('#keys');
   if(k) k.insertAdjacentHTML('beforeend','<div><span>Call your horse</span><k>N</k></div>'); })();
+</script>
+<script>
+"use strict";
+/* ================= the amiibo rune ================= */
+Object.assign(WEAPONS,{
+  "Biggoron's Sword"    :{atk:48,dur:60,hand:2,col:0xc9a86a,len:1.7},
+  'Sea-Breeze Boomerang':{atk:20,dur:40,hand:1,col:0x8fd8b4,len:.9},
+  'Goddess Sword'       :{atk:28,dur:50,hand:1,col:0xd8e8f4,len:1.15},
+  "Sword of the Six Sages":{atk:40,dur:50,hand:1,col:0xb8c8d8,len:1.2},
+  'Spring-Loaded Hammer':{atk:12,dur:30,hand:2,col:0x8a8f94,len:1.4}
+});
+Object.assign(BOWS,{
+  'Twilight Bow'  :{atk:30,dur:60,col:0x2a2a4a,mult:1},
+  'Bow of Light'  :{atk:60,dur:9999,col:0xfff3c8,mult:1}
+});
+Object.assign(SHIELDS,{'Hylian Shield':{grd:90,dur:800,col:0x3f6cb0}});
+/* every amiibo, and what it actually gives */
+const AMIIBOS=[
+ /* --- Breath of the Wild line --- */
+ {n:'Link (Archer)',     s:'Breath of the Wild', d:['Royal Bow','Knight’s Bow','Arrow','Arrow','Raw Meat','Hyrule Bass']},
+ {n:'Link (Rider)',      s:'Breath of the Wild', d:['Royal Broadsword','Knight’s Broadsword','Traveler’s Sword','Raw Meat','Apple']},
+ {n:'Zelda',             s:'Breath of the Wild', d:['Hyrule Herb','Hearty Truffle','Silent Princess','Hylian Shield','Apple']},
+ {n:'Guardian',          s:'Breath of the Wild', d:['Ancient Core','Giant Ancient Core','Ancient Gear','Ancient Bow','Ancient Helm']},
+ {n:'Bokoblin',          s:'Breath of the Wild', d:['Bokoblin Horn','Bokoblin Fang','Bokoblin Guts','Boko Club','Spiked Boko Club','Boko Bow']},
+ /* --- the four Champions --- */
+ {n:'Daruk',             s:'Champion',           d:['Boulder Breaker','Vah Rudania Divine Helm','Ruby','Raw Meat']},
+ {n:'Mipha',             s:'Champion',           d:['Lightscale Trident','Vah Ruta Divine Helm','Hearty Salmon','Opal']},
+ {n:'Revali',            s:'Champion',           d:['Great Eagle Bow','Vah Medoh Divine Helm','Raw Bird Drumstick','Sapphire']},
+ {n:'Urbosa',            s:'Champion',           d:['Scimitar of the Seven','Vah Naboris Divine Helm','Topaz','Hydromelon']},
+ /* --- Zelda 30th anniversary --- */
+ {n:'8-Bit Link',        s:'30th Anniversary',   d:['Traveler’s Sword','Wooden Shield','Apple','Rupee','Amber']},
+ {n:'Link (Ocarina of Time)',s:'30th Anniversary',d:["Biggoron's Sword",'Cap of Time','Tunic of Time','Trousers of Time','Raw Meat']},
+ {n:'Link (Majora’s Mask)',s:'30th Anniversary', d:['Fierce Deity Mask','Fierce Deity Armor','Fierce Deity Boots','Majora’s Mask','Raw Meat']},
+ {n:'Link (Twilight Princess)',s:'30th Anniversary',d:['Twilight Bow','Cap of Twilight','Tunic of Twilight','Trousers of Twilight','Raw Meat']},
+ {n:'Link (Skyward Sword)',s:'30th Anniversary', d:['Goddess Sword','Cap of the Sky','Tunic of the Sky','Trousers of the Sky','Apple']},
+ {n:'Toon Link (Wind Waker)',s:'30th Anniversary',d:['Sea-Breeze Boomerang','Cap of the Wind','Tunic of the Wind','Trousers of the Wind','Hyrule Bass']},
+ {n:'Toon Zelda (Wind Waker)',s:'30th Anniversary',d:['Hyrule Herb','Wildberry','Apple','Opal','Amber']},
+ /* --- Super Smash Bros. line --- */
+ {n:'Link (Smash)',      s:'Super Smash Bros.',  d:['Cap of the Hero','Tunic of the Hero','Trousers of the Hero','Traveler’s Bow','Apple']},
+ {n:'Zelda (Smash)',     s:'Super Smash Bros.',  d:['Hyrule Herb','Hearty Truffle','Silent Princess','Sapphire']},
+ {n:'Sheik',             s:'Super Smash Bros.',  d:['Sheik’s Mask','Stealth Mask','Sunset Firefly','Swift Carrot']},
+ {n:'Ganondorf',         s:'Super Smash Bros.',  d:['Sword of the Six Sages','Raw Meat','Bokoblin Guts','Ruby']},
+ {n:'Toon Link (Smash)', s:'Super Smash Bros.',  d:['Sea-Breeze Boomerang','Hyrule Bass','Hyrule Herring','Apple']},
+ {n:'Wolf Link',         s:'Twilight Princess',  d:['Raw Meat','Raw Bird Drumstick','Hearty Truffle','Amber'], wolf:true},
+ /* --- other Nintendo amiibo, which give food and materials --- */
+ {n:'Mario',             s:'Other amiibo',       d:['Apple','Hylian Shroom','Raw Meat','Wood']},
+ {n:'Kirby',             s:'Other amiibo',       d:['Hearty Truffle','Apple','Wildberry','Hyrule Herb']},
+ {n:'Samus',             s:'Other amiibo',       d:['Ancient Gear','Flint','Amber','Arrow']},
+ {n:'Pikachu',           s:'Other amiibo',       d:['Voltfruit','Yellow Chuchu Jelly','Shock Arrow','Topaz']},
+ {n:'Kapp’n',            s:'Other amiibo',       d:['Hyrule Bass','Hearty Bass','Sanke Carp','Hyrule Herring']}
+];
+/* Item names are typed with curly apostrophes in some tables and straight ones
+   in others. Resolve every drop against both forms once, at load, so a name
+   can never silently fail to match again. */
+(function resolveDrops(){
+  const straight=x=>x.replace(/[\u2018\u2019\u02BC]/g,"'");
+  const curly=x=>x.replace(/'/g,'\u2019');
+  const known=n=>WEAPONS[n]||BOWS[n]||SHIELDS[n]||ARMOR[n]||ARROWS[n]||MATS[n];
+  let fixed=0, unresolved=[];
+  for(const a of AMIIBOS){
+    a.d=a.d.map(item=>{
+      if(known(item)||item==='Rupee') return item;
+      const s1=straight(item), s2=curly(item);
+      if(known(s1)){ fixed++; return s1; }
+      if(known(s2)){ fixed++; return s2; }
+      unresolved.push(a.n+':'+item);
+      return item;
+    });
+  }
+  console.log('amiibo drops repaired:',fixed,
+              unresolved.length?('still unresolved: '+unresolved.join(', ')):'all resolve');
+})();
+P.amiiboUsed={};
+function amiiboDay(){ return Math.floor(P.totalTime/DAY_LEN); }
+function amiiboAvailable(a){ return P.amiiboUsed[a.n]!==amiiboDay(); }
+let amiiboShowAll=false;
+function openAmiibo(){
+  P.playing=false; document.exitPointerLock&&document.exitPointerLock();
+  renderAmiibo();
+  $('#amiibo').classList.add('on');
+}
+function renderAmiibo(){
+  const grid=$('#amiiboGrid'); grid.innerHTML='';
+  const day=amiiboDay();
+  const list=amiiboShowAll?AMIIBOS:AMIIBOS.filter(amiiboAvailable);
+  $('#amiiboTitle').textContent=amiiboShowAll?'All amiibo':'amiibo you have not used today';
+  $('#amiiboBlurb').textContent=amiiboShowAll
+    ? 'Every amiibo. Greyed ones have already been tapped today — they come back tomorrow.'
+    : list.length+' of '+AMIIBOS.length+' left today. Tap one and see what it gives you.';
+  if(!list.length){
+    grid.innerHTML='<div style="color:var(--muted);font-family:var(--ui)">All tapped out for today. Rest at a fire or wait for morning.</div>';
+  }
+  let series='';
+  for(const a of list){
+    const used=!amiiboAvailable(a);
+    if(a.s!==series){ series=a.s;
+      grid.insertAdjacentHTML('beforeend',
+        '<div style="grid-column:1/-1;font-family:var(--ui);font-size:11px;letter-spacing:.28em;'+
+        'text-transform:uppercase;color:var(--amber);margin-top:6px">'+series+'</div>'); }
+    const b=document.createElement('button');
+    b.className='ing'+(used?'':' picked');
+    b.style.opacity=used?'.42':'1';
+    b.innerHTML='<span>'+a.n+'</span><em>'+(used?'used today':'tap')+'</em>';
+    b.disabled=used;
+    b.onclick=()=>tapAmiibo(a);
+    grid.appendChild(b);
+  }
+}
+function tapAmiibo(a){
+  if(!amiiboAvailable(a)){ toast(a.n+' has already been tapped today','bad'); return; }
+  P.amiiboUsed[a.n]=amiiboDay();
+  /* one of the things it should give, chosen from its own table */
+  const item=a.d[Math.floor(rnd()*a.d.length)];
+  const base=P.pos.clone();
+  for(let i=0;i<3;i++){
+    const ang=rnd()*TAU, r=3+rnd()*4;
+    const x=base.x+Math.cos(ang)*r, z=base.z+Math.sin(ang)*r;
+    if(i===0){
+      if(WEAPONS[item]||BOWS[item]||SHIELDS[item]) spawnPickup(x,z,{w:item});
+      else if(ARROWS[item]) spawnPickup(x,z,{a:item,n:10});
+      else if(ARMOR[item]){ give(item); }
+      else if(item==='Rupee'){ P.rupees+=100; toast('+100 rupees','good'); }
+      else spawnPickup(x,z,{m:item});
+    } else {
+      /* a couple of extras fall with it, as they do */
+      spawnPickup(x,z,{m:['Apple','Hyrule Herb','Raw Meat','Wood','Flint'][Math.floor(rnd()*5)]});
+    }
+  }
+  if(a.wolf&&!P.wolfLink){ P.wolfLink=true; summonWolfLink(); }
+  sfx('orb');
+  toast(a.n+' — '+item,'good');
+  cut('Sheikah Slate',a.n+'. '+item+' falls out of the light.',{t:2.4});
+  renderAmiibo();
+}
+/* Wolf Link, who actually follows you and fights */
+let wolfLink=null;
+function summonWolfLink(){
+  if(wolfLink) return;
+  const g=new THREE.Group();
+  const fur=new THREE.MeshLambertMaterial({color:0x4a4438,flatShading:true});
+  box(g,1.1,1.0,2.4,0,1.0,0,fur);
+  const head=box(g,.7,.7,.9,0,1.2,-1.5,fur);
+  for(const s of[-1,1]){ const ear=new THREE.Mesh(new THREE.ConeGeometry(.16,.4,4),fur);
+    ear.position.set(s*.22,1.7,-1.5); g.add(ear); }
+  for(const s of[-1,1])for(const f of[-1,1]) box(g,.22,.9,.22,s*.4,.45,f*.8,fur);
+  const tail=box(g,.24,.24,1.0,0,1.2,1.5,fur); tail.rotation.x=-.5;
+  const chain=box(g,.5,.5,.12,0,1.4,-1.9,new THREE.MeshLambertMaterial({color:0x8a8f94}));
+  g.traverse(o=>{if(o.isMesh)o.castShadow=true;});
+  g.position.copy(P.pos); world.add(g);
+  wolfLink={g,pos:g.position,hp:60,atkCd:0};
+  toast('Wolf Link joins you','good');
+}
+function updateWolfLink(dt){
+  const W=wolfLink; if(!W||P.inShrine||P.inRes||P.inBeast||P.inCastle) return;
+  /* it hunts whatever is nearest, otherwise stays at your heel */
+  let target=null,bd=34;
+  for(const E of enemies){
+    if(!E.alive||E.dormant||E.__far) continue;
+    const d=E.pos.distanceTo(W.pos);
+    if(d<bd){bd=d;target=E;}
+  }
+  const goal=target?target.pos:P.pos;
+  const d=new THREE.Vector3(goal.x-W.pos.x,0,goal.z-W.pos.z);
+  const dist=d.length();
+  const want=target?1.8:4.5;
+  if(dist>want){ d.normalize(); W.pos.addScaledVector(d,(target?11:9)*dt);
+    W.g.rotation.y=Math.atan2(d.x,d.z); }
+  W.pos.y=groundAt(W.pos.x,W.pos.z);
+  W.atkCd=Math.max(0,W.atkCd-dt);
+  if(target&&dist<2.6&&W.atkCd<=0){
+    W.atkCd=1.1;
+    const dir=new THREE.Vector3(target.pos.x-W.pos.x,0,target.pos.z-W.pos.z).normalize();
+    hitEnemy(target,12,dir.x,dir.z,null);
+    sfx('hit');
+  }
+  /* it comes back if it falls too far behind */
+  if(W.pos.distanceTo(P.pos)>120) W.pos.copy(P.pos);
+}
+$('#btnAllAmiibo').onclick=()=>{ amiiboShowAll=!amiiboShowAll;
+  $('#btnAllAmiibo').textContent=amiiboShowAll?'ONLY UNUSED':'ALL AMIIBOS'; renderAmiibo(); };
+$('#btnAmiiboClose').onclick=()=>{ $('#amiibo').classList.remove('on'); startPlay(); };
+addEventListener('keydown',e=>{
+  if(e.code!=='KeyA') return;
+  if($('#amiibo').classList.contains('on')){ $('#amiibo').classList.remove('on'); startPlay(); return; }
+  if(P.playing) openAmiibo();
+});
+/* total elapsed time, so "once a day" means something */
+P.totalTime=0;
+const _updateSkyAmiibo=updateSky;
+updateSky=function(dt){ P.totalTime+=dt; _updateSkyAmiibo(dt); };
+const _updateBeastsAmiibo=updateBeasts;
+updateBeasts=function(dt){ _updateBeastsAmiibo(dt); updateWolfLink(dt); };
+(function(){ const k=$('#keys');
+  if(k) k.insertAdjacentHTML('beforeend','<div><span>amiibo rune</span><k>A</k></div>'); })();
 </script>
