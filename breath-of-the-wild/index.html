@@ -446,23 +446,150 @@ const UPGRADE={redBoko:'blueBoko', blueBoko:'blackBoko', blackBoko:'silverBoko',
   fireWiz:'meteoWiz', iceWiz:'blizzWiz', elecWiz:'thunderWiz'};
 /* ================= weapons / bows / shields / armour ================= */
 const WEAPONS={
-  'Tree Branch'          :{atk:2, dur:20, hand:1, col:0x6b4a2a, len:1.05},
-  'Torch'                :{atk:2, dur:12, hand:1, col:0x53381f, len:.95, torch:true},
-  'Soup Ladle'           :{atk:4, dur:25, hand:1, col:0x9aa0a6, len:.85},
-  'Boko Club'            :{atk:4, dur:12, hand:1, col:0x7a5a34, len:1.10},
-  'Spiked Boko Club'     :{atk:12,dur:16, hand:1, col:0x86603a, len:1.15},
-  'Boko Bat'             :{atk:12,dur:20, hand:1, col:0x5d4426, len:1.20},
-  'Dragonbone Boko Bat'  :{atk:26,dur:26, hand:1, col:0x9c9482, len:1.3},
-  "Traveler's Sword"     :{atk:5, dur:20, hand:1, col:0xc9d2da, len:1.00},
-  'Rusty Broadsword'     :{atk:8, dur:12, hand:1, col:0x9c6b4b, len:1.10},
-  "Knight's Broadsword"  :{atk:26,dur:36, hand:1, col:0xd6dee6, len:1.15},
-  "Woodcutter's Axe"     :{atk:15,dur:30, hand:2, col:0x8b8f94, len:1.05, chop:true},
-  'Rusty Halberd'        :{atk:12,dur:14, hand:2, col:0x9c6b4b, len:1.9},
-  'Boko Spear'           :{atk:5, dur:12, hand:3, col:0x6d5231, len:1.9},
-  'Moblin Spear'         :{atk:12,dur:18, hand:3, col:0x6d5231, len:2.4},
-  'Wooden Mop'           :{atk:2, dur:15, hand:2, col:0x7d5f3a, len:1.5},
-  'Farming Hoe'          :{atk:2, dur:22, hand:2, col:0x6b4a2a, len:1.5}
+  /* The full roster: attack, durability, and which hands it takes.
+     hand 1 = one-handed, 2 = two-handed, 3 = spear. */
+
+  /* ---- one-handed: the things lying about ---- */
+  'Tree Branch'            :{atk:2, dur:20, hand:1, col:0x6b4a2a, len:1.05},
+  'Torch'                  :{atk:2, dur:12, hand:1, col:0x53381f, len:.95, torch:true},
+  'Soup Ladle'             :{atk:4, dur:25, hand:1, col:0x9aa0a6, len:.85},
+  'Wooden Mop'             :{atk:2, dur:15, hand:2, col:0x7d5f3a, len:1.5},
+  'Farming Hoe'            :{atk:2, dur:22, hand:2, col:0x6b4a2a, len:1.5},
+  'Boat Oar'               :{atk:8, dur:25, hand:2, col:0x8a6a3a, len:1.9},
+  'Rusty Broadsword'       :{atk:8, dur:12, hand:1, col:0x9c6b4b, len:1.10},
+  'Rusty Claymore'         :{atk:12,dur:12, hand:2, col:0x9c6b4b, len:1.6},
+  'Rusty Halberd'          :{atk:12,dur:14, hand:3, col:0x9c6b4b, len:1.9},
+
+  /* ---- one-handed: Hylian steel ---- */
+  "Traveler's Sword"       :{atk:5, dur:20, hand:1, col:0xc9d2da, len:1.00},
+  "Soldier's Broadsword"   :{atk:15,dur:25, hand:1, col:0x8f98a4, len:1.08},
+  "Knight's Broadsword"    :{atk:26,dur:35, hand:1, col:0xd6dee6, len:1.15},
+  'Royal Broadsword'       :{atk:36,dur:40, hand:1, col:0x2b3a68, len:1.18},
+  "Royal Guard's Sword"    :{atk:48,dur:14, hand:1, col:0x3a4a7a, len:1.18},
+  'Silver Longsword'       :{atk:36,dur:40, hand:1, col:0xd0d6dc, len:1.16},
+
+  /* ---- one-handed: the peoples of Hyrule ---- */
+  "Forest Dweller's Sword" :{atk:15,dur:45, hand:1, col:0x5d7a3a, len:1.05},
+  'Gerudo Scimitar'        :{atk:20,dur:35, hand:1, col:0x46bdb2, len:1.10},
+  'Eightfold Blade'        :{atk:25,dur:25, hand:1, col:0x2b3442, len:1.12},
+  'Zora Sword'             :{atk:15,dur:27, hand:1, col:0x3f93bc, len:1.10},
+  'Feathered Edge'         :{atk:22,dur:32, hand:1, col:0x8ab4d8, len:1.14},
+
+  /* ---- one-handed: elemental ---- */
+  'Flameblade'             :{atk:24,dur:40, hand:1, col:0xd9622f, len:1.15, el:'fire'},
+  'Frostblade'             :{atk:20,dur:40, hand:1, col:0x8fd0e8, len:1.15, el:'ice'},
+  'Thunderblade'           :{atk:22,dur:40, hand:1, col:0xe3d055, len:1.15, el:'shock'},
+
+  /* ---- one-handed: ancient and guardian ---- */
+  'Ancient Short Sword'    :{atk:40,dur:54, hand:1, col:0x9ed3c6, len:1.10},
+  'Guardian Sword'         :{atk:20,dur:24, hand:1, col:0x86b8ac, len:1.10},
+  'Guardian Sword+'        :{atk:32,dur:32, hand:1, col:0x9ed3c6, len:1.12},
+  'Guardian Sword++'       :{atk:40,dur:40, hand:1, col:0xb4e0d4, len:1.14},
+
+  /* ---- boomerangs ---- */
+  'Boomerang'              :{atk:12,dur:20, hand:1, col:0x8a6a3a, len:.90},
+  'Sea-Breeze Boomerang'   :{atk:20,dur:40, hand:1, col:0x3f93bc, len:.92},
+  'Lizal Boomerang'        :{atk:12,dur:20, hand:1, col:0x4a7a4a, len:.95},
+  'Lizal Forked Boomerang' :{atk:20,dur:25, hand:1, col:0x3f8a5a, len:1.00},
+  'Lizal Tri-Boomerang'    :{atk:26,dur:30, hand:1, col:0x7a9aa4, len:1.05},
+
+  /* ---- one-handed: the named blades ---- */
+  'Master Sword'           :{atk:30,dur:40, hand:1, col:0x63d6e2, len:1.25, master:true},
+  'Sword of the Six Sages' :{atk:30,dur:60, hand:1, col:0x9a8ac4, len:1.22},
+  'Scimitar of the Seven'  :{atk:32,dur:60, hand:1, col:0x46bdb2, len:1.20},
+  'Fierce Deity Sword'     :{atk:60,dur:60, hand:1, col:0xdcd6c2, len:1.30},
+
+  /* ---- two-handed: monster clubs ---- */
+  'Boko Club'              :{atk:4, dur:12, hand:1, col:0x7a5a34, len:1.10},
+  'Spiked Boko Club'       :{atk:12,dur:16, hand:1, col:0x86603a, len:1.15},
+  'Dragonbone Boko Club'   :{atk:26,dur:24, hand:1, col:0x9c9482, len:1.20},
+  'Boko Bat'               :{atk:12,dur:20, hand:2, col:0x5d4426, len:1.40},
+  'Spiked Boko Bat'        :{atk:18,dur:24, hand:2, col:0x86603a, len:1.45},
+  'Dragonbone Boko Bat'    :{atk:26,dur:26, hand:2, col:0x9c9482, len:1.50},
+  'Moblin Club'            :{atk:10,dur:20, hand:2, col:0x7a5a8a, len:2.00},
+  'Spiked Moblin Club'     :{atk:20,dur:24, hand:2, col:0x8a5a3a, len:2.05},
+  'Dragonbone Moblin Club' :{atk:40,dur:28, hand:2, col:0x9c9482, len:2.10},
+
+  /* ---- two-handed: Hylian ---- */
+  "Traveler's Claymore"    :{atk:12,dur:20, hand:2, col:0xc9d2da, len:1.55},
+  "Soldier's Claymore"     :{atk:22,dur:25, hand:2, col:0x8f98a4, len:1.60},
+  "Knight's Claymore"      :{atk:36,dur:35, hand:2, col:0xd6dee6, len:1.65},
+  'Royal Claymore'         :{atk:52,dur:40, hand:2, col:0x2b3a68, len:1.70},
+  "Royal Guard's Claymore" :{atk:60,dur:14, hand:2, col:0x3a4a7a, len:1.70},
+
+  /* ---- two-handed: tools and stone ---- */
+  "Woodcutter's Axe"       :{atk:15,dur:30, hand:2, col:0x8b8f94, len:1.05, chop:true},
+  'Double Axe'             :{atk:20,dur:30, hand:2, col:0x7a8288, len:1.20, chop:true},
+  'Iron Sledgehammer'      :{atk:8, dur:60, hand:2, col:0x6f7784, len:1.35},
+  'Cobble Crusher'         :{atk:20,dur:25, hand:2, col:0x8a8175, len:1.50},
+  'Stone Smasher'          :{atk:30,dur:35, hand:2, col:0x6f6a60, len:1.60},
+
+  /* ---- two-handed: elemental and ancient ---- */
+  'Great Flameblade'       :{atk:34,dur:40, hand:2, col:0xd9622f, len:1.65, el:'fire'},
+  'Great Frostblade'       :{atk:30,dur:40, hand:2, col:0x8fd0e8, len:1.65, el:'ice'},
+  'Great Thunderblade'     :{atk:32,dur:40, hand:2, col:0xe3d055, len:1.65, el:'shock'},
+  'Ancient Battle Axe'     :{atk:30,dur:40, hand:2, col:0x9ed3c6, len:1.45},
+  'Ancient Battle Axe+'    :{atk:45,dur:50, hand:2, col:0xb4e0d4, len:1.48},
+  'Ancient Battle Axe++'   :{atk:60,dur:60, hand:2, col:0xc8ece2, len:1.50},
+  'Guardian Axe'           :{atk:25,dur:25, hand:2, col:0x86b8ac, len:1.45},
+  'Guardian Axe+'          :{atk:40,dur:35, hand:2, col:0x9ed3c6, len:1.48},
+  'Guardian Axe++'         :{atk:50,dur:45, hand:2, col:0xb4e0d4, len:1.50},
+  'Edge of Duality'        :{atk:32,dur:40, hand:2, col:0xc9a23a, len:1.62},
+  'Windcleaver'            :{atk:30,dur:40, hand:2, col:0x8ab4d8, len:1.66},
+  'Boulder Breaker'        :{atk:60,dur:60, hand:2, col:0x9a4a2a, len:1.72},
+
+  /* ---- two-handed: Lynel ---- */
+  'Lynel Crusher'          :{atk:44,dur:32, hand:2, col:0x8a3a2a, len:1.70},
+  'Mighty Lynel Crusher'   :{atk:54,dur:36, hand:2, col:0xa04a32, len:1.72},
+  'Savage Lynel Crusher'   :{atk:78,dur:45, hand:2, col:0xc2503a, len:1.75},
+
+  /* ---- spears ---- */
+  "Traveler's Spear"       :{atk:3, dur:15, hand:3, col:0xc9d2da, len:1.90},
+  "Soldier's Spear"        :{atk:10,dur:20, hand:3, col:0x8f98a4, len:2.00},
+  "Knight's Halberd"       :{atk:22,dur:30, hand:3, col:0xd6dee6, len:2.10},
+  'Royal Halberd'          :{atk:30,dur:35, hand:3, col:0x2b3a68, len:2.15},
+  "Royal Guard's Spear"    :{atk:40,dur:12, hand:3, col:0x3a4a7a, len:2.15},
+  'Boko Spear'             :{atk:5, dur:12, hand:3, col:0x6d5231, len:1.90},
+  'Spiked Boko Spear'      :{atk:10,dur:16, hand:3, col:0x86603a, len:1.95},
+  'Dragonbone Boko Spear'  :{atk:20,dur:20, hand:3, col:0x9c9482, len:2.00},
+  'Lizal Spear'            :{atk:8, dur:16, hand:3, col:0x4a7a4a, len:2.00},
+  'Forked Lizal Spear'     :{atk:14,dur:20, hand:3, col:0x3f8a5a, len:2.05},
+  'Enhanced Lizal Spear'   :{atk:24,dur:24, hand:3, col:0x7a9aa4, len:2.10},
+  'Moblin Spear'           :{atk:12,dur:18, hand:3, col:0x7a5a8a, len:2.40},
+  'Throwing Spear'         :{atk:5, dur:15, hand:3, col:0x8a6a3a, len:1.85},
+  "Farmer's Pitchfork"     :{atk:5, dur:25, hand:3, col:0x8b8f94, len:1.95},
+  'Fishing Harpoon'        :{atk:5, dur:20, hand:3, col:0x6f7784, len:1.95},
+  'Serpentine Spear'       :{atk:12,dur:25, hand:3, col:0x3f93bc, len:2.05},
+  'Ceremonial Trident'     :{atk:4, dur:50, hand:3, col:0xd8b24a, len:2.10},
+  'Flamespear'             :{atk:20,dur:35, hand:3, col:0xd9622f, len:2.05, el:'fire'},
+  'Frostspear'             :{atk:16,dur:35, hand:3, col:0x8fd0e8, len:2.05, el:'ice'},
+  'Thunderspear'           :{atk:18,dur:35, hand:3, col:0xe3d055, len:2.05, el:'shock'},
+  'Drillshaft'             :{atk:6, dur:20, hand:3, col:0x7a8288, len:1.90},
+  'Ancient Spear'          :{atk:30,dur:70, hand:3, col:0x9ed3c6, len:2.05},
+  'Guardian Spear'         :{atk:12,dur:20, hand:3, col:0x86b8ac, len:2.00},
+  'Guardian Spear+'        :{atk:22,dur:28, hand:3, col:0x9ed3c6, len:2.05},
+  'Guardian Spear++'       :{atk:30,dur:36, hand:3, col:0xb4e0d4, len:2.10},
+  'Lightscale Trident'     :{atk:22,dur:70, hand:3, col:0x3f93bc, len:2.20},
+  'Lynel Spear'            :{atk:32,dur:28, hand:3, col:0x8a3a2a, len:2.20},
+  'Mighty Lynel Spear'     :{atk:40,dur:32, hand:3, col:0xa04a32, len:2.22},
+  'Savage Lynel Spear'     :{atk:56,dur:40, hand:3, col:0xc2503a, len:2.25},
+
+  /* ---- rods: weak in the hand, but they cast ---- */
+  'Fire Rod'               :{atk:5, dur:10, hand:1, col:0xd9622f, len:1.10, el:'fire', rod:true},
+  'Ice Rod'                :{atk:5, dur:10, hand:1, col:0x8fd0e8, len:1.10, el:'ice',  rod:true},
+  'Lightning Rod'          :{atk:5, dur:10, hand:1, col:0xe3d055, len:1.10, el:'shock',rod:true},
+  'Meteor Rod'             :{atk:10,dur:20, hand:1, col:0xc4593a, len:1.15, el:'fire', rod:true},
+  'Blizzard Rod'           :{atk:10,dur:20, hand:1, col:0xbfe3ea, len:1.15, el:'ice',  rod:true},
+  'Thunderstorm Rod'       :{atk:10,dur:20, hand:1, col:0xfff08a, len:1.15, el:'shock',rod:true}
 };
+/* curly apostrophes have broken name matching three times; accept both forms */
+(function(){
+  for(const k of Object.keys(WEAPONS)){
+    const c=k.replace(/'/g,'\u2019');
+    if(WEAPONS[c]===undefined) WEAPONS[c]=WEAPONS[k];
+  }
+})();
+
 const BOWS={
   /* Every bow in the game, with its real damage, shot count and durability.
      mult is how many arrows leave the string for one arrow spent - the game
@@ -4499,7 +4626,9 @@ function swing(){
     let dmg=S.atk*mult;
     if(E.asleep){dmg*=8; toast('Sneakstrike!','good'); E.asleep=false;}   // real sneakstrike multiplier
     if(P.buff==='mighty') dmg+=P.buffLv*10;
-    hitEnemy(E,dmg,dx/d,dz/d,w.el);
+    /* the element lives on the weapon's definition, not on the pouch entry -
+       w is {n,d}, so w.el was undefined and no Flameblade ever burned */
+    hitEnemy(E,dmg,dx/d,dz/d,S.el);
   }
   for(const C of critters){ if(!C.alive) continue;
     const d=C.pos.distanceTo(P.pos); if(d<reach){ C.hp-=S.atk; C.flee=6;
@@ -4523,7 +4652,7 @@ function chargeRelease(){
     for(const E of enemies){ if(!E.alive||E.dormant)continue;
       const d=E.pos.distanceTo(P.pos);
       if(d<5.2){const dir=E.pos.clone().sub(P.pos).normalize();
-        hitEnemy(E,S.atk*2,dir.x,dir.z,w.el);} }
+        hitEnemy(E,S.atk*2,dir.x,dir.z,S.el);} }
     degrade(w,'weapons'); degrade(w,'weapons');
   } else {
     /* spear: rapid thrusts */
@@ -4531,7 +4660,7 @@ function chargeRelease(){
     const fx=-Math.sin(P.yaw+Math.PI),fz=-Math.cos(P.yaw+Math.PI);
     for(const E of enemies){ if(!E.alive||E.dormant)continue;
       const dx=E.pos.x-P.pos.x,dz=E.pos.z-P.pos.z,d=Math.hypot(dx,dz);
-      if(d<5&&(dx/d)*fx+(dz/d)*fz>.7) hitEnemy(E,S.atk*3,dx/d,dz/d,w.el); }
+      if(d<5&&(dx/d)*fx+(dz/d)*fz>.7) hitEnemy(E,S.atk*3,dx/d,dz/d,S.el); }
     degrade(w,'weapons');
   }
 }
@@ -4608,7 +4737,7 @@ function refreshHeld(){
     const W=WEAPONS[w.n];
     heldW=new THREE.Mesh(BOX,new THREE.MeshLambertMaterial({color:W.col}));
     heldW.scale.set(.12,W.len,.12); heldW.position.set(0,-W.len/2+.06,-.05);
-    if(w.el) heldW.material.emissive=new THREE.Color(w.el==='fire'?0x902000:w.el==='ice'?0x104060:0x606010);
+    if(W.el) heldW.material.emissive=new THREE.Color(W.el==='fire'?0x902000:W.el==='ice'?0x104060:0x606010);
     rig.hand.add(heldW);
   }
   if(s){
@@ -5934,7 +6063,7 @@ function slotHTML(key,glyph,label,frac,extra,cls){
 function updateGear(){
   let h='';
   const w=curW(), b=curB(), s=curS();
-  h+=w?slotHTML('1','\u{1F5E1}',w.n,w.d/WEAPONS[w.n].dur,undefined,'active'+(w.el?' el-'+w.el:''))
+  h+=w?slotHTML('1','\u{1F5E1}',w.n,w.d/WEAPONS[w.n].dur,undefined,'active'+(WEAPONS[w.n].el?' el-'+WEAPONS[w.n].el:''))
       :slotHTML('1','\u{270A}','Bare hands');
   h+=b?slotHTML('2','\u{1F3F9}',b.n,b.d/BOWS[b.n].dur):slotHTML('2','—','No bow');
   h+=s?slotHTML('3','\u{1F6E1}',s.n,s.d/SHIELDS[s.n].dur):slotHTML('3','—','No shield');
@@ -8843,7 +8972,7 @@ function throwWeapon(){
   m.position.copy(P.pos).add(new THREE.Vector3(0,1.7,0)).addScaledVector(dir,1.4);
   m.castShadow=true; scene.add(m);
   thrown.push({m,v:dir.clone().multiplyScalar(34),spin:14,atk:S.atk*(S.hand===2?2:1),
-    name:w.n, dur:w.d, el:w.el, life:8});
+    name:w.n, dur:w.d, el:S.el, life:8});
   P.weapons.splice(P.wi,1); P.wi=0; refreshHeld(); updateGear();
   sfx('swing'); P.noise=1;
 }
