@@ -12556,3 +12556,364 @@ newGame=function(){
   P.lostWoodsDone=false; LOSTWOODS.stage=0; LOSTWOODS.was=false;
 };
 </script>
+<script>
+"use strict";
+/* ================= ROADMAP 16 — the Trial of the Sword ================= */
+/* Three tiers of floors fought with nothing but what the floor gives you.
+   Clearing a tier permanently raises the Master Sword's power. */
+const TRIAL={rx:26000, rz:0, floorY:0, tier:0, floor:0, active:false};
+const TRIAL_TIERS=[
+  {n:'Beginning Trials', floors:12, pool:['redBoko','blueBoko','chuchu','keese','greenLiz','stalBoko'], award:10},
+  {n:'Middle Trials',    floors:16, pool:['blueBoko','blackBoko','blueLiz','fireChu','iceKeese','redMoblin','scoutI'], award:10},
+  {n:'Final Trials',     floors:23, pool:['blackBoko','silverBoko','blackLiz','blueMoblin','scoutII','elecWiz','redLynel'], award:10}
+];
+(function buildTrial(){
+  const g=new THREE.Group(); g.position.set(TRIAL.rx,0,TRIAL.rz); g.visible=false;
+  scene.add(g); TRIAL.g=g;
+  const dk=new THREE.MeshLambertMaterial({color:0x1e2a24});
+  buildInterior(g,0,0,0,70,70,20,{mat:dk,doors:[],gap:0});
+  for(let i=0;i<10;i++){ const a=i/10*TAU;
+    const p=cyl(g,1.4,16,Math.cos(a)*30,8,Math.sin(a)*30,new THREE.MeshLambertMaterial({color:0x2a3a32}));
+    const fl=new THREE.Mesh(new THREE.ConeGeometry(.9,2,7),
+      new THREE.MeshBasicMaterial({color:0x8fe6c4}));
+    fl.position.set(Math.cos(a)*30,17,Math.sin(a)*30); g.add(fl);
+    const li=new THREE.PointLight(0x8fe6c4,1.2,50);
+    li.position.set(Math.cos(a)*30,16,Math.sin(a)*30); g.add(li);
+  }
+  const ped=cyl(g,4,1.6,0,.8,0,new THREE.MeshLambertMaterial({color:0x2f3a36}));
+  TRIAL.entry=new THREE.Vector3(TRIAL.rx,0,TRIAL.rz+28);
+  /* the pedestal in Korok Forest that starts it */
+  const M=window.__msword;
+  if(M) IA({kind:'trial',x:M.x+14,z:M.z+14,y:M.y+1,r:6,label:'Trial of the Sword'});
+})();
+function startTrial(){
+  if(!P.hasMaster){ toast('The Master Sword must be yours first','bad'); return; }
+  const t=P.trialTier||0;
+  if(t>=TRIAL_TIERS.length){ toast('The blade is fully awakened'); return; }
+  TRIAL.active=true; TRIAL.tier=t; TRIAL.floor=0; P.inTrial=true;
+  /* everything is taken from you but the sword */
+  TRIAL.stash={weapons:P.weapons,bows:P.bows,shields:P.shields,arrows:P.arrows,
+               mats:P.mats,meals:P.meals,hp:P.hp};
+  const ms=P.weapons.find(w=>WEAPONS[w.n]&&WEAPONS[w.n].master);
+  P.weapons=ms?[{n:ms.n,d:WEAPONS[ms.n].dur}]:[];
+  P.bows=[]; P.shields=[]; P.arrows={'Arrow':5}; P.mats={}; P.meals=[];
+  P.wi=0; P.hp=maxHP();
+  TRIAL.g.visible=true;
+  world.visible=false; terrain.visible=false; water.visible=false; sky.visible=false;
+  hyruleMesh.visible=false; hWater.visible=false;
+  for(const k in VEG) VEG[k].visible=false;
+  P.pos.copy(TRIAL.entry); P.vel.set(0,0,0);
+  refreshHeld(); updateGear(); updateHearts();
+  cut('','The '+TRIAL_TIERS[t].n+'. Nothing you carried comes with you.',{t:3.5});
+  nextTrialFloor();
+}
+function nextTrialFloor(){
+  const T=TRIAL_TIERS[TRIAL.tier];
+  TRIAL.floor++;
+  if(TRIAL.floor>T.floors){ finishTrialTier(); return; }
+  TRIAL.mobs=[];
+  const count=Math.min(5,1+Math.floor(TRIAL.floor/3));
+  for(let i=0;i<count;i++){
+    const a=i/count*TAU;
+    const type=T.pool[Math.floor(rnd()*T.pool.length)];
+    const E=makeEnemy({t:type, x:TRIAL.rx+Math.cos(a)*18, z:TRIAL.rz+Math.sin(a)*18});
+    E.pos.set(TRIAL.rx+Math.cos(a)*18, TRIAL.floorY, TRIAL.rz+Math.sin(a)*18);
+    E.home.copy(E.pos); E.dormant=false; E.g.visible=true; E.aggroT=1e9; E.night=false;
+    TRIAL.mobs.push(E);
+  }
+  /* a weapon and a bite of food waiting on each floor */
+  const drop=['Traveler’s Sword','Boko Club','Soldier’s Claymore','Knight’s Broadsword'][Math.min(3,Math.floor(TRIAL.floor/6))];
+  spawnPickup(TRIAL.rx+6,TRIAL.rz+6,{w:drop});
+  spawnPickup(TRIAL.rx-6,TRIAL.rz+6,{m:'Hearty Truffle'});
+  toast(T.n+'  ·  floor '+TRIAL.floor+' of '+T.floors,'good');
+  sfx('open');
+}
+function finishTrialTier(){
+  const T=TRIAL_TIERS[TRIAL.tier];
+  P.trialTier=(P.trialTier||0)+1;
+  const ms=P.weapons.find(w=>WEAPONS[w.n]&&WEAPONS[w.n].master)||{n:'Master Sword'};
+  WEAPONS['Master Sword'].atk+=T.award;
+  sfx('orb');
+  cut('','The '+T.n+' are done. The blade answers — it strikes for '+WEAPONS['Master Sword'].atk+' now.',{t:4.5});
+  endTrial(true);
+}
+function endTrial(won){
+  TRIAL.active=false; P.inTrial=false;
+  for(const E of TRIAL.mobs||[]){ E.alive=false; E.g.visible=false; }
+  TRIAL.mobs=[];
+  TRIAL.g.visible=false;
+  world.visible=true; terrain.visible=true; water.visible=true; sky.visible=true;
+  hyruleMesh.visible=true; hWater.visible=true;
+  for(const k in VEG) VEG[k].visible=true;
+  const S=TRIAL.stash;
+  if(S){ P.weapons=S.weapons; P.bows=S.bows; P.shields=S.shields;
+    P.arrows=S.arrows; P.mats=S.mats; P.meals=S.meals; P.hp=won?maxHP():Math.max(HEART,S.hp);
+    P.wi=0; TRIAL.stash=null; }
+  const M=window.__msword;
+  P.pos.set(M.x+18,groundAt(M.x+18,M.z+18)+1,M.z+18); P.vel.set(0,0,0);
+  refreshHeld(); updateGear(); updateHearts();
+  if(!won) toast('You fell in the Trial — nothing was lost','bad');
+}
+function updateTrial(dt){
+  if(!TRIAL.active) return;
+  P.pos.x=clamp(P.pos.x,TRIAL.rx-33,TRIAL.rx+33);
+  P.pos.z=clamp(P.pos.z,TRIAL.rz-33,TRIAL.rz+33);
+  if(P.pos.y<TRIAL.floorY){P.pos.y=TRIAL.floorY;P.vel.y=0;P.onGround=true;}
+  const left=(TRIAL.mobs||[]).filter(E=>E.alive).length;
+  if(left===0) nextTrialFloor();
+  if(P.dead){ P.dead=false; $('#death').classList.remove('on'); endTrial(false); startPlay(); }
+}
+
+/* ================= ROADMAP 18 — horses properly ================= */
+const HORSE_NAMES=['Epona','Storm','Ash','Willow','Rusty','Pip','Sable','Juniper',
+                   'Comet','Dusty','Ember','Nell','Cobalt','Fen','Rye'];
+P.stable={};
+Object.assign(WEAPONS,{});   /* horse gear is armour-like, kept on the horse */
+const HORSE_GEAR={
+  'Traveler’s Saddle':{spd:0,   bond:0},
+  'Knight’s Saddle'  :{spd:1.5, bond:1},
+  'Royal Saddle'          :{spd:3,   bond:2},
+  'Traveler’s Bridle':{turn:0},
+  'Knight’s Bridle'  :{turn:.3},
+  'Royal Bridle'          :{turn:.6}
+};
+/* two special horses, where they really live */
+(function specialHorses(){
+  const giant=makeHorse(REGIONS.central.x+420, REGIONS.central.z+380, 0x2a2a38, true);
+  giant.giant=true; giant.name='Giant Horse'; giant.maxSpd=13; giant.strength=5;
+  giant.g.scale.setScalar(1.9);
+  const royal=makeHorse(REGIONS.ridge.x+260, REGIONS.ridge.z-180, 0xe8e4dc, true);
+  royal.royal=true; royal.name='Royal White Stallion'; royal.maxSpd=19; royal.strength=4;
+  royal.g.scale.setScalar(1.15);
+  console.log('special horses placed: Giant Horse, Royal White Stallion');
+})();
+function registerHorse(H,stableName){
+  if(H.registered){ toast(H.name+' is already registered'); return; }
+  H.registered=true;
+  H.name=H.name||HORSE_NAMES[Math.floor(rnd()*HORSE_NAMES.length)];
+  H.bondLevel=1;
+  P.stable[H.name]={spd:H.maxSpd, giant:!!H.giant, royal:!!H.royal, gear:{}};
+  P.rupees=Math.max(0,P.rupees-20);
+  sfx('orb');
+  cut('Stable hand','Registered. Twenty rupees, and she is yours — I have written her down as '+H.name+'.');
+  toast('Registered '+H.name,'good');
+}
+function callHorse(){
+  let best=null,bd=1e9;
+  for(const H of horses){
+    if(!H.registered) continue;
+    const d=Math.hypot(H.pos.x-P.pos.x,H.pos.z-P.pos.z);
+    if(d<bd){bd=d;best=H;}
+  }
+  if(!best){ toast('No registered horse'); return; }
+  if(bd>400){ toast(best.name+' is too far to hear you','bad'); return; }
+  best.calling=true; best.spooked=0;
+  toast(best.name+' is coming','good'); sfx('horn');
+}
+function buyHorseGear(H,item){
+  const G=HORSE_GEAR[item]; if(!G||!H.registered) return;
+  const cost=item.includes('Royal')?500:item.includes('Knight')?200:50;
+  if(P.rupees<cost){ toast('Not enough rupees','bad'); return; }
+  P.rupees-=cost;
+  H.gear=H.gear||{};
+  H.gear[item]=1;
+  if(G.spd) H.maxSpd+=G.spd;
+  if(G.turn) H.turnBonus=(H.turnBonus||0)+G.turn;
+  P.stable[H.name].gear[item]=1;
+  toast(H.name+' — '+item,'good'); sfx('pickup'); updateGear();
+}
+/* a called horse runs to you; bond raises its top speed */
+const _updateHorsesReg=updateHorses;
+updateHorses=function(dt){
+  for(const H of horses){
+    if(!H.calling||H===P.mount) continue;
+    const d=new THREE.Vector3(P.pos.x-H.pos.x,0,P.pos.z-H.pos.z);
+    const dist=d.length();
+    if(dist<5){ H.calling=false; toast(H.name+' arrives'); continue; }
+    d.normalize();
+    H.pos.addScaledVector(d,Math.min(H.maxSpd,16)*dt);
+    H.pos.y=groundAt(H.pos.x,H.pos.z);
+    H.yaw=Math.atan2(d.x,d.z);
+    H.g.rotation.y=H.yaw;
+  }
+  _updateHorsesReg(dt);
+  /* riding builds the bond, and the bond makes it faster and steadier */
+  const H=P.mount;
+  if(H&&H.registered){
+    H.bond=(H.bond||0)+dt*0.05;
+    if(H.bond>H.bondLevel*20&&H.bondLevel<5){
+      H.bondLevel++; H.maxSpd+=0.8;
+      toast(H.name+' trusts you more  ·  bond '+H.bondLevel+'/5','good'); sfx('pickup');
+    }
+  }
+};
+</script>
+<script>
+"use strict";
+/* ================= ROADMAP 20 — filling the world in ================= */
+/* Hyrule was the right size but far too empty. This puts something worth
+   walking to between the landmarks. */
+(function fillTheWorld(){
+  let chests=0, ore=0, camps=0, wildlife=0, fires=0, ruins=0, wells=0;
+  const REG=Object.keys(REGIONS).filter(k=>REGIONS[k].r>=800);
+  const spot=(R,pad)=>{
+    for(let t=0;t<40;t++){
+      const a=rnd()*TAU, r=Math.sqrt(rnd())*R.r*(pad||1);
+      const x=R.x+Math.cos(a)*r, z=R.z+Math.sin(a)*r;
+      if(groundAt(x,z)>waterAt(x,z)+2 && slopeAt(x,z)<0.9) return [x,z];
+    }
+    return null;
+  };
+  /* ore deposits, which is where the gems really come from */
+  const oreG=new THREE.DodecahedronGeometry(1.9,0);
+  const oreMats={ common:new THREE.MeshLambertMaterial({color:0x6a6258,flatShading:true}),
+                  rare:new THREE.MeshLambertMaterial({color:0xd8a83a,flatShading:true}),
+                  luminous:new THREE.MeshLambertMaterial({color:0x8fd8ee,flatShading:true}) };
+  for(const k of REG){
+    const R=REGIONS[k];
+    for(let i=0;i<26;i++){
+      const s=spot(R); if(!s) continue;
+      const kind=rnd()<.14?'rare':(rnd()<.2?'luminous':'common');
+      const m=new THREE.Mesh(oreG,oreMats[kind]);
+      m.position.set(s[0],groundAt(s[0],s[1])+1.4,s[1]);
+      m.rotation.set(rnd(),rnd(),rnd()); m.castShadow=true; scene.add(m);
+      IA({kind:'ore',ore:kind,mesh:m,x:s[0],z:s[1],y:groundAt(s[0],s[1])+1,r:3.2,
+          label:kind==='rare'?'Rare ore deposit':kind==='luminous'?'Luminous stone':'Ore deposit'});
+      ore++;
+    }
+  }
+  /* chests out in the world, not only in shrines */
+  for(const k of REG){
+    const R=REGIONS[k];
+    for(let i=0;i<14;i++){
+      const s=spot(R); if(!s) continue;
+      const loot=['Amber','Opal','Arrow','Fire Arrow','Ice Arrow','Shock Arrow',
+        "Knight's Broadsword","Traveler's Bow","Soldier's Claymore","Knight's Shield",
+        'Ruby','Topaz','Sapphire','Silver Rupee','Ancient Core'][Math.floor(rnd()*15)];
+      const y=groundAt(s[0],s[1]);
+      const g=new THREE.Group(); g.position.set(s[0],y,s[1]); g.rotation.y=rnd()*TAU; world.add(g);
+      box(g,2.0,1.15,1.4,0,.58,0,MAT.wood);
+      const lid=new THREE.Group(); lid.position.set(0,1.16,-.7); g.add(lid);
+      box(lid,2.0,.55,1.4,0,.28,.7,MAT.wood2);
+      g.userData={lid};
+      IA({kind:'armourChest',item:loot,x:s[0],z:s[1],y:y+1.2,r:4,label:'Open the chest',obj:g});
+      chests++;
+    }
+  }
+  /* more monster camps between the landmarks */
+  for(const k of REG){
+    const R=REGIONS[k];
+    for(let i=0;i<3;i++){
+      const s=spot(R,0.85); if(!s) continue;
+      addFire(s[0],s[1],rnd()<.4,'wildcamp'); fires++;
+      const pool=k==='eldin'?['blackBoko','fireChu','blueMoblin']:
+                 k==='hebra'?['blueBoko','iceChu','stalLiz']:
+                 k==='wasteland'||k==='gerudo'?['blueBoko','elecChu','yigaFoot']:
+                 ['redBoko','blueBoko','chuchu','greenLiz'];
+      for(let j=0;j<3;j++){
+        const a=j/3*TAU;
+        makeEnemy({t:pool[Math.floor(rnd()*pool.length)],
+          x:Math.round(s[0]+Math.cos(a)*8), z:Math.round(s[1]+Math.sin(a)*8)});
+      }
+      camps++;
+    }
+  }
+  /* game worth hunting */
+  for(const k of REG){
+    const R=REGIONS[k];
+    for(let i=0;i<10;i++){
+      const s=spot(R); if(!s) continue;
+      addCritter(rnd()<.55?'boar':'bird',s[0],s[1]); wildlife++;
+    }
+  }
+  /* ruins and wells to break up the empty ground */
+  for(const k of REG){
+    const R=REGIONS[k];
+    for(let i=0;i<10;i++){
+      const s=spot(R); if(!s) continue;
+      const y=groundAt(s[0],s[1]);
+      const g=new THREE.Group(); g.position.set(s[0],y,s[1]); g.rotation.y=rnd()*TAU; world.add(g);
+      const h=2+rnd()*7;
+      box(g,1.4+rnd()*4,h,1.4,0,h/2,0,MAT.stoneD);
+      if(rnd()<.35) box(g,3+rnd()*3,1,1.2,0,h,0,MAT.stone,rnd());
+      addStruct({x:s[0],z:s[1],r:2.4,base:y,top:y+h,plat:1.6});
+      ruins++;
+    }
+    for(let i=0;i<2;i++){
+      const s=spot(R); if(!s) continue;
+      const y=groundAt(s[0],s[1]);
+      const g=new THREE.Group(); g.position.set(s[0],y,s[1]); world.add(g);
+      for(let j=0;j<10;j++){ const a=j/10*TAU;
+        box(g,.9,1.6,.9,Math.cos(a)*2.4,.8,Math.sin(a)*2.4,MAT.stone,-a); }
+      const w=new THREE.Mesh(new THREE.CircleGeometry(2.0,14),
+        new THREE.MeshBasicMaterial({color:0x2f6f86}));
+      w.rotation.x=-Math.PI/2; w.position.y=.3; g.add(w);
+      IA({kind:'well',x:s[0],z:s[1],y:y+1,r:3.4,label:'A well'});
+      wells++;
+    }
+  }
+  console.log('world filled in — ore:',ore,'chests:',chests,'camps:',camps,
+              'wildlife:',wildlife,'ruins:',ruins,'wells:',wells);
+})();
+/* mining ore, and what wells hold */
+const _interactFill=interact;
+interact=function(){
+  const it=nearest;
+  if(it&&it.kind==='ore'){
+    const w=curW();
+    if(!w){ toast('You need something to break it with','bad'); return; }
+    it.mesh.visible=false;
+    const table=it.ore==='rare'?['Ruby','Sapphire','Topaz','Diamond','Amber']:
+                it.ore==='luminous'?['Luminous Stone','Luminous Stone','Opal']:
+                ['Flint','Flint','Amber','Opal'];
+    const n=1+Math.floor(rnd()*3);
+    for(let i=0;i<n;i++) giveMat(table[Math.floor(rnd()*table.length)],1);
+    degrade(w,'weapons'); sfx('clang');
+    const i=interactables.indexOf(it); if(i>=0) interactables.splice(i,1);
+    return;
+  }
+  if(it&&it.kind==='well'){
+    if(!it.looted){ it.looted=true;
+      giveMat(rnd()<.5?'Opal':'Amber',1);
+      P.rupees+=Math.floor(20+rnd()*60);
+      toast('Something at the bottom of the well','good'); sfx('pickup');
+    } else toast('Nothing left down there');
+    return;
+  }
+  if(it&&it.kind==='trial'){ startTrial(); return; }
+  if(it&&it.kind==='stable'){
+    /* registering and outfitting a horse happens at a stable */
+    if(P.mount&&!P.mount.registered){ registerHorse(P.mount,it.name); return; }
+    if(P.mount&&P.mount.registered){
+      const want=['Knight’s Saddle','Knight’s Bridle','Royal Saddle','Royal Bridle']
+        .find(g=>!(P.mount.gear&&P.mount.gear[g]));
+      if(want){ buyHorseGear(P.mount,want); return; }
+      toast(P.mount.name+' has the best of everything'); return;
+    }
+    toast(it.name+'  ·  ride up on a horse to register it');
+    return;
+  }
+  _interactFill();
+};
+const _promptFill=promptFor;
+promptFor=function(it){
+  if(it&&it.kind==='ore') return '<b>E</b> Break the '+(it.ore==='rare'?'rare ore':it.ore==='luminous'?'luminous stone':'ore');
+  if(it&&it.kind==='well') return it.looted?'<b>A well</b>':'<b>E</b> Search the well';
+  if(it&&it.kind==='trial'){
+    const t=P.trialTier||0;
+    return t>=TRIAL_TIERS.length?'<b>The blade is fully awakened</b>':
+      '<b>E</b> '+TRIAL_TIERS[t].n+'  ·  '+TRIAL_TIERS[t].floors+' floors';
+  }
+  if(it&&it.kind==='stable'){
+    if(P.mount&&!P.mount.registered) return '<b>E</b> Register this horse  ·  20 rupees';
+    if(P.mount) return '<b>E</b> Buy tack for '+P.mount.name;
+    return '<b>'+it.name+'</b>  ·  ride up to register a horse';
+  }
+  return _promptFill(it);
+};
+addEventListener('keydown',e=>{ if(P.playing&&e.code==='KeyN') callHorse(); });
+const _updateBeastsAll=updateBeasts;
+updateBeasts=function(dt){ _updateBeastsAll(dt); updateTrial(dt); };
+(function(){ const k=$('#keys');
+  if(k) k.insertAdjacentHTML('beforeend','<div><span>Call your horse</span><k>N</k></div>'); })();
+</script>
