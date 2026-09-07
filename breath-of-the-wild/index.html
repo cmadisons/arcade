@@ -7053,7 +7053,7 @@ function updateSky(dt){
 addEventListener('keydown',e=>{
   keys[e.code]=true;
   if(['Space','KeyM','Escape','KeyE','KeyQ','KeyR','KeyF','KeyC','Tab','KeyZ','KeyG',
-      'ArrowUp','ArrowDown','ArrowLeft','ArrowRight',
+      'ArrowUp','ArrowDown','ArrowLeft','ArrowRight','KeyL',
       'Digit1','Digit2','Digit3','Digit4'].includes(e.code)) e.preventDefault();
   if(inCut&&e.code==='Space'){ cutT=0; return; }
   if(!P.playing) return;
@@ -16464,8 +16464,9 @@ function bodyImpacts(dt){
     if(sp>16&&matterOf(b.tag)==='stone'&&Math.random()<dt*3) sfx('clang');
   }
 }
+/* G throws the weapon in your hand and V is the Sheikah sensor; L lifts */
 addEventListener('keydown',e=>{
-  if(e.code==='KeyG'&&P.playing&&!paused){ e.preventDefault(); grabOrThrow(); }
+  if(e.code==='KeyL'&&P.playing&&!paused){ e.preventDefault(); grabOrThrow(); }
 });
 
 /* ---- drive the lot ---- */
@@ -17146,6 +17147,211 @@ if(typeof updateGear==='function'){
 }
 console.log('UI: 3 save slots (v'+SAVE_V+'), options panel, item descriptions');
 </script>
+<script>
+/* ================= BATCH 88 — camps across Hyrule, the Master Sword, weather
+   Phase 3 item 1, Phase 1 item 8, and Phase 5.
+
+   Seven bokoblin camps existed, all of them on the Great Plateau, so the rest
+   of Hyrule was empty of anything organised.  The Master Sword sat in the
+   table at 30 attack and behaved like any other blade.  And the sky had two
+   states: raining, or not. */
+
+/* ---- 1. a hundred and twenty camps, graded by where they are ---- */
+const CAMP_TIERS={
+  plateau  :['redBoko','redBoko','chuchu'],
+  central  :['redBoko','redBoko','blueBoko'],
+  hateno   :['redBoko','blueBoko','greenLiz'],
+  necluda  :['blueBoko','greenLiz','keese'],
+  faron    :['greenLiz','blueBoko','blackBoko'],
+  lanayru  :['blueLiz','elecLiz','blueBoko'],
+  zora     :['blueLiz','elecLiz','elecChu'],
+  eldin    :['blackBoko','fireLiz','fireChu'],
+  akkala   :['blackBoko','silverBoko','blackMoblin'],
+  hebra    :['iceLiz','blueBoko','iceKeese'],
+  tabantha :['blueBoko','blackBoko','iceChu'],
+  ridge    :['blackBoko','blueMoblin','keese'],
+  gerudo   :['blueLiz','blackMoblin','elecChu'],
+  wasteland:['blackMoblin','silverBoko','fireChu'],
+  woodland :['redBoko','blueBoko','forestOct'],
+  duel     :['blueBoko','blackBoko','stalBoko'],
+  hylia    :['redBoko','blueBoko','octorok'],
+  korok    :['forestOct','greenLiz','keese']
+};
+/* Camps are placed now but built later.  Creating a hundred and thirteen
+   camps' worth of monsters at page load meant four hundred full creature rigs
+   before the first frame - the game came up frozen, with no view out of the
+   Shrine of Resurrection and no response to the keys.  They are raised when
+   you get within six hundred metres and put away again when you leave. */
+const LAZY_CAMPS=[];
+let _cseed=20170303;
+const crnd=()=>((_cseed=(_cseed*1664525+1013904223)>>>0)/4294967296);
+(function placeCamps(){
+  const before=CAMPS.length;
+  const keys=Object.keys(REGIONS).filter(k=>REGIONS[k]&&REGIONS[k].r>=400);
+  const want=120-before;
+  /* keep away from the places people live, and from each other */
+  const towns=[];
+  for(const k of ['central','kakariko','hateno','zora','korok','lurelin','gerudoTown',
+                  'rito','goron','castle','plateau'])
+    if(REGIONS[k]) towns.push([REGIONS[k].x,REGIONS[k].z,320]);
+  const placed=CAMPS.map(c=>[c.x,c.z]);
+  const okSpot=(x,z)=>{
+    if(groundAt(x,z)<=waterAt(x,z)+3) return false;
+    if(slopeAt(x,z)>0.7) return false;
+    for(const t of towns) if(Math.hypot(x-t[0],z-t[1])<t[2]) return false;
+    for(const q of placed) if(Math.hypot(x-q[0],z-q[1])<260) return false;
+    return true;
+  };
+  let made=0, guard=0;
+  while(made<want && guard++<40000){
+    const rk=keys[(crnd()*keys.length)|0], R=REGIONS[rk];
+    const a=crnd()*TAU, r=Math.sqrt(crnd())*R.r*0.92;
+    const x=R.x+Math.cos(a)*r, z=R.z+Math.sin(a)*r;
+    if(!okSpot(x,z)) continue;
+    const roster=CAMP_TIERS[rk]||CAMP_TIERS.central;
+    const n=2+((crnd()*3)|0);
+    const mob=[];
+    for(let i=0;i<n;i++) mob.push(roster[(crnd()*roster.length)|0]);
+    /* one camp in six is led by something worse */
+    if(crnd()<0.17) mob.push(rk==='akkala'||rk==='eldin'?'blackMoblin':'blueMoblin');
+    const c={n:(R.n||rk)+' camp '+(made+1), x, z, mob,
+             tower:crnd()<.45, pot:crnd()<.5};
+    CAMPS.push(c); placed.push([x,z]);
+    LAZY_CAMPS.push(c);          /* built when you come near, not now */
+    made++;
+  }
+  console.log('camps: '+before+' -> '+CAMPS.length+'  ('+made+' placed, built on approach)');
+})();
+
+/* raise and lower camps as you move through the world */
+const CAMP_NEAR=600, CAMP_FAR=820;
+let _campT=0;
+function streamCamps(dt){
+  if(!P.playing) return;
+  _campT-=dt; if(_campT>0) return;
+  _campT=0.9;                                  /* twice a second is plenty */
+  let raised=0;
+  for(const c of LAZY_CAMPS){
+    const d=Math.hypot(c.x-P.pos.x, c.z-P.pos.z);
+    if(!c._built && d<CAMP_NEAR && raised<2){   /* at most two a tick, so no hitch */
+      c._built=true; raised++;
+      try{ buildCamp(c); }catch(e){}
+      c._mobs=[];
+      c.mob.forEach((t,i)=>{
+        const ang=i/c.mob.length*TAU;
+        try{
+          const E=makeEnemy({t,x:c.x+Math.cos(ang)*7,z:c.z+Math.sin(ang)*7,camp:c});
+          if(E) c._mobs.push(E);
+        }catch(e){}
+      });
+    } else if(c._built && d>CAMP_FAR){
+      /* far away: hide what is left of it, and let it come back on the next approach */
+      if(c._mobs) for(const E of c._mobs){ if(E&&E.g) E.g.visible=false; }
+    } else if(c._built && d<CAMP_NEAR && c._mobs){
+      for(const E of c._mobs) if(E&&E.alive&&E.g) E.g.visible=!E.dormant;
+    }
+  }
+}
+
+/* ---- 2. the Master Sword ---- */
+/* 30 in the hand, 60 against Ganon and anything he has corrupted; and it does
+   not break - it runs out of energy and comes back after ten minutes. */
+P.msSpent=P.msSpent||0;
+function masterSwordActive(){ return P.msSpent<=0; }
+function isCorrupted(E){
+  return !!(E&&/ganon|blight|guardian|sentry|decayed|stalker|scout/i.test(String(E.t)));
+}
+(function wireMasterSword(){
+  if(typeof hitEnemy!=='function') return;
+  const _hitMS=hitEnemy;
+  hitEnemy=function(E,dmg,nx,nz,el){
+    try{
+      const w=curW();
+      if(w&&/master sword/i.test(w.n)&&isCorrupted(E)) dmg*=2;   /* 30 becomes 60 */
+      arguments[1]=dmg;
+    }catch(e){}
+    return _hitMS.apply(this,arguments);
+  };
+  /* it never breaks: it goes dark instead */
+  if(typeof degrade==='function'){
+    const _deg=degrade;
+    degrade=function(item,list){
+      try{
+        if(list==='weapons'&&item&&/master sword/i.test(item.n)){
+          item.d-=1;
+          if(item.d<=0){ item.d=WEAPONS[item.n].dur; P.msSpent=600;
+            toast('The Master Sword has run out of energy','bad'); refreshHeld(); updateGear(); }
+          return;
+        }
+      }catch(e){}
+      return _deg.apply(this,arguments);
+    };
+  }
+})();
+function masterSwordTick(dt){
+  if(P.msSpent>0){
+    P.msSpent-=dt;
+    if(P.msSpent<=0){ P.msSpent=0; toast('The Master Sword has recovered','good'); }
+  }
+}
+
+/* ---- 3. weather with more than two states ---- */
+/* snow where it is cold, fog in the low mornings, and heat haze over the sand */
+const WX={type:'clear', t:0, fog:0, haze:0, snow:0};
+function regionWeather(x,z){
+  const y=groundAt(x,z);
+  const t=(typeof tempAt==='function')?tempAt(x,z,y):20;
+  const storm=(typeof storming!=='undefined'&&storming);
+  const rain =(typeof raining!=='undefined'&&raining);
+  if(rain&&t<2)  return 'snow';          /* it falls as snow where it is freezing */
+  if(storm)      return 'storm';
+  if(rain)       return 'rain';
+  const f=(P.time/DAY_LEN)%1;
+  if(f>0.20&&f<0.30&&y<160&&t>4&&t<18) return 'fog';   /* low ground, first light */
+  if(t>34&&!rain) return 'haze';          /* the desert at noon */
+  return 'clear';
+}
+let _wxT=0;
+function weatherTick(dt){
+  if(!P.playing) return;
+  _wxT-=dt;
+  if(_wxT<=0){ _wxT=2.0; WX.type=regionWeather(P.pos.x,P.pos.z); }
+  const to=(k,v)=>{ WX[k]+=(v-WX[k])*Math.min(1,dt*0.7); };
+  to('snow', WX.type==='snow'?1:0);
+  to('fog',  WX.type==='fog'?1:0);
+  to('haze', WX.type==='haze'?1:0);
+  try{
+    /* fog thickens the air and shortens the view; haze only shimmers the far distance */
+    const base=(typeof raining!=='undefined'&&raining)?0.0026:0.00035;
+    const draw=(typeof OPT!=='undefined'?OPT.draw:1);
+    scene.fog.density=(base + WX.fog*0.0030 + WX.haze*0.0004)/Math.max(0.35,draw);
+    if(WX.fog>0.02) scene.fog.color.lerp(new THREE.Color(0xc8d4dc), WX.fog*0.05);
+    if(WX.haze>0.02) scene.fog.color.lerp(new THREE.Color(0xe8d8b0), WX.haze*0.04);
+    if(WX.snow>0.02) scene.fog.color.lerp(new THREE.Color(0xdfe6ee), WX.snow*0.05);
+    renderer.setClearColor(scene.fog.color);
+    /* snow falls slower than rain and drifts - reuse the rain mesh if there is one */
+    if(typeof rainMesh!=='undefined'&&rainMesh&&rainMesh.material){
+      rainMesh.material.color.setHex(WX.snow>0.5?0xf0f4f8:0x9fb4c4);
+      rainMesh.material.opacity=WX.snow>0.5?0.85:0.5;
+    }
+  }catch(e){}
+}
+function weatherName(){
+  return WX.type==='snow'?'Snow':WX.type==='fog'?'Fog':WX.type==='haze'?'Heat haze'
+       :WX.type==='storm'?'Thunderstorm':WX.type==='rain'?'Rain':'Clear';
+}
+if(typeof animate==='function'){
+  const _animW=animate;
+  animate=function(dt,moving,speed){
+    const r=_animW.apply(this,arguments);
+    try{ streamCamps(dt); masterSwordTick(dt); weatherTick(dt); }catch(e){}
+    return r;
+  };
+}
+console.log('world: '+CAMPS.length+' camps, Master Sword wired, weather has '
+  +'clear/rain/storm/snow/fog/haze by region');
+</script>
+
 
 
 
