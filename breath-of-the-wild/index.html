@@ -4638,7 +4638,14 @@ function updatePlayer(dt){
         sfx('land'); P.noise=Math.max(P.noise,.7*sneakBonus());
       }
       P.pos.y=ng; P.vel.y=0; P.onGround=true;
-      if(sl>1.3){normalAt(P.pos.x,P.pos.z,nrm);P.pos.x+=nrm.x*7*dt;P.pos.z+=nrm.z*7*dt;}
+      /* Slide off a steep slope - but only when the slope is one you are
+         actually standing on.  The Resurrection room sits at world (3200,0)
+         where the outdoor terrain runs at a gradient of 2.58, so this shoved
+         you along that hillside's normal every frame while you stood on a
+         flat stone floor.  That is the "pulled to the wall" bug: you could
+         only get free by jumping, because the slide needs you grounded. */
+      if(sl>1.3 && !P.inShrine && !P.inRes && !P.inBeast && !P.inCastle){
+        normalAt(P.pos.x,P.pos.z,nrm); P.pos.x+=nrm.x*7*dt; P.pos.z+=nrm.z*7*dt; }
     } else P.onGround=false;
     P.jumpCd=Math.max(0,(P.jumpCd||0)-dt);
   }
