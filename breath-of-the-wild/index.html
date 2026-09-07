@@ -16930,81 +16930,21 @@ eatMeal=function(){
   return r;
 };
 
-/* ================= the Blood Moon =================
-   Phase 3, item 2 - and the answer to "enemy spawns are a fixed list".  Every
-   few days, at midnight, the sky turns and everything that has been killed
-   stands back up. */
-const BLOOD={active:false, t:0, nights:0, lastDay:-1, warned:false};
-function bloodMoonTick(dt){
-  if(!P.playing) return;
-  const day=Math.floor(P.time/DAY_LEN);
-  const f=(P.time/DAY_LEN)%1;
-  /* midnight is f≈0.75 in this clock, since dawn sits at 0.25 */
-  const midnight=f>0.72&&f<0.80;
-  if(day!==BLOOD.lastDay){ BLOOD.lastDay=day; BLOOD.nights++; BLOOD.warned=false; }
-  if(!BLOOD.active&&midnight&&BLOOD.nights>=3){
-    BLOOD.active=true; BLOOD.t=26; BLOOD.nights=0;
-    riseBloodMoon();
-  }
-  if(BLOOD.active){
-    BLOOD.t-=dt;
-    const k=clamp(BLOOD.t/26,0,1);
-    try{
-      scene.fog.color.lerp(new THREE.Color(0x6a0e16), 0.06*k);
-      renderer.setClearColor(scene.fog.color);
-      if(typeof skyMat!=='undefined'&&skyMat.uniforms&&skyMat.uniforms.night)
-        skyMat.uniforms.night.value=Math.max(skyMat.uniforms.night.value,0.9*k);
-    }catch(e){}
-    if(BLOOD.t<=0){ BLOOD.active=false; toast('The blood moon fades'); }
-  }
-}
-function riseBloodMoon(){
-  toast('The blood moon rises','bad');
-  try{ sfx('horn'); }catch(e){}
-  cut('Blood Moon','The blood moon rises once again. Ganon’s power swells, and the monsters he commands return to the earth.',{t:4.2});
-  let back=0;
-  for(const E of enemies){
-    if(!E) continue;
-    if(!E.alive||E.collapsed){
-      E.alive=true; E.collapsed=false; E.finished=false;
-      E.hp=E.hpMax; E.stun=0; E.burn=0; E.shock=0; E.hurtT=0;
-      E.state='idle'; E.aggroT=0; E.alert=0;
-      E.pos.copy(E.home); E.g.position.copy(E.home);
-      if(E.T&&E.T.fly) E.g.position.y=E.home.y+5;
-      E.g.visible=!E.night||isNight();
-      E.dormant=!!(E.night&&!isNight());
-      if(E.weapon) { try{ giveWeapon(E,E.T.wep||E.weapon); }catch(e){} }
-      back++;
-    }
-  }
-  if(back) toast(back+' monsters returned','bad');
-}
-/* ---- critical cooking: a dish made under a blood moon comes out better ---- */
-const _cookCrit=cookIt;
-cookIt=function(){
-  const crit=BLOOD.active&&potContents.length>0;
-  const r=_cookCrit.apply(this,arguments);
-  if(crit&&P.meals.length){
-    const d=P.meals[P.meals.length-1];
-    if(!d.fail){
-      d.hearts=d.hearts>=99?99:d.hearts+3;
-      if(d.time) d.time=Math.round(d.time*1.5);
-      d.lv=Math.min(3,(d.lv||1)+1);
-      toast('Critical cook!','good');
-    }
-  }
-  return r;
-};
+/* The Blood Moon was already built - triggerBloodMoon() further up fires at
+   midnight about every three days, revives everything that fell, heals what did
+   not, reddens the sky, fog and light, and is already wired into critical
+   cooking, the quest conditions and the moon sprite.  A second one was added
+   here in error, and both fired: two cutscenes, two respawns, two critical
+   cooks.  Both duplicates removed; the original stands. */
 if(typeof animate==='function'){
   const _animCook=animate;
   animate=function(dt,moving,speed){
     const r=_animCook.apply(this,arguments);
-    try{ bloodMoonTick(dt); }catch(e){}
     return r;
   };
 }
 console.log('cooking: '+RECIPES.length+' recipes, tiered effects with real durations, '
-  +'elixirs, Dubious and Rock-Hard failures, blood moon respawn + critical cooking');
+  +'elixirs, Dubious and Rock-Hard failures');
 </script>
 <script>
 /* ================= BATCH 87 — saves, options, and an inventory worth reading
