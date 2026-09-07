@@ -1447,6 +1447,77 @@ function hyruleH(x,z){
 const HHM=new Float32Array(HGRID*HGRID);
 for(let j=0;j<HGRID;j++)for(let i=0;i<HGRID;i++)
   HHM[j*HGRID+i]=hyruleH(-HHALF+i*HCELL,-HHALF+j*HCELL);
+/* ---- the real coastline, registered against the shrines ----
+   My Hyrule was 75.3 per cent land where the real map is 89, and agreed with that
+   map about land-versus-water only 80.9 per cent of the time.
+
+   Two earlier attempts at this failed, and both times for the same reason: the
+   map fit was only good to a few hundred metres, so forcing its coastline on
+   dragged real seas up onto land.  The map that carries the shrines on it fixed
+   that - 124 markers fitted against the 136 known shrine coordinates land the
+   transform to four metres - and at that accuracy the mask can be trusted.
+
+   Only the ocean is touched.  Water is flood-filled from the world edge first, so
+   lakes and rivers, which never reach it, are left exactly as they were.  Ground
+   within six cells of a shrine is never moved: those altitudes are the ground
+   truth everything else is measured against. */
+const COAST_N=320, COAST_LO=-5200, COAST_HI=5200,
+      COAST_STEP=(COAST_HI-COAST_LO)/COAST_N;
+const COAST=(function(rle){          /* w water, l land, u the map does not say */
+  let out='', i=0;
+  while(i<rle.length){
+    const c=rle[i++]; let j=i;
+    while(j<rle.length && rle[j]>='0' && rle[j]<='9') j++;
+    out+=c.repeat(+rle.slice(i,j)); i=j;
+  }
+  return out;
+})('u14088l277w14l11u18l277w14l9w2u18l277w14l4w1l4w2u18l275w16l9w2u18l274w17l9w2u18l274w17l9w2u18l126w1l147w17l9w2u18l274w18l1w9u18l252w4l17w1l1w27u18l233w2l18w3l16w1l4w25u18l252w2l1w1l29w11l6u18l254w2l31w2l1w12u18l252w2l37w1l1w9u18l161w2l130w1l1w7u18l159w1l3w2l131w3l2w1u18l156w2l139w5u18l59w1l19w1l217w5u18l298w4u18l297w5u18l155w1l4w1l7w1l127w3l1w2u18l160w1l137w1l2w1u18l283w1l13w3l1w1u18l156w1l126w1l13w5u18l282w2l14w4u18l157w3l123w1l14w4u18l160w4l135w3u18l298w4u18l66w1l230w5u18l296w6u18l30w3l265w4u18l29w5l125w4l132w7u18l30w3l125w6l130w8u18l31w2l118w2l4w3l2w4l118w1l6w1l1w9u18l32w1l114w12l7w1l101w1l21w12u18l32w1l85w1l26w4l3w7l7w3l123w10u18l31w1l112w3l7w2l11w9l115w11u18l31w2l111w3l7w1l13w2l4w3l114w11u18l30w2l111w3l29w6l25w1l84w11u18l27w1l2w2l110w4l30w1l1w3l108w1l1w11u18l29w1l1w1l110w3l35w1l107w14u18l27w4l111w3l5w1l29w1l107w14u18l26w4l113w3l31w2l1w1l107w6l1w7u18l24w4l37w1l76w4l35w1l105w15u18l24w3l114w6l33w2l104w5l6w5u18l22w4l41w1l73w10l29w1l104w4l10w3u18l22w3l33w1l82w9l29w2l104w3l3w2l2w2l3w1l1u18l22w3l32w2l20w1l60w7l138w3l1w9l3w1u18l19w6l32w2l81w3l35w2l105w2l2w9l3w1u18l34w1l21w3l80w3l36w2l106w1l1w2l5w4l3u18l56w3l80w4l2w2l30w3l105w2l1w2l5w4l2w1u18l55w5l1w2l78w6l30w3l104w6l3w1l2w3l2w1u18l55w5l3w1l77w7l30w2l104w3l1w2l3w1l2w3l2w1u18l55w3l5w1l21w1l57w5l30w2l104w3l1w6l1w3l2w2u18l38w2l2w1l11w3l5w2l20w1l57w6l31w1l36w1l67w4l2w1l3w2l1w1l1w3u18l36w8l9w4l5w3l4w2l14w1l58w4l31w1l105w2l1w1l3w5l2w3u18l34w8l1w4l5w2l9w5l75w4l5w1l131w12l3w3u18l33w9l1w6l18w1l76w3l6w2l129w12l3w3u18l34w11l3w1l95w4l6w1l130w9l5w3u18l33w1l3w3l2w2l4w2l94w4l137w6l8w3u18l33w1l2w3l7w1l2w1l95w3l123w4l13w2l8w4u18l33w2l1w2l8w1l98w4l121w6l12w1l9w4u18l33w5l5w4l1w2l95w7l22w6l89w8l21w4u18l34w4l1w1l1w1l2w5l96w9l19w4l91w9l20w5u18l35w3l1w5l1w4l97w11l15w3l94w8l19w6u18l39w9l100w2l2w9l3w11l4w1l1w1l87w4l3w2l16w8u18l39w1l2w6l104w22l4w1l1w3l87w2l22w8u18l44w1l109w10l3w1l1w5l4w1l91w2l23w7u18l64w2l93w3l17w1l38w1l17w1l32w3l4w3l15w8u18l176w1l41w1l17w1l32w4l2w3l16w8u18l39w2l13w1l152w1l28w2l16w1l13w3l1w4l18w8u18l50w5l51w1l128w3l30w7l19w1l3w4u18l49w5l181w3l30w7l18w2l4w3u18l48w2l1w3l180w4l30w6l19w1l5w3u18l47w2l4w2l63w1l61w1l52w3l2w1l27w4l8w1l14w1l5w3u18l47w2l4w1l61w2l30w3l85w1l2w1l25w5l24w1l5w3u18l48w1l4w1l61w1l23w4l2w7l18w1l63w6l23w6l2w2l20w1l2w1l2w3u18l47w3l2w1l62w1l22w15l81w6l23w6l24w1l5w3u18l46w6l85w7l1w2l1w9l76w5l1w1l22w7l24w1l4w4u18l41w3l1w3l1w3l83w7l6w13l28w2l42w7l22w1l1w6l28w4u18l116w2l16w8l7w14l24w2l46w1l1w3l53w1l4w4u18l49w2l76w2l1w11l10w7l7w11l10w1l3w1l46w3l30w1l22w9u18l122w1l1w2l4w8l15w4l13w2l3w3l1w1l7w1l1w2l46w4l21w1l7w1l22w2l1w6u18l121w4l7w4l1w1l15w2l25w2l54w4l22w2l2w1l29w6u18l86w1l35w2l9w2l18w3l13w1l11w3l52w4l22w2l27w1l5w5u18l82w1l35w7l6w5l3w1l12w3l12w2l13w3l51w3l26w1l3w1l21w2l5w4u18l41w1l38w1l1w1l2w1l32w17l18w2l11w2l16w2l50w2l27w1l1w2l29w4u18l84w2l31w10l4w4l18w2l9w2l19w1l50w1l29w2l22w2l2w1l2w5u18l85w1l4w1l26w8l8w2l10w1l1w1l5w2l8w2l20w2l35w1l13w1l29w1l24w1l2w1l1w6u18l69w2l8w1l5w1l4w1l26w6l9w3l18w2l7w3l21w1l49w1l21w2l6w1l24w1l2w1l2w5u18l80w1l4w1l10w3l1w1l16w5l10w3l10w1l7w2l7w1l22w1l72w1l21w2l9w3l3w5u18l81w1l1w2l4w1l6w1l2w2l16w5l11w2l18w3l6w1l23w3l102w2l4w5u18l85w2l3w1l4w3l2w1l17w4l12w3l16w4l4w1l25w2l66w1l23w4l8w2l4w5u18l87w1l2w1l4w1l4w1l17w4l12w3l15w5l4w1l26w2l65w3l24w1l9w1l4w5u18l88w3l5w1l2w2l17w3l12w4l4w1l6w1l4w3l1w2l30w3l64w1l35w1l3w6u18l82w3l1w5l5w1l2w1l19w2l19w3l5w1l13w1l29w1l62w1l22w1l13w1l3w6u18l80w6l1w2l1w1l28w2l5w2l1w1l10w3l5w1l13w1l28w3l61w2l34w2l3w6u18l85w1l1w2l2w1l27w1l20w3l3w3l13w1l30w3l56w7l32w1l5w5u18l90w1l1w1l14w1l11w1l2w1l2w1l5w1l8w3l2w4l14w1l31w2l54w1l4w3l2w2l28w1l4w6u18l88w1l1w1l28w1l3w1l21w3l16w2l29w3l2w1l2w1l48w2l1w1l1w2l2w1l1w1l27w1l5w5u18l88w1l3w1l40w1l17w1l14w2l28w2l5w1l45w1l1w1l3w1l1w2l32w2l1w1l3w4u18l91w1l1w1l25w1l13w1l32w1l30w2l2w3l47w1l4w1l1w1l18w1l11w13u18l45w1l43w3l1w1l103w3l2w3l41w1l4w1l3w2l1w1l29w14u18l61w1l28w1l2w2l22w2l77w5l3w1l42w2l6w1l1w4l27w14u18l24w1l68w2l22w2l53w2l21w3l1w2l53w1l1w1l30w15u18l93w2l22w1l55w2l20w2l3w5l28w1l17w1l2w1l8w1l2w3l19w14u18l92w2l14w1l8w1l56w1l20w3l2w8l41w2l12w5l18w16u18l84w1l32w1l56w2l21w6l2w5l10w1l27w2l2w1l9w6l7w2l9w16u18l79w1l94w2l24w2l3w5l10w1l4w2l21w2l1w1l10w8l15w17u18l117w1l56w2l24w1l6w4l11w2l2w1l15w1l5w1l11w9l16w17u18l175w2l23w1l7w5l13w1l21w1l2w1l8w9l16w11l1w5u18l116w1l58w3l22w1l7w5l5w1l29w2l9w11l15w5l9w3u18l112w6l57w3l22w2l6w2l39w1l8w11l16w17u18l111w6l58w2l21w3l7w1l4w2l22w1l8w1l2w1l8w11l16w17u18l110w2l63w2l21w2l13w1l23w1l10w1l12w8l1w1l14w17u18l108w3l65w1l18w1l2w4l5w1l8w1l20w1l7w3l1w1l11w6l3w1l14w17u18l108w2l83w11l6w3l25w1l7w1l2w1l11w4l21w16u18l192w14l4w3l2w1l23w1l2w1l1w3l1w1l12w3l23w15u18l107w1l69w1l14w13l9w1l1w1l8w2l34w1l1w1l23w15u18l79w3l1w1l3w5l14w2l68w2l13w8l1w3l11w14l60w1l1w12u18l43w1l34w1l25w3l70w1l13w3l3w3l2w1l12w13l62w9l3u18l42w2l33w1l15w1l4w3l2w2l71w1l14w1l2w1l3w6l8w1l4w12l62w8l3u18l43w2l31w1l17w4l9w3l1w2l77w1l1w3l4w4l3w1l4w1l6w12l18w1l6w5l34w5l3u18l67w1l7w2l30w2l2w2l61w1l2w1l12w1l1w4l2w5l2w2l3w3l4w8l3w5l10w2l9w5l34w6l3u18l75w2l30w2l65w1l15w7l1w3l2w5l2w3l4w6l9w3l7w3l8w2l29w1l8w6l3u18l75w2l30w2l2w1l62w1l15w2l1w3l1w1l1w1l3w4l2w13l11w4l6w2l6w3l26w1l13w5l3u18l75w1l32w2l64w2l15w2l3w1l6w4l3w10l15w2l14w3l29w1l10w5l3u18l73w2l33w2l65w2l14w1l1w5l4w1l1w1l4w8l33w2l30w1l11w5l3u18l73w2l34w1l8w1l56w2l16w2l1w3l2w1l1w2l3w6l18w1l5w1l10w2l30w1l12w5l3u18l71w1l39w2l3w1l1w1l57w2l15w5l1w3l1w1l1w1l1w6l12w2l12w3l5w5l28w2l12w5l3u18l65w2l2w2l41w1l3w1l1w1l6w1l2w1l48w1l14w7l1w2l2w8l29w3l2w6l24w1l18w4l3u18l63w5l1w1l41w2l4w2l58w2l11w3l1w1l1w2l1w2l3w4l1w2l67w1l16w4l3u18l61w1l48w2l66w1l10w2l3w1l1w1l4w6l1w2l63w3l1w5l13w4l3u18l61w2l47w1l67w1l9w4l1w2l2w1l2w4l1w5l56w3l2w1l1w3l6w1l12w4l3u18l61w2l46w1l58w1l2w1l6w1l12w1l1w2l3w6l1w4l57w1l2w9l17w4l3u18l61w1l47w1l58w1l2w1l6w1l14w7l3w5l59w13l15w4l3u18l61w1l48w1l59w1l6w2l27w2l59w5l1w7l1w1l11w6l3u18l61w2l47w1l66w2l27w2l46w1l4w1l2w2l1w5l4w8l12w5l3u18l61w1l47w2l56w1l9w3l26w2l43w2l1w13l8w1l1w7l9w6l3u18l106w5l61w1l4w3l25w2l46w10l16w6l8w6l3u18l106w4l61w1l5w3l23w3l49w8l16w6l9w5l3u18l106w3l66w2l26w3l49w5l1w1l18w5l8w6l3u18l113w1l62w1l28w1l49w5l21w5l7w6l3u18l106w1l68w2l1w1l76w4l23w5l5w7l3u18l9w1l94w1l69w4l1w2l74w2l27w3l4w8l3u18l103w1l11w1l57w8l1w1l72w2l28w5l1w8l3u18l102w1l10w2l58w2l5w1l1w3l41w1l59w13l3u18l102w1l9w4l2w2l51w2l9w4l28w1l12w1l59w2l3w7l3u18l112w4l2w4l47w3l11w4l40w2l58w2l4w6l3u18l111w2l6w3l46w3l13w3l43w2l54w13l3u18l111w2l6w3l43w4l15w3l44w4l53w11l3u18l100w2l9w2l7w2l9w1l4w1l26w4l18w3l46w2l52w11l3u18l100w1l10w2l7w2l9w2l3w2l1w3l21w3l19w2l46w1l2w3l1w1l4w1l43w10l3u18l99w1l11w2l8w1l11w3l1w1l2w3l20w2l5w1l13w4l101w10l3u18l57w1l52w1l10w2l10w5l2w3l19w1l5w3l13w4l47w1l53w10l3u18l97w1l12w1l10w2l10w3l5w2l18w1l7w2l11w5l47w2l53w10l3u18l95w2l25w1l11w2l32w2l13w4l13w3l32w1l53w10l3u18l94w2l7w1l18w1l11w3l23w2l5w2l13w1l2w2l14w2l31w1l17w1l35w11l3u18l94w2l26w1l14w1l22w2l21w1l1w1l13w3l1w1l30w1l38w1l15w10l3u18l121w2l37w1l20w1l2w1l15w1l2w1l17w1l11w3l54w10l2u18l94w2l24w1l39w1l40w3l15w2l13w1l55w10l2u18l160w1l41w2l12w2l73w9l2u18l96w1l63w1l42w4l7w3l31w1l1w1l40w9l2u18l97w4l29w1l28w8l36w4l1w2l4w2l13w1l62w8l2u18l97w3l1w1l26w1l4w1l25w3l4w3l35w1l3w6l76w10l2u18l97w3l1w2l29w1l24w3l8w2l8w1l1w1l26w6l77w10l2u18l98w1l1w1l1w1l28w2l36w1l9w1l111w9l2u18l98w2l3w1l11w1l40w5l8w1l13w2l64w2l40w9l2u18l97w2l2w3l28w1l1w1l19w1l1w4l10w1l12w1l65w3l39w9l2u18l97w1l2w1l1w2l30w1l36w5l4w3l67w2l28w1l10w9l2u18l97w1l4w2l71w2l1w1l1w3l67w1l42w7l2u18l97w1l3w4l50w1l20w2l1w4l28w1l38w1l42w7l2u18l97w1l3w4l50w1l24w1l1w1l66w2l43w6l2u18l38w1l58w1l2w5l2w2l1w1l44w1l27w3l5w1l22w1l79w6l2u18l97w1l1w1l1w4l6w4l40w1l4w1l1w4l21w1l50w1l55w6l2u18l97w3l2w3l6w4l40w1l5w5l24w3l9w2l7w1l13w1l40w1l27w6l2u18l97w4l1w3l6w4l9w1l30w1l3w2l2w3l28w1l7w1l20w1l43w2l26w5l2u18l42w1l55w3l10w5l43w2l2w2l57w1l15w1l20w1l4w1l2w2l25w6l2u18l98w2l7w2l3w6l19w1l16w1l5w2l2w4l12w1l18w4l19w1l14w2l20w1l4w1l29w6l2u18l113w7l34w1l9w1l1w2l1w1l32w1l1w1l16w1l15w1l26w1l29w6l2u18l115w5l34w1l10w1l1w1l35w3l15w1l6w1l17w1l47w6l2u18l117w3l45w2l37w2l87w7l2u18l117w3l47w1l37w2l20w1l65w7l2u18l50w1l100w2l1w1l49w1l2w1l28w1l57w6l2u18l81w1l54w1l1w4l8w4l50w1l14w1l18w1l3w2l50w6l2u18l135w8l6w6l11w1l41w2l6w4l20w5l48w7l2u18l135w9l5w6l55w1l4w4l76w5l2u18l65w1l68w11l5w4l12w1l44w1l2w2l80w4l2u18l133w14l4w2l2w3l55w2l66w4l12w3l2u18l133w16l2w8l115w3l5w3l12w3l2u18l134w15l1w9l106w1l7w4l5w5l5w1l5w2l2u18l80w2l14w1l37w15l2w9l106w1l6w5l5w4l10w3l2u18l134w15l2w10l48w1l53w2l1w3l5w4l4w5l4w2l3w1l1w2l2u18l81w1l51w9l1w1l1w3l4w9l102w5l1w1l4w4l3w6l5w1l3w4l2u18l133w6l1w4l3w1l4w9l49w1l51w10l1w1l1w1l1w1l2w8l7w5l2u18l52w1l81w4l6w7l1w9l101w26l3w2l1w6l2u18l135w3l3w1l2w1l1w5l2w10l17w1l82w4l1w9l3w20l2u18l134w2l2w2l1w1l2w7l2w4l2w4l100w2l2w1l1w9l1w21l2u18l134w7l4w1l1w5l1w1l1w3l1w3l101w3l2w32l2u18l136w4l1w3l1w5l6w8l99w37l2u18l136w14l7w7l74w1l18w1l1w1l3w37l2u18l136w13l8w8l91w1l2w41l2u18l4w1l131w11l11w1l1w5l63w1l26w45l2u18l34w1l33w1l68w7l19w1l91w45l2u18l34w1l103w6l42w1l45w1l23w18l9w17l2u18l138w6l36w1l76w43l2u18l139w2l2w1l43w1l70w42l2u18l139w1l22w1l71w2l20w44l2u18l151w1l17w1l5w1l30w1l5w1l22w1l22w16l1w1l3w21l2u18l257w18l1w1l1w22l2u18l178w1l25w1l8w1l45w16l1w21l5u18l187w1l18w1l4w1l1w1l44w39l5u18l153w1l49w1l2w1l2w1l50w37l5u18l206w1l1w2l53w34l5u18l208w1l55w33l5u18l179w1l8w1l13w1l3w1l6w3l49w32l5u18l172w2l28w1l2w1l6w3l50w32l5u18l150w1l38w2l11w1l2w3l3w3l51w32l5u18l148w2l40w3l9w1l2w3l3w1l27w1l17w1l8w31l5u18l173w1l16w2l10w1l2w3l59w30l5u18l148w1l53w1l2w2l47w1l11w31l5u18l200w2l1w5l58w24l1w6l5u18l149w1l12w1l35w7l3w1l53w2l1w23l1w1l2w5l5u18l96w1l11w1l40w2l12w2l16w2l19w2l37w1l19w29l4w3l5u18l150w1l12w2l17w1l2w1l18w1l1w1l34w1l1w1l12w2l3w29l4w3l5u18l150w2l16w1l13w3l18w5l32w1l2w1l12w3l2w29l5w2l5u18l121w1l29w1l52w3l1w1l19w1l12w3l12w2l1w31l6w1l5u18l151w1l53w2l20w2l14w1l13w33l6w1l5u18l118w1l108w1l15w2l11w12l2w20l6w1l5u18l104w1l46w1l40w3l13w1l9w1l8w1l29w11l1w20l13u18l106w1l83w4l14w3l6w2l23w1l1w1l11w10l1w1l1w19l14u18l104w1l45w2l33w7l24w3l23w4l11w10l2w18l15u18l133w1l15w2l18w1l14w3l1w5l23w3l22w9l10w5l4w18l15u18l61w1l70w1l1w1l14w2l32w2l1w8l1w2l20w2l22w1l1w6l1w2l16w19l15u18l132w1l2w1l13w1l1w1l31w2l2w11l19w2l23w7l2w2l14w24l2w4l5u18l134w2l11w3l1w4l28w3l1w11l19w2l22w8l1w5l9w33l5u18l127w1l1w2l4w1l16w1l1w1l8w1l18w4l1w11l16w3l23w17l3w4l1w32l5u18l145w2l7w4l4w1l19w18l5w4l5w1l21w1l1w12l2w1l2w5l1w36l5u18l142w5l7w5l4w1l4w1l6w26l3w7l2w4l2w3l6w6l1w8l1w2l1w50l5u12170');
+function coastAt(x,z){               /* 1 land, 0 sea, -1 no opinion */
+  const i=Math.floor((x-COAST_LO)/COAST_STEP), j=Math.floor((z-COAST_LO)/COAST_STEP);
+  if(i<0||j<0||i>=COAST_N||j>=COAST_N) return -1;
+  const c=COAST[j*COAST_N+i];
+  return c==='u'?-1:(c==='l'?1:0);
+}
+{
+  const N=HGRID, ocean=new Uint8Array(N*N), st=[];
+  const wet=k=>HHM[k]<HWATER;
+  for(let i=0;i<N;i++) for(const k of [i,(N-1)*N+i,i*N,i*N+N-1])
+    if(wet(k)&&!ocean[k]){ ocean[k]=1; st.push(k); }
+  while(st.length){
+    const k=st.pop(), i=k%N, j=(k-i)/N;
+    if(i>0){const n=k-1; if(wet(n)&&!ocean[n]){ocean[n]=1;st.push(n);} }
+    if(i<N-1){const n=k+1; if(wet(n)&&!ocean[n]){ocean[n]=1;st.push(n);} }
+    if(j>0){const n=k-N; if(wet(n)&&!ocean[n]){ocean[n]=1;st.push(n);} }
+    if(j<N-1){const n=k+N; if(wet(n)&&!ocean[n]){ocean[n]=1;st.push(n);} }
+  }
+  const guard=new Uint8Array(N*N);
+  for(const S of SHRINE_PTS){
+    const gi=Math.round((S.x+HHALF)/HCELL), gj=Math.round((S.z+HHALF)/HCELL);
+    for(let j=gj-6;j<=gj+6;j++) for(let i=gi-6;i<=gi+6;i++)
+      if(i>=0&&j>=0&&i<N&&j<N) guard[j*N+i]=1;
+  }
+  const touched=new Uint8Array(N*N);
+  let up=0, dn=0;
+  for(let j=0;j<N;j++) for(let i=0;i<N;i++){
+    const k=j*N+i; if(guard[k]) continue;
+    const x=-HHALF+i*HCELL, z=-HHALF+j*HCELL, m=coastAt(x,z);
+    if(m<0) continue;
+    if(m===1&&ocean[k]){          /* my sea standing where Hyrule has ground */
+      HHM[k]=HWATER+6+(HHM[k]-HWATER)*0.06; touched[k]=1; up++;
+    } else if(m===0&&HHM[k]>HWATER-1){   /* my ground where Hyrule has open sea */
+      HHM[k]=HWATER-16; touched[k]=1; dn++;
+    }
+  }
+  /* soften only what moved, so the new shore is not a step */
+  for(let p=0;p<4;p++){
+    const T=new Float32Array(HHM);
+    for(let j=1;j<N-1;j++) for(let i=1;i<N-1;i++){
+      const k=j*N+i; if(!touched[k]) continue;
+      HHM[k]=(T[k]*2+T[k-1]+T[k+1]+T[k-N]+T[k+N])/6;
+    }
+  }
+  console.log('coastline: raised '+up+' cells, sank '+dn);
+}
 /* A floor under the world.  Sculpt passes stack - the Great Bridge gap and
    Tanagar Canyon both carve the same ground once the region warp has moved a
    query onto them - and 220 plus 284 left a 400-metre crack beside land at 73.
