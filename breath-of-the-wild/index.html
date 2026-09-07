@@ -6263,7 +6263,7 @@ function interact(){
       if(P.hasSlate) return;
       P.hasSlate=true; sfx('slate'); RES.slateMesh.visible=false;
       setQuest('dress');
-      cut('A voice','Wake up… Wake up, Link. Open your eyes.');
+      cut('A voice','Rise, Link. You have lain here long enough.');
       cut('A voice','That is the Sheikah Slate. Take it — it is yours, and it will guide you.');
       break;
     case 'resChest':{
@@ -7125,7 +7125,7 @@ addEventListener('keydown',e=>{
   keys[e.code]=true;
   if(['Space','KeyM','Escape','KeyE','KeyQ','KeyR','KeyF','KeyC','Tab','KeyZ','KeyG',
       'ArrowUp','ArrowDown','ArrowLeft','ArrowRight','KeyL',
-      'Digit1','Digit2','Digit3','Digit4'].includes(e.code)) e.preventDefault();
+      'KeyI'].includes(e.code)) e.preventDefault();
   if(inCut&&e.code==='Space'){ cutT=0; return; }
   if(!P.playing) return;
   if(e.code==='KeyM') toggleMap();
@@ -7136,10 +7136,6 @@ addEventListener('keydown',e=>{
   else if(e.code==='KeyC'){ const at=campfires.some(f=>Math.hypot(f.x-P.pos.x,f.z-P.pos.z)<5.5&&f.pot);
     if(at) openCook(); else eatMeal(); }
   else if(e.code==='Tab') cycleArrow();
-  else if(e.code==='Digit1'){ if(P.weapons.length>1){P.wi=(P.wi+1)%P.weapons.length;refreshHeld();updateGear();sfx('click');} }
-  else if(e.code==='Digit2'){ if(P.bows.length>1){P.bi=(P.bi+1)%P.bows.length;refreshHeld();updateGear();sfx('click');} }
-  else if(e.code==='Digit3'){ if(P.shields.length>1){P.si=(P.si+1)%P.shields.length;refreshHeld();updateGear();sfx('click');} }
-  else if(e.code==='Digit4') cycleArmor();
   else if(e.code==='KeyT'){ const w=curW(); if(w&&WEAPONS[w.n].torch){P.torchLit=!P.torchLit;toast(P.torchLit?'Torch lit':'Torch out');} }
   else if(e.code==='KeyZ'&&(keys.KeyA||keys.KeyD||keys.KeyS)){
     doDodge(keys.KeyS?'back':keys.KeyA?'left':'right');
@@ -17741,6 +17737,159 @@ if(typeof animate==='function'){
   };
 }
 </script>
+<script>
+/* ================= BATCH 91 — the inventory =================
+   Gear used to be swapped with the number keys, which cycled blindly through a
+   pouch you could not see.  That is gone.  E opens a real inventory - tabbed,
+   gridded, every slot showing what the thing is and what it does - and it is
+   now the only way to change what Link is holding or wearing. */
+const INV={open:false, tab:'weapons'};
+const INV_TABS=[
+  {id:'weapons',  n:'Weapons',   g:'\u{1F5E1}'},
+  {id:'bows',     n:'Bows',      g:'\u{1F3F9}'},
+  {id:'arrows',   n:'Arrows',    g:'\u{1F3AF}'},
+  {id:'shields',  n:'Shields',   g:'\u{1F6E1}'},
+  {id:'armour',   n:'Armour',    g:'\u{1F9E5}'},
+  {id:'food',     n:'Food',      g:'\u{1F372}'},
+  {id:'materials',n:'Materials', g:'\u{1F392}'},
+  {id:'key',      n:'Key Items', g:'\u{1F5DD}'}
+];
+(function buildInv(){
+  const css=document.createElement('style');
+  css.textContent=`
+  #inventory{position:fixed;inset:0;z-index:60;display:none;
+    background:rgba(8,12,16,.93);backdrop-filter:blur(3px);
+    font-family:var(--ui),system-ui,sans-serif;color:#e8eef4}
+  #inventory.on{display:flex;flex-direction:column}
+  #invTabs{display:flex;gap:2px;padding:14px 20px 0;flex-wrap:wrap}
+  #invTabs .t{padding:9px 15px;border:1px solid rgba(255,255,255,.14);
+    border-bottom:none;border-radius:8px 8px 0 0;cursor:pointer;font-size:13px;
+    letter-spacing:.06em;opacity:.6;background:rgba(255,255,255,.03);white-space:nowrap}
+  #invTabs .t.on{opacity:1;border-color:#63d6e2;color:#9fe8f2;background:rgba(99,214,226,.10)}
+  #invBody{flex:1;overflow:auto;padding:16px 20px;border-top:1px solid rgba(99,214,226,.35)}
+  #invGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px}
+  .icard{border:1px solid rgba(255,255,255,.14);border-radius:10px;padding:11px 12px;
+    cursor:pointer;background:rgba(255,255,255,.03);position:relative;transition:.12s}
+  .icard:hover{border-color:rgba(99,214,226,.55);background:rgba(99,214,226,.07)}
+  .icard.equipped{border-color:#63d6e2;background:rgba(99,214,226,.13)}
+  .icard .nm{font-size:13px;margin-bottom:4px}
+  .icard .ds{font-size:10.5px;line-height:1.3;opacity:.62}
+  .icard .eq{position:absolute;top:8px;right:10px;font-size:9.5px;letter-spacing:.1em;
+    color:#63d6e2}
+  .icard .bar{height:3px;border-radius:2px;background:#63d6e2;margin-top:7px;opacity:.75}
+  .icard .bar.low{background:#e0603f}
+  #invFoot{padding:11px 20px;font-size:12px;opacity:.62;
+    border-top:1px solid rgba(255,255,255,.10)}
+  #invEmpty{opacity:.5;font-size:13px;padding:20px 2px}`;
+  document.head.appendChild(css);
+  const d=document.createElement('div');
+  d.id='inventory';
+  d.innerHTML=`<div id="invTabs"></div><div id="invBody"><div id="invGrid"></div>
+    <div id="invEmpty" style="display:none">Nothing here yet.</div></div>
+    <div id="invFoot">Click to equip · <b>E</b> or <b>Esc</b> to close</div>`;
+  document.body.appendChild(d);
+})();
+const $i=s=>document.querySelector(s);
+
+function invRows(){
+  const rows=[];
+  const D=(n)=>(typeof describe==='function'?describe(n):'');
+  if(INV.tab==='weapons'){
+    P.weapons.forEach((w,i)=>rows.push({label:w.n, desc:D(w.n),
+      frac:w.d/((WEAPONS[w.n]&&WEAPONS[w.n].dur)||1), on:i===P.wi,
+      act:()=>{P.wi=i; refreshHeld(); updateGear(); sfx('click');}}));
+    if(!P.weapons.length) rows.push({label:'Bare hands',desc:'Nothing in your hands',on:true,act:()=>{}});
+  } else if(INV.tab==='bows'){
+    P.bows.forEach((b,i)=>rows.push({label:b.n, desc:D(b.n),
+      frac:b.d/((BOWS[b.n]&&BOWS[b.n].dur)||1), on:i===P.bi,
+      act:()=>{P.bi=i; refreshHeld(); updateGear(); sfx('click');}}));
+  } else if(INV.tab==='shields'){
+    P.shields.forEach((s,i)=>rows.push({label:s.n, desc:D(s.n),
+      frac:s.d/((SHIELDS[s.n]&&SHIELDS[s.n].dur)||1), on:i===P.si,
+      act:()=>{P.si=i; refreshHeld(); updateGear(); sfx('click');}}));
+  } else if(INV.tab==='arrows'){
+    for(const a in P.arrows){ const n=P.arrows[a]|0; if(n<=0) continue;
+      rows.push({label:a, desc:n+' in the quiver', on:a===P.ai,
+        act:()=>{P.ai=a; updateGear(); sfx('click');}}); }
+  } else if(INV.tab==='armour'){
+    const owned=Object.keys(P.ownedArmor||{});
+    for(const n of owned){
+      const A=ARMOR[n]; if(!A) continue;
+      rows.push({label:n, desc:D(n), on:P.armor[A.slot]===n,
+        act:()=>{ equipArmor(n); updateGear(); sfx('click'); renderInv(); }});
+    }
+    for(const k of SLOTS) if(P.armor[k]&&P.armor[k]!=='None'&&!owned.includes(P.armor[k]))
+      rows.push({label:P.armor[k], desc:D(P.armor[k]), on:true, act:()=>{}});
+  } else if(INV.tab==='food'){
+    P.meals.forEach((m,i)=>rows.push({label:m.name,
+      desc:(m.hearts>=99?'full hearts':(m.hearts||0)+' hearts')
+           +(m.eff?' · '+m.eff+' '+('I'.repeat(m.lv||1)):'')
+           +(m.time?' · '+Math.round(m.time)+'s':''),
+      on:i===0, act:()=>{ P.meals.unshift(...P.meals.splice(i,1)); eatMeal(); renderInv(); }}));
+  } else if(INV.tab==='materials'){
+    for(const k in P.mats){ const n=P.mats[k]|0; if(n<=0) continue;
+      rows.push({label:k+' ×'+n, desc:D(k), act:()=>{}}); }
+  } else {
+    if(P.hasSlate) rows.push({label:'Sheikah Slate',desc:'Runes, the map, and the Sensor',act:()=>{}});
+    if(P.hasGlider) rows.push({label:'Paraglider',desc:'Hold Space in the air',act:()=>{}});
+    for(const r of P.runes) rows.push({label:RUNES[r].name, desc:RUNES[r].hint,
+      on:P.runes[P.rune]===r, act:()=>{ P.rune=P.runes.indexOf(r); updateGear(); sfx('rune'); renderInv(); }});
+    rows.push({label:'Rupees',desc:(P.rupees|0)+' in the purse',act:()=>{}});
+    rows.push({label:'Spirit Orbs',desc:(P.orbs|0)+' held',act:()=>{}});
+    if(typeof compendiumCount==='function')
+      rows.push({label:'Hyrule Compendium',desc:compendiumCount()+' entries',act:()=>{}});
+  }
+  return rows;
+}
+function renderInv(){
+  const tabs=$i('#invTabs'), grid=$i('#invGrid'), empty=$i('#invEmpty');
+  tabs.innerHTML=INV_TABS.map(t=>
+    `<div class="t${t.id===INV.tab?' on':''}" data-tab="${t.id}">${t.g} ${t.n}</div>`).join('');
+  for(const el of tabs.querySelectorAll('.t'))
+    el.onclick=()=>{ INV.tab=el.dataset.tab; sfx('click'); renderInv(); };
+  const rows=invRows();
+  empty.style.display=rows.length?'none':'block';
+  grid.innerHTML=rows.map((r,i)=>
+    `<div class="icard${r.on?' equipped':''}" data-i="${i}">
+       ${r.on?'<span class="eq">EQUIPPED</span>':''}
+       <div class="nm">${r.label}</div>
+       <div class="ds">${r.desc||''}</div>
+       ${r.frac!==undefined?`<div class="bar${r.frac<.3?' low':''}" style="width:${Math.max(4,r.frac*100)}%"></div>`:''}
+     </div>`).join('');
+  for(const el of grid.querySelectorAll('.icard'))
+    el.onclick=()=>{ const r=rows[+el.dataset.i]; if(r&&r.act){ r.act(); renderInv(); } };
+}
+function openInventory(){
+  if(INV.open) return;
+  INV.open=true; P.playing=false;
+  try{ document.exitPointerLock&&document.exitPointerLock(); }catch(e){}
+  $i('#inventory').classList.add('on');
+  renderInv(); sfx('slate');
+}
+function closeInventory(){
+  if(!INV.open) return;
+  INV.open=false;
+  $i('#inventory').classList.remove('on');
+  if(!P.dead&&!paused&&!mapOpen) startPlay();
+}
+function toggleInventory(){ INV.open?closeInventory():openInventory(); }
+
+/* E interacts when there is something in reach, and otherwise opens the pouch */
+(function rebindE(){
+  const h=e=>{
+    if(e.code==='Escape'&&INV.open){ e.preventDefault(); e.stopImmediatePropagation(); closeInventory(); return; }
+    if(e.code!=='KeyE') return;
+    if(INV.open){ e.preventDefault(); e.stopImmediatePropagation(); closeInventory(); return; }
+    if(!P.playing||paused||mapOpen) return;
+    if(typeof nearest!=='undefined'&&nearest) return;   /* let interact() have it */
+    e.preventDefault(); e.stopImmediatePropagation();
+    openInventory();
+  };
+  addEventListener('keydown',h,true);                    /* capture, so it runs first */
+})();
+console.log('inventory: '+INV_TABS.length+' tabs, click to equip; number keys no longer switch gear');
+</script>
+
 
 
 
