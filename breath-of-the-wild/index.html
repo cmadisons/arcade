@@ -17678,6 +17678,130 @@ console.log('phase 4: '+TEMPER.length+' horse temperaments, '+Object.keys(HORSE_
   +' pieces of tack, selling + restocking, camera & compendium, '
   +Object.keys(DYES).length+' dyes, snow seals, '+SURF_COURSES.length+' surf courses, quest log');
 </script>
+<script>
+/* ================= BATCH 90 — the Shrine of Resurrection, properly =========
+   It was a dark box with a pool, a stone, two chests and a door. The chamber
+   is the first thing anyone sees, and it read as a corridor with props in it.
+
+   All geometry here is written from scratch - ribbed walls, a recessed basin,
+   a line pattern in the floor, a corridor out past the door - and the waking
+   is staged rather than beginning with you already stood up. */
+(function rebuildRes(){
+  if(typeof RES==='undefined'||!RES.g) return;
+  const r=RES.g, W=RES.W, L=RES.L;
+  const stone =new THREE.MeshLambertMaterial({color:0x22272c});
+  const rib   =new THREE.MeshLambertMaterial({color:0x2c333a});
+  const lineM =new THREE.MeshBasicMaterial({color:0x63d6e2});
+  const amber =new THREE.MeshBasicMaterial({color:0xd8963a});
+
+  /* --- ribbed walls: pilasters down both sides, as the Sheikah built them --- */
+  for(let i=0;i<9;i++){
+    const z=-L/2+4+i*(L-8)/8;
+    for(const sx of [-1,1]){
+      const p=box(r,.8,13,1.6,sx*(W/2-0.6),6.5,z,rib);
+      /* a lit seam up the face of each rib */
+      const s=box(r,.16,9,.2,sx*(W/2-1.1),6.0,z,lineM);
+      s.material=lineM;
+    }
+  }
+  /* --- a line pattern set into the floor, running from the basin to the door --- */
+  for(let i=0;i<14;i++){
+    const z=-18+i*3.2;
+    const w=(i%2)?5.5:3.0;
+    const seam=box(r,w,.06,.22,0,0.03,z,lineM); seam.material=lineM;
+  }
+  for(const sx of [-1,1]){
+    const rail=box(r,.22,.06,44,sx*3.4,0.03,2,lineM); rail.material=lineM;
+  }
+  /* --- the basin is sunk into the floor, so you rise out of it --- */
+  const basin=new THREE.Group(); basin.position.set(0,0,-20); r.add(basin);
+  for(let i=0;i<20;i++){
+    const a=i/20*Math.PI*2;
+    const seg=box(basin,1.5,2.4,.5,Math.cos(a)*5.0,-1.0,Math.sin(a)*5.0,stone);
+    seg.rotation.y=-a;
+  }
+  const sunk=new THREE.Mesh(new THREE.CylinderGeometry(4.6,4.2,2.2,22),stone);
+  sunk.position.y=-1.1; basin.add(sunk);
+  const ring=new THREE.Mesh(new THREE.TorusGeometry(5.0,.16,8,28),lineM);
+  ring.rotation.x=Math.PI/2; ring.position.y=.06; basin.add(ring);
+  RES.basinRing=ring;
+
+  /* --- a ring of light overhead, and warm Sheikah amber at the far end --- */
+  const halo=new THREE.Mesh(new THREE.TorusGeometry(6.5,.2,8,32),lineM);
+  halo.rotation.x=Math.PI/2; halo.position.set(0,15.2,-20); r.add(halo);
+  for(let i=0;i<6;i++){
+    const t=box(r,.3,.3,3.4,(i%2?1:-1)*(W/2-2.2),14.4,6+((i>>1)*9),amber);
+    t.material=amber;
+  }
+  /* --- past the great door: a corridor, then daylight --- */
+  const cor=new THREE.Group(); cor.position.set(0,0,L/2+9); r.add(cor);
+  box(cor,10,1,20,0,-0.5,0,stone);
+  box(cor,1,10,20,-5,5,0,stone); box(cor,1,10,20,5,5,0,stone);
+  box(cor,10,1,20,0,10,0,stone);
+  const mouth=new THREE.Mesh(new THREE.PlaneGeometry(9,9),
+    new THREE.MeshBasicMaterial({color:0xdfe9f0,transparent:true,opacity:.92,
+                                 side:THREE.DoubleSide}));
+  mouth.position.set(0,4.5,10); cor.add(mouth);
+  RES.mouth=mouth;
+  RES.L=L+20;                       /* the room is longer now, so the clamp follows */
+
+  console.log('Shrine of Resurrection rebuilt: ribbed walls, sunken basin, exit corridor');
+})();
+
+/* ---- the waking itself ---- */
+let resWake=0, resWokeOnce=false;
+function beginResWake(){
+  resWake=5.2; resWokeOnce=true;
+  try{ P.pos.copy(RES.wake); P.pos.y=RES.floorY-1.6; P.vel.set(0,0,0); }catch(e){}
+}
+function resWakeTick(dt){
+  if(resWake<=0) return;
+  const was=resWake; resWake-=dt;
+  const t=1-Math.max(0,resWake)/5.2;
+  try{
+    /* he lies under the surface, then comes up out of it */
+    if(t<0.55) P.pos.y=RES.floorY-1.6+(t/0.55)*1.6;
+    else P.pos.y=RES.floorY;
+    P.look.pitch=lerp(-0.55,-0.10,Math.min(1,t*1.4));   /* eyes open on the ceiling */
+    if(RES.fluid) RES.fluid.material.opacity=0.6*(1-t*0.7);
+    if(RES.basinRing) RES.basinRing.material.color.setHSL(0.52,0.7,0.45+0.25*Math.sin(t*9));
+  }catch(e){}
+  if(was>0&&resWake<=0){
+    resWake=0;
+    try{ if(RES.fluid) RES.fluid.material.opacity=0.18; }catch(e){}
+  }
+}
+/* stage it on a new game, and only then */
+if(typeof _newGame2==='function'||typeof newGame==='function'){
+  const target=(typeof _newGame2==='function')?'_newGame2':'newGame';
+  const orig=window[target];
+  if(typeof orig==='function'){
+    window[target]=function(){
+      const r=orig.apply(this,arguments);
+      try{
+        beginResWake();
+        cut('A voice','Wake now. The water has held you long enough.',{t:2.6});
+        cut('A voice','A hundred years have gone by above this room, and none of them were kind.',{t:3.4});
+      }catch(e){}
+      return r;
+    };
+  }
+}
+if(typeof animate==='function'){
+  const _aRes=animate;
+  animate=function(dt,moving,speed){
+    const r=_aRes.apply(this,arguments);
+    try{
+      resWakeTick(dt);
+      /* the basin keeps its slow glow the whole time you are in there */
+      if(P.inRes&&RES.basinRing&&resWake<=0)
+        RES.basinRing.material.color.setHSL(0.52,0.65,0.42+0.06*Math.sin(performance.now()/700));
+    }catch(e){}
+    return r;
+  };
+}
+</script>
+
 
 
 
