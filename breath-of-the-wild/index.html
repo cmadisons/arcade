@@ -7088,9 +7088,9 @@ addEventListener('contextmenu',e=>e.preventDefault());
 document.addEventListener('pointerlockchange',()=>{pointerLocked=document.pointerLockElement===canvas;});
 addEventListener('mousemove',e=>{
   if(!pointerLocked) return;
-  const s=aiming?.0008:.0022;
+  const s=(aiming?.0008:.0022)*(typeof OPT!=='undefined'?OPT.sens:1);
   P.look.yaw-=e.movementX*s;
-  P.look.pitch=clamp(P.look.pitch-e.movementY*s,-1.2,1.0);
+  P.look.pitch=clamp(P.look.pitch-e.movementY*s*((typeof OPT!=='undefined'&&OPT.invertY)?-1:1),-1.2,1.0);
 });
 addEventListener('wheel',e=>{ if(magnetHold) magnetDist=clamp(magnetDist+Math.sign(e.deltaY)*.8,4,20); },{passive:true});
 addEventListener('resize',()=>{renderer.setSize(innerWidth,innerHeight,false);
@@ -8001,9 +8001,9 @@ addEventListener('mousemove',e=>{
   if(pointerLocked||!dragging||!P.playing) return;
   const dx=e.clientX-lastMX, dy=e.clientY-lastMY;
   lastMX=e.clientX; lastMY=e.clientY;
-  const s=aiming?.0016:.004;
+  const s=(aiming?.0016:.004)*(typeof OPT!=='undefined'?OPT.sens:1);
   P.look.yaw-=dx*s;
-  P.look.pitch=clamp(P.look.pitch-dy*s,-1.2,1.0);
+  P.look.pitch=clamp(P.look.pitch-dy*s*((typeof OPT!=='undefined'&&OPT.invertY)?-1:1),-1.2,1.0);
 });
 addEventListener('wheel',e=>{
   if(magnetHold||!P.playing) return;
@@ -16926,6 +16926,220 @@ if(typeof animate==='function'){
 console.log('cooking: '+RECIPES.length+' recipes, tiered effects with real durations, '
   +'elixirs, Dubious and Rock-Hard failures, blood moon respawn + critical cooking');
 </script>
+<script>
+/* ================= BATCH 87 — saves, options, and an inventory worth reading
+   Group 6. There was one save, in one slot, with no version on it; no options
+   at all, so sensitivity and volume were whatever they were compiled as; and
+   the inventory listed names with no way to know what anything did. */
+
+/* ---- options ---- */
+const OPT_KEY=KEY+':opts';
+const OPT={ music:0.16, sfx:0.5, sens:1.0, invertY:false, draw:1.0, cel:true, quality:1 };
+(function loadOpts(){
+  try{ Object.assign(OPT, JSON.parse(localStorage.getItem(OPT_KEY)||'{}')); }catch(e){}
+})();
+function saveOpts(){ try{ localStorage.setItem(OPT_KEY,JSON.stringify(OPT)); }catch(e){} }
+function applyOpts(){
+  try{
+    if(typeof musicGain!=='undefined'&&musicGain) musicGain.gain.value=OPT.music;
+    if(typeof sfxGain!=='undefined'&&sfxGain)     sfxGain.gain.value=OPT.sfx;
+    if(typeof AMB!=='undefined'&&AMB.bus)         AMB.bus.gain.value=OPT.sfx*2;
+    /* draw distance: the fog is what you actually see, the far plane follows it */
+    scene.fog.density = (raining?0.0026:0.00035) / Math.max(0.35,OPT.draw);
+    camera.far = 2000*OPT.draw + 1000; camera.updateProjectionMatrix();
+    renderer.setPixelRatio(Math.min(devicePixelRatio, OPT.quality>1?1.75:OPT.quality<1?0.75:1.25));
+    if(typeof CEL!=='undefined') CEL.on=!!OPT.cel;
+  }catch(e){}
+}
+
+/* ---- three save slots, each stamped with a version ---- */
+const SAVE_V=3;
+let SLOT = (()=>{ try{ return +(localStorage.getItem(KEY+':slot')||0)||0; }catch(e){ return 0; } })();
+const slotKey=i=>i===0?KEY:KEY+':'+i;          /* slot 0 keeps the original key */
+function slotInfo(i){
+  try{
+    const d=JSON.parse(localStorage.getItem(slotKey(i))||'null');
+    if(!d) return null;
+    const shr=d.shrines?Object.keys(d.shrines).length:0;
+    return {hearts:d.hearts||3, shrines:shr, quest:d.quest||'wake',
+            v:d.v||1, when:d.when||0};
+  }catch(e){ return null; }
+}
+/* stamp a version and a timestamp on every save, and read old ones anyway */
+const _saveSlot=save;
+save=function(){
+  const r=_saveSlot.apply(this,arguments);
+  try{
+    const raw=localStorage.getItem(KEY);
+    if(raw){
+      const d=JSON.parse(raw); d.v=SAVE_V; d.when=Date.now();
+      const s=JSON.stringify(d);
+      localStorage.setItem(slotKey(SLOT),s);
+      if(SLOT!==0) localStorage.removeItem(KEY);   /* the base key is slot 0 only */
+      else localStorage.setItem(KEY,s);
+    }
+  }catch(e){}
+  return r;
+};
+const _loadSlot=load;
+load=function(){
+  try{
+    if(SLOT!==0){
+      const raw=localStorage.getItem(slotKey(SLOT));
+      if(raw) localStorage.setItem(KEY,raw);      /* hand the base loader this slot */
+      else return false;
+    }
+  }catch(e){}
+  return _loadSlot.apply(this,arguments);
+};
+const _hasSaveSlot=hasSave;
+hasSave=function(){ try{ return !!localStorage.getItem(slotKey(SLOT)); }catch(e){ return false; } };
+function useSlot(i){
+  SLOT=i; try{ localStorage.setItem(KEY+':slot',String(i)); }catch(e){}
+}
+
+/* ---- what everything is, in words ---- */
+function describe(name){
+  const W=typeof WEAPONS!=='undefined'&&WEAPONS[name];
+  if(W) return (W.hand===2?'Two-handed':W.hand===3?'Spear':'One-handed')
+    +' · '+W.atk+' attack · '+W.dur+' uses'
+    +(W.el?' · '+W.el:'')+(W.rod?' · casts':'')+(W.chop?' · fells trees':'')
+    +(W.torch?' · burns':'');
+  const B=typeof BOWS!=='undefined'&&BOWS[name];
+  if(B) return 'Bow · '+B.atk+' per arrow · '+B.dur+' shots'
+    +((B.mult||1)>1?' · '+B.mult+'-shot':'')+(B.zoom?' · zooms':'')
+    +(B.straight?' · flies flat':'')+(B.light?' · endless light arrows':'');
+  const S=typeof SHIELDS!=='undefined'&&SHIELDS[name];
+  if(S) return 'Shield · '+S.grd+' guard · '+S.dur+' uses'
+    +(S.surf?' · surfs x'+S.surf:'');
+  const A=typeof ARMOR!=='undefined'&&ARMOR[name];
+  if(A&&name!=='None'){
+    const bits=[(A.slot||'armour')+' · '+(A.def||0)+' defence'];
+    if(A.set&&typeof SETBONUS!=='undefined'&&SETBONUS[A.set]) bits.push('set: '+SETBONUS[A.set]);
+    for(const k of ['cold','heat','flame','swim','climb','sneak','sand'])
+      if(A[k]) bits.push(k+' +'+A[k]);
+    return bits.join(' · ');
+  }
+  const M=typeof MATS!=='undefined'&&MATS[name];
+  if(M){
+    const bits=[];
+    if(M.h) bits.push(M.h+(M.h===1?' heart':' hearts'));
+    if(M.st) bits.push('stamina');
+    if(M.eff) bits.push(M.eff+(M.pot?' '+M.pot:''));
+    if(M.elixir) bits.push('elixirs only');
+    if(M.part) bits.push('monster part');
+    if(M.gem) bits.push('gem');
+    if(M.fuel) bits.push('burns');
+    if(M.spark) bits.push('strikes sparks');
+    if(M.sell!==undefined) bits.push(M.sell+'r');
+    return bits.join(' · ')||'material';
+  }
+  return '';
+}
+
+/* ---- the panels ---- */
+(function buildUI(){
+  const css=document.createElement('style');
+  css.textContent=`
+  #inv{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:8px;
+       max-height:46vh;overflow:auto;padding:2px 2px 6px}
+  #inv .slot{position:relative}
+  #inv .slot .desc{display:block;font-size:10px;line-height:1.25;opacity:.62;margin-top:3px}
+  .optRow{display:flex;align-items:center;gap:10px;margin:9px 0;font-size:13px}
+  .optRow label{flex:0 0 132px;opacity:.8}
+  .optRow input[type=range]{flex:1}
+  .optRow .val{flex:0 0 46px;text-align:right;opacity:.7;font-variant-numeric:tabular-nums}
+  .slotCard{display:flex;justify-content:space-between;align-items:center;gap:10px;
+            border:1px solid rgba(255,255,255,.16);border-radius:9px;padding:10px 12px;margin:7px 0;
+            cursor:pointer;background:rgba(255,255,255,.03)}
+  .slotCard.on{border-color:#63d6e2;background:rgba(99,214,226,.10)}
+  .slotCard .meta{font-size:11px;opacity:.62}`;
+  document.head.appendChild(css);
+
+  const wrap=document.createElement('div');
+  wrap.innerHTML=`
+  <div class="screen" id="options"><div class="panel">
+    <div class="eyebrow">Sheikah Slate</div><h2>Options</h2>
+    <div class="optRow"><label>Music</label><input type="range" id="optMusic" min="0" max="100"><span class="val" id="vMusic"></span></div>
+    <div class="optRow"><label>Effects</label><input type="range" id="optSfx" min="0" max="100"><span class="val" id="vSfx"></span></div>
+    <div class="optRow"><label>Look speed</label><input type="range" id="optSens" min="20" max="250"><span class="val" id="vSens"></span></div>
+    <div class="optRow"><label>Draw distance</label><input type="range" id="optDraw" min="40" max="200"><span class="val" id="vDraw"></span></div>
+    <div class="optRow"><label>Invert look</label><input type="checkbox" id="optInv"></div>
+    <div class="optRow"><label>Cel shading</label><input type="checkbox" id="optCel"></div>
+    <div class="btnrow"><button class="act primary" id="optBack">Back</button></div>
+  </div></div>
+  <div class="screen" id="slots"><div class="panel">
+    <div class="eyebrow">Sheikah Slate</div><h2>Save slots</h2>
+    <div id="slotList"></div>
+    <div class="btnrow"><button class="act primary" id="slotBack">Back</button></div>
+  </div></div>`;
+  document.body.appendChild(wrap);
+
+  const $$=s=>document.querySelector(s);
+  const bind=(id,key,scale,fmt)=>{
+    const el=$$('#'+id), out=$$('#v'+id.slice(3));
+    if(!el) return;
+    el.value=Math.round(OPT[key]*scale);
+    if(out) out.textContent=fmt(OPT[key]);
+    el.oninput=()=>{ OPT[key]=el.value/scale; if(out) out.textContent=fmt(OPT[key]);
+                     applyOpts(); saveOpts(); };
+  };
+  bind('optMusic','music',100,v=>Math.round(v*100)+'%');
+  bind('optSfx','sfx',100,v=>Math.round(v*100)+'%');
+  bind('optSens','sens',100,v=>v.toFixed(2)+'x');
+  bind('optDraw','draw',100,v=>Math.round(v*100)+'%');
+  const inv=$$('#optInv'), cel=$$('#optCel');
+  if(inv){ inv.checked=!!OPT.invertY; inv.onchange=()=>{OPT.invertY=inv.checked;saveOpts();}; }
+  if(cel){ cel.checked=!!OPT.cel;     cel.onchange=()=>{OPT.cel=cel.checked;applyOpts();saveOpts();}; }
+  $$('#optBack').onclick=()=>{ $$('#options').classList.remove('on'); $('#pause').classList.add('on'); };
+  $$('#slotBack').onclick=()=>{ $$('#slots').classList.remove('on'); $('#pause').classList.add('on'); };
+
+  function renderSlots(){
+    let h='';
+    for(let i=0;i<3;i++){
+      const s=slotInfo(i);
+      h+=`<div class="slotCard${i===SLOT?' on':''}" data-slot="${i}">
+        <div><b>Slot ${i+1}</b>${i===SLOT?' · in use':''}
+          <div class="meta">${s?(s.hearts+' hearts · '+s.shrines+' shrines · '+
+            (s.when?new Date(s.when).toLocaleDateString():'—')):'empty'}</div></div>
+        <div class="meta">${s?('v'+s.v):''}</div></div>`;
+    }
+    $$('#slotList').innerHTML=h;
+    for(const el of document.querySelectorAll('.slotCard'))
+      el.onclick=()=>{ useSlot(+el.dataset.slot); renderSlots(); toast('Slot '+(+el.dataset.slot+1)+' selected'); };
+  }
+  /* two more buttons on the pause panel */
+  const row=document.querySelector('#pause .btnrow');
+  if(row){
+    const b1=document.createElement('button'); b1.className='act'; b1.textContent='Options';
+    b1.onclick=()=>{ $('#pause').classList.remove('on'); $$('#options').classList.add('on'); };
+    const b2=document.createElement('button'); b2.className='act'; b2.textContent='Slots';
+    b2.onclick=()=>{ $('#pause').classList.remove('on'); renderSlots(); $$('#slots').classList.add('on'); };
+    row.appendChild(b1); row.appendChild(b2);
+  }
+  applyOpts();
+})();
+
+/* ---- put the descriptions into the inventory ---- */
+if(typeof updateGear==='function'){
+  const _ug=updateGear;
+  updateGear=function(){
+    const r=_ug.apply(this,arguments);
+    try{
+      for(const el of document.querySelectorAll('#inv .slot')){
+        if(el.querySelector('.desc')) continue;
+        const nm=(el.getAttribute('data-name')||el.querySelector('b')||{}).textContent
+               || el.getAttribute('data-name');
+        const d=nm?describe(nm.trim()):'';
+        if(d){ const s=document.createElement('span'); s.className='desc'; s.textContent=d; el.appendChild(s); }
+      }
+    }catch(e){}
+    return r;
+  };
+}
+console.log('UI: 3 save slots (v'+SAVE_V+'), options panel, item descriptions');
+</script>
+
 
 
 
