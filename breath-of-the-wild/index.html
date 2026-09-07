@@ -1341,30 +1341,42 @@ HOPS.push({n:'160 coastal grading',    x:0,z:0,r:1e9, flat:true, f:(x,z,h)=>
    Akkala down through Lanayru and Necluda, turns west along the southern
    shore as the Faron Sea, and the north-west is snowfield running off the
    edge. These passes cut the real shape. */
-const coastFall=(n,pts,r,depth)=>HOPS.push({n,x:pts[0][0],z:pts[0][1],r:1e9,poly:1,flat:true,
-  f:(px,pz,h)=>{
-    let best=1e9, side=1;
-    for(let i=0;i<pts.length-1;i++){
-      const a=pts[i], b=pts[i+1];
-      const sg=seg(px,pz,a[0],a[1],b[0],b[1]);
-      if(sg.d<best){ best=sg.d;
-        /* which side of the line are we on */
-        side=Math.sign((b[0]-a[0])*(pz-a[1])-(b[1]-a[1])*(px-a[0]))||1; }
-    }
-    if(side<0) return h;                       /* inland, untouched */
-    const t=clamp(1-best/r,0,1);
-    return lerp(h, depth, smooth(t)*0.97);     /* seaward, falls away */
-  }});
+/* Which side of a coastline is the sea?  It used to be whichever side the
+   cross product happened to call positive, and that depends entirely on the
+   order the points were typed in.  All three coastlines came out backwards:
+   they carved the land and left the ocean alone, which is where twenty-two
+   points of missing Hyrule went.  The sea is now named outright - pass a
+   point that is definitely in the water and the orientation follows it. */
+const sideOfLine=(pts,px,pz)=>{
+  let best=1e9, side=1;
+  for(let i=0;i<pts.length-1;i++){
+    const a=pts[i], b=pts[i+1];
+    const sg=seg(px,pz,a[0],a[1],b[0],b[1]);
+    if(sg.d<best){ best=sg.d;
+      side=Math.sign((b[0]-a[0])*(pz-a[1])-(b[1]-a[1])*(px-a[0]))||1; }
+  }
+  return {side,best};
+};
+const coastFall=(n,pts,r,depth,seaRef)=>{
+  const seaSide=seaRef? sideOfLine(pts,seaRef[0],seaRef[1]).side : 1;
+  HOPS.push({n,x:pts[0][0],z:pts[0][1],r:1e9,poly:1,flat:true,
+    f:(px,pz,h)=>{
+      const s=sideOfLine(pts,px,pz);
+      if(s.side!==seaSide) return h;             /* inland, untouched */
+      const t=clamp(1-s.best/r,0,1);
+      return lerp(h, depth, smooth(t)*0.97);     /* seaward, falls away */
+    }});
+};
 /* 163 the eastern shore, Akkala down to Necluda */
 coastFall('163 eastern shore',
   [[4150,-3900],[4380,-3100],[4520,-2200],[4600,-1200],[4680,-200],
-   [4720,700],[4700,1600],[4600,2500],[4400,3200]], 900, HWATER-70);
+   [4720,700],[4700,1600],[4600,2500],[4400,3200]], 900, HWATER-70, [5400,0]);
 /* 164 the Akkala Sea, which cuts deep into the north-east */
 hflatRaw('164 Akkala Sea',        4250,-3350, 620, HWATER-60, .95);
 hbasinRaw('165 Akkala inlet',     3950,-3050, 380, 90);
 /* 166 the southern shore and the Faron Sea */
 coastFall('166 southern shore',
-  [[4400,3200],[3400,3700],[2400,3950],[1400,4050],[400,4000],[-600,3800]], 800, HWATER-70);
+  [[4400,3200],[3400,3700],[2400,3950],[1400,4050],[400,4000],[-600,3800]], 800, HWATER-70, [1800,4700]);
 hflatRaw('167 Faron Sea',         1800,4250, 900, HWATER-70, .95);
 hflatRaw('168 Necluda Sea',       4450,2100, 700, HWATER-65, .95);
 hflatRaw('169 Lanayru Sea',       4550,600,  700, HWATER-65, .95);
@@ -1376,20 +1388,26 @@ hriverRaw('173 Hylia River, lower',[[2380,-500],[1900,300],[1400,900],[900,1600]
 /* 174-176 the north-west, which runs off the edge as snowfield */
 hflatRaw('174 Hebra snowfield edge',-4300,-3400, 800, 520, .55);
 hconeRaw('175 Tabantha cliffs',    -4400,-1800, 700, 180, 1.2);
-hriverRaw('176 Tanagar Canyon',    [[-2500,-900],[-2900,-1900],[-3100,-2900]], 170, 320);
+/* 176 Tanagar Canyon was already cut by pass 067, and the Great Bridge gap
+   basin sits on top of both.  Carving it a second time stacked 220 + 300 + 320
+   into a 422-metre pit at (-3030,-840).  One canyon is enough. */
 /* 177-179 the south-west: the desert floor, and its edge */
 hflatRaw('177 Gerudo Desert floor',-3300,2600, 1500, HWATER+52, .92);
 hflatRaw('178 Gerudo Wasteland',  -4400,3400, 900,  HWATER+44, .9);
 coastFall('179 south-western edge',
-  [[-600,3800],[-1800,3900],[-3000,3900],[-4400,3800]], 700, HWATER-40);
+  [[-600,3800],[-1800,3900],[-3000,3900],[-4400,3800]], 700, HWATER-40, [-3000,4600]);
 /* 180 the shoreline itself: a beach rather than a cliff into the sea */
 /* 180 Lake Hylia is a lake, not a trench. Four rivers converge on it and each
    was carving its own depth, so the bed is levelled and the island rebuilt. */
 hflatRaw('180 Lake Hylia bed',   700,2100, 560, HWATER-34, .99);
 hconeRaw('181 Hylia island',     640,2260, 110, 74, 1.7);
 hflatRaw('182 Hylia island top', 640,2260, 46, HWATER+22, .95);
+/* 183 beaches.  This pulled the whole coastal shelf toward HWATER-2, which is
+   two metres UNDER the water line - so every scrap of land between about one
+   and fourteen metres was quietly drowned.  A beach sits just above the water,
+   not just below it.  Worth seven points of Hyrule. */
 HOPS.push({n:'183 beaches', x:0,z:0,r:1e9, flat:true, f:(x,z,h)=>
-  (h>HWATER-9&&h<HWATER+7)? lerp(h,HWATER-2,.6) : h});
+  (h>HWATER-9&&h<HWATER+7)? lerp(h,HWATER+6,.6) : h});
 /* 161 settlement levelling — runs last, so nothing ends up built on a cliff */
 const SETTLE=[[3050,-2600,150,90],[REGIONS.kakariko.x,REGIONS.kakariko.z,150,122],
   [REGIONS.hateno.x,REGIONS.hateno.z,180,110],[REGIONS.lurelin.x,REGIONS.lurelin.z,140,46],
@@ -1429,6 +1447,12 @@ function hyruleH(x,z){
 const HHM=new Float32Array(HGRID*HGRID);
 for(let j=0;j<HGRID;j++)for(let i=0;i<HGRID;i++)
   HHM[j*HGRID+i]=hyruleH(-HHALF+i*HCELL,-HHALF+j*HCELL);
+/* A floor under the world.  Sculpt passes stack - the Great Bridge gap and
+   Tanagar Canyon both carve the same ground once the region warp has moved a
+   query onto them - and 220 plus 284 left a 400-metre crack beside land at 73.
+   The deepest real sea here is 80 m down, so 110 bounds every pit without
+   touching a single stretch of ocean. */
+for(let k=0;k<HHM.length;k++) if(HHM[k]<HWATER-110) HHM[k]=HWATER-110;
 { const T=new Float32Array(HHM);
   for(let j=1;j<HGRID-1;j++)for(let i=1;i<HGRID-1;i++){const k=j*HGRID+i;
     HHM[k]=(T[k]*4+T[k-1]+T[k+1]+T[k-HGRID]+T[k+HGRID])/8;} }
