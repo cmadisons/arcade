@@ -206,7 +206,7 @@
       <button class="act" id="btnMusic">Music: On</button>
     </div>
     <div id="keys">
-      <div><span>Move</span><k>W A S D</k></div>
+      <div><span>Move</span><k>W A S D</k> or <k>↑ ← ↓ →</k></div>
       <div><span>Sprint</span><k>Shift</k></div>
       <div><span>Jump / Climb</span><k>Space</k></div>
       <div><span>Paraglide</span><k>Space in air</k></div>
@@ -1853,37 +1853,179 @@ for(const [fx,fz] of [[-640,-470],[126,640],[640,150],[-700,160],[400,620]]){
 "use strict";
 /* ================= BATCH 5 — vegetation & the real ingredient list ================= */
 const MATS={
-  'Apple'              :{h:1,  col:0xc4402f, g:'\u{1F34E}', where:'tree'},
-  'Wildberry'          :{h:1,  col:0x8c3f6a, g:'\u{1FAD0}', where:'bush'},
-  'Hylian Shroom'      :{h:1,  col:0xb08a5e, g:'\u{1F344}', where:'forest'},
-  'Stamella Shroom'    :{h:1,  st:200, col:0xd8a44e, g:'\u{1F344}', where:'forest', eff:'energizing'},
-  'Hearty Truffle'     :{h:2,  col:0x8d6b4a, g:'\u{1F344}', where:'forest', eff:'hearty', pot:1},
-  'Rushroom'           :{h:1,  col:0x6f9a5e, g:'\u{1F344}', where:'cliff', eff:'hasty', pot:1},
-  'Chillshroom'        :{h:1,  col:0x9fc6d8, g:'\u{1F344}', where:'snow', eff:'chilly', pot:1},
-  'Hyrule Herb'        :{h:2,  col:0x4f9a4e, g:'\u{1F33F}', where:'grass'},
-  'Cool Safflina'      :{h:0,  col:0x7fb8d8, g:'\u{1F33F}', where:'snow', eff:'chilly', pot:1, elixir:true},
-  'Warm Safflina'      :{h:0,  col:0xd8894c, g:'\u{1F33F}', where:'grass', eff:'spicy', pot:1, elixir:true},
-  'Spicy Pepper'       :{h:1,  col:0xd44a2c, g:'\u{1F336}', where:'bush', eff:'spicy', pot:1},
-  'Acorn'              :{h:1,  col:0x9a6f3a, g:'\u{1F330}', where:'tree'},
-  'Raw Meat'           :{h:2,  col:0xbb6d68, g:'\u{1F356}', where:'boar'},
-  'Raw Bird Drumstick' :{h:2,  col:0xc98a72, g:'\u{1F357}', where:'bird'},
-  'Bird Egg'           :{h:1,  col:0xe8dcc0, g:'\u{1F95A}', where:'nest'},
-  'Hyrule Bass'        :{h:2,  col:0x6fa8c4, g:'\u{1F41F}', where:'water'},
-  'Hearty Bass'        :{h:4,  col:0x7fc4a4, g:'\u{1F41F}', where:'water', eff:'hearty', pot:2},
-  'Wood'               :{h:0,  col:0x6b4a2a, g:'\u{1FAB5}', where:'tree', fuel:true},
-  'Flint'              :{h:0,  col:0x565048, g:'\u{1FAA8}', where:'rock', spark:true},
-  'Amber'              :{h:0,  col:0xd79b2e, g:'\u{1F48E}', gem:true},
-  'Opal'               :{h:0,  col:0x7fd2d8, g:'\u{1F48E}', gem:true},
-  'Bokoblin Horn'      :{h:0,  col:0x8a6a4a, g:'\u{1F9B4}', part:true},
-  'Bokoblin Fang'      :{h:0,  col:0xd8d0bc, g:'\u{1F9B7}', part:true},
-  'Bokoblin Guts'      :{h:0,  col:0x7a4a5a, g:'\u{1FAC0}', part:true},
-  'Chuchu Jelly'       :{h:0,  col:0x74c6a4, g:'\u{1F7E2}', part:true},
-  'Red Chuchu Jelly'   :{h:0,  col:0xd9622f, g:'\u{1F534}', part:true, el:'fire'},
-  'White Chuchu Jelly' :{h:0,  col:0x8fd0e8, g:'\u{26AA}', part:true, el:'ice'},
-  'Yellow Chuchu Jelly':{h:0,  col:0xe3d055, g:'\u{1F7E1}', part:true, el:'shock'},
-  'Keese Wing'         :{h:0,  col:0x574a6e, g:'\u{1F987}', part:true},
-  'Keese Eyeball'      :{h:0,  col:0xd8b0a0, g:'\u{1F441}', part:true}
+  /* h = hearts raw, st = stamina, eff/pot = what it cooks into and how strongly,
+     sell = rupees.  elixir means it only makes elixirs, never a dish. */
+
+  /* ---- fruit ---- */
+  'Apple'                :{h:1, col:0xc4402f, g:'\u{1F34E}', where:'tree',  sell:3},
+  'Wildberry'            :{h:1, col:0x8c3f6a, g:'\u{1FAD0}', where:'bush',  sell:3},
+  'Hydromelon'           :{h:1, col:0x7fc4a4, g:'\u{1F348}', where:'grass', eff:'chilly',  pot:1, sell:8},
+  'Spicy Pepper'         :{h:1, col:0xd44a2c, g:'\u{1F336}', where:'bush',  eff:'spicy',   pot:1, sell:4},
+  'Voltfruit'            :{h:1, col:0xe3d055, g:'\u{1F34B}', where:'grass', eff:'electro', pot:1, sell:8},
+  'Fleet-Lotus Seeds'    :{h:1, col:0x9fc6d8, g:'\u{1FAB7}', where:'water', eff:'hasty',   pot:1, sell:8},
+  'Mighty Bananas'       :{h:1, col:0xe0c23a, g:'\u{1F34C}', where:'forest',eff:'mighty',  pot:1, sell:12},
+  'Hearty Durian'        :{h:3, col:0x7a9a3a, g:'\u{1F95D}', where:'forest',eff:'hearty',  pot:2, sell:15},
+  'Palm Fruit'           :{h:2, col:0xd8a44e, g:'\u{1F965}', where:'tree',  sell:6},
+  'Acorn'                :{h:1, col:0x9a6f3a, g:'\u{1F330}', where:'tree',  sell:2},
+  'Chickaloo Tree Nut'   :{h:1, col:0xb08a5e, g:'\u{1F330}', where:'tree',  sell:2},
+
+  /* ---- mushrooms ---- */
+  'Hylian Shroom'        :{h:1, col:0xb08a5e, g:'\u{1F344}', where:'forest', sell:3},
+  'Stamella Shroom'      :{h:1, st:200, col:0xd8a44e, g:'\u{1F344}', where:'forest', eff:'energizing', pot:1, sell:4},
+  'Endura Shroom'        :{h:1, col:0x8a6a4a, g:'\u{1F344}', where:'forest', eff:'enduring', pot:1, sell:12},
+  'Hearty Truffle'       :{h:2, col:0x8d6b4a, g:'\u{1F344}', where:'forest', eff:'hearty',  pot:2, sell:12},
+  'Big Hearty Truffle'   :{h:4, col:0x6d4b2a, g:'\u{1F344}', where:'forest', eff:'hearty',  pot:3, sell:30},
+  'Chillshroom'          :{h:1, col:0x9fc6d8, g:'\u{1F344}', where:'snow',   eff:'chilly',  pot:1, sell:4},
+  'Sunshroom'            :{h:1, col:0xd8894c, g:'\u{1F344}', where:'cliff',  eff:'spicy',   pot:1, sell:4},
+  'Zapshroom'            :{h:1, col:0xe3d055, g:'\u{1F344}', where:'cliff',  eff:'electro', pot:1, sell:4},
+  'Rushroom'             :{h:1, col:0x6f9a5e, g:'\u{1F344}', where:'cliff',  eff:'hasty',   pot:1, sell:4},
+  'Razorshroom'          :{h:1, col:0xc4593a, g:'\u{1F344}', where:'forest', eff:'mighty',  pot:1, sell:8},
+  'Ironshroom'           :{h:1, col:0x7a8288, g:'\u{1F344}', where:'forest', eff:'tough',   pot:1, sell:8},
+  'Silent Shroom'        :{h:0, col:0x8ab4d8, g:'\u{1F344}', where:'forest', eff:'sneaky',  pot:1, sell:8},
+
+  /* ---- plants and herbs ---- */
+  'Hyrule Herb'          :{h:2, col:0x4f9a4e, g:'\u{1F33F}', where:'grass', sell:5},
+  'Swift Carrot'         :{h:1, col:0xd8894c, g:'\u{1F955}', where:'grass', eff:'hasty',    pot:1, sell:4},
+  'Endura Carrot'        :{h:1, col:0xc47a3a, g:'\u{1F955}', where:'grass', eff:'enduring', pot:3, sell:30},
+  'Fortified Pumpkin'    :{h:1, col:0xd8963a, g:'\u{1F383}', where:'grass', eff:'tough',    pot:1, sell:6},
+  'Armoranth'            :{h:0, col:0x9a8a5c, g:'\u{1F33F}', where:'grass', eff:'tough',    pot:1, sell:6},
+  'Blue Nightshade'      :{h:0, col:0x5a5a9a, g:'\u{1F33F}', where:'forest',eff:'sneaky',   pot:1, sell:4},
+  'Silent Princess'      :{h:1, col:0xbfe3ea, g:'\u{1F338}', where:'forest',eff:'sneaky',   pot:3, sell:30},
+  'Mighty Thistle'       :{h:0, col:0x7a8a4a, g:'\u{1F33F}', where:'grass', eff:'mighty',   pot:1, sell:4},
+  'Warm Safflina'        :{h:0, col:0xd8894c, g:'\u{1F33F}', where:'grass', eff:'spicy',    pot:1, elixir:true, sell:4},
+  'Cool Safflina'        :{h:0, col:0x7fb8d8, g:'\u{1F33F}', where:'snow',  eff:'chilly',   pot:1, elixir:true, sell:4},
+  'Electric Safflina'    :{h:0, col:0xe3d055, g:'\u{1F33F}', where:'rock',  eff:'electro',  pot:1, elixir:true, sell:4},
+  'Swift Violet'         :{h:0, col:0x9a6fc4, g:'\u{1F33A}', where:'cliff', eff:'hasty',    pot:2, sell:10},
+  'Hearty Radish'        :{h:2, col:0xd04a5a, g:'\u{1F955}', where:'grass', eff:'hearty',   pot:2, sell:12},
+  'Big Hearty Radish'    :{h:3, col:0xb03a4a, g:'\u{1F955}', where:'grass', eff:'hearty',   pot:3, sell:26},
+  'Cane Sugar'           :{h:0, col:0xe8dcc0, g:'\u{1F36C}', sell:3},
+  'Goat Butter'          :{h:0, col:0xf0e0a0, g:'\u{1F9C8}', sell:8},
+  'Fresh Milk'           :{h:1, col:0xf4f0e4, g:'\u{1F95B}', sell:8},
+  'Tabantha Wheat'       :{h:0, col:0xd8c48a, g:'\u{1F33E}', sell:4},
+  'Hylian Rice'          :{h:0, col:0xf0ead8, g:'\u{1F35A}', sell:4},
+  'Rock Salt'            :{h:0, col:0xe0e4e8, g:'\u{1F9C2}', where:'rock', sell:4},
+  'Monster Extract'      :{h:0, col:0x7a2a5a, g:'\u{1F9EA}', sell:5, monster:true},
+  'Bird Egg'             :{h:1, col:0xe8dcc0, g:'\u{1F95A}', where:'grass', sell:6},
+
+  /* ---- meat ---- */
+  'Raw Meat'             :{h:2, col:0xbb6d68, g:'\u{1F356}', where:'grass', sell:6},
+  'Raw Prime Meat'       :{h:3, col:0xc4585a, g:'\u{1F356}', where:'grass', sell:15},
+  'Raw Gourmet Meat'     :{h:6, col:0xd0484a, g:'\u{1F356}', where:'grass', sell:35},
+  'Raw Bird Drumstick'   :{h:2, col:0xc98a72, g:'\u{1F357}', where:'grass', sell:6},
+  'Raw Bird Thigh'       :{h:3, col:0xc47a62, g:'\u{1F357}', where:'grass', sell:15},
+  'Raw Whole Bird'       :{h:6, col:0xc06a52, g:'\u{1F357}', where:'grass', sell:35},
+
+  /* ---- fish and shellfish ---- */
+  'Hyrule Bass'          :{h:2, col:0x6fa8c4, g:'\u{1F41F}', where:'water', sell:6},
+  'Hearty Bass'          :{h:4, col:0x7fc4a4, g:'\u{1F41F}', where:'water', eff:'hearty',  pot:2, sell:15},
+  'Staminoka Bass'       :{h:1, st:400, col:0x8ac46f, g:'\u{1F41F}', where:'water', eff:'energizing', pot:2, sell:20},
+  'Armored Porgy'        :{h:2, col:0x7a9aa4, g:'\u{1F41F}', where:'water', eff:'tough',   pot:2, sell:12},
+  'Mighty Porgy'         :{h:2, col:0xc4593a, g:'\u{1F41F}', where:'water', eff:'mighty',  pot:2, sell:12},
+  'Sanke Carp'           :{h:2, col:0xd8a44e, g:'\u{1F41F}', where:'water', sell:8},
+  'Mighty Carp'          :{h:2, col:0xc45a3a, g:'\u{1F41F}', where:'water', eff:'mighty',  pot:2, sell:12},
+  'Armored Carp'         :{h:2, col:0x6f7784, g:'\u{1F41F}', where:'water', eff:'tough',   pot:2, sell:12},
+  'Hearty Salmon'        :{h:4, col:0xe08a6a, g:'\u{1F41F}', where:'water', eff:'hearty',  pot:3, sell:20},
+  'Chillfin Trout'       :{h:2, col:0x8fd0e8, g:'\u{1F41F}', where:'water', eff:'chilly',  pot:2, sell:10},
+  'Sizzlefin Trout'      :{h:2, col:0xd9622f, g:'\u{1F41F}', where:'water', eff:'spicy',   pot:2, sell:10},
+  'Voltfin Trout'        :{h:2, col:0xe3d055, g:'\u{1F41F}', where:'water', eff:'electro', pot:2, sell:10},
+  'Stealthfin Trout'     :{h:2, col:0x6a5a9a, g:'\u{1F41F}', where:'water', eff:'sneaky',  pot:2, sell:10},
+  'Sneaky River Snail'   :{h:2, col:0x8a7a5c, g:'\u{1F40C}', where:'water', eff:'sneaky',  pot:2, sell:10},
+  'Razorclaw Crab'       :{h:2, col:0xc4593a, g:'\u{1F980}', where:'water', eff:'mighty',  pot:2, sell:12},
+  'Ironshell Crab'       :{h:2, col:0x7a8288, g:'\u{1F980}', where:'water', eff:'tough',   pot:2, sell:12},
+  'Bright-Eyed Crab'     :{h:2, st:400, col:0x8ac46f, g:'\u{1F980}', where:'water', eff:'energizing', pot:2, sell:12},
+  'Hearty Blueshell Snail':{h:4,col:0x7fc4a4, g:'\u{1F40C}', where:'water', eff:'hearty',  pot:3, sell:20},
+
+  /* ---- critters: elixirs only ---- */
+  'Restless Cricket'     :{h:0, col:0x6f9a5e, g:'\u{1F997}', where:'grass', eff:'hasty',   pot:1, elixir:true, sell:3},
+  'Hot-Footed Frog'      :{h:0, col:0x4f9a4e, g:'\u{1F438}', where:'water', eff:'hasty',   pot:2, elixir:true, sell:6},
+  'Tireless Frog'        :{h:0, col:0x3a7a4a, g:'\u{1F438}', where:'cliff', eff:'enduring',pot:2, elixir:true, sell:20},
+  'Hightail Lizard'      :{h:0, col:0x8a7a4a, g:'\u{1F98E}', where:'grass', eff:'hasty',   pot:1, elixir:true, sell:3},
+  'Hearty Lizard'        :{h:0, col:0xc45a5a, g:'\u{1F98E}', where:'cliff', eff:'hearty',  pot:3, elixir:true, sell:20},
+  'Fireproof Lizard'     :{h:0, col:0xd9622f, g:'\u{1F98E}', where:'rock',  eff:'fireproof',pot:2,elixir:true, sell:16},
+  'Sunset Firefly'       :{h:0, col:0xe8e08a, g:'\u{2728}',  where:'forest',eff:'sneaky',  pot:1, elixir:true, sell:4},
+  'Energetic Rhino Beetle':{h:0,col:0x8ac46f, g:'\u{1FAB2}', where:'tree',  eff:'energizing',pot:2,elixir:true,sell:10},
+  'Bladed Rhino Beetle'  :{h:0, col:0xc4593a, g:'\u{1FAB2}', where:'tree',  eff:'mighty',  pot:2, elixir:true, sell:10},
+  'Rugged Rhino Beetle'  :{h:0, col:0x7a8288, g:'\u{1FAB2}', where:'tree',  eff:'tough',   pot:2, elixir:true, sell:10},
+  'Smotherwing Butterfly':{h:0, col:0xd9622f, g:'\u{1F98B}', where:'rock',  eff:'fireproof',pot:2,elixir:true, sell:16},
+  'Cold Darner'          :{h:0, col:0x8fd0e8, g:'\u{1F98B}', where:'snow',  eff:'chilly',  pot:1, elixir:true, sell:3},
+  'Warm Darner'          :{h:0, col:0xd8894c, g:'\u{1F98B}', where:'grass', eff:'spicy',   pot:1, elixir:true, sell:3},
+  'Electric Darner'      :{h:0, col:0xe3d055, g:'\u{1F98B}', where:'grass', eff:'electro', pot:1, elixir:true, sell:3},
+  'Thunderwing Butterfly':{h:0, col:0xe3d055, g:'\u{1F98B}', where:'cliff', eff:'electro', pot:2, elixir:true, sell:10},
+  'Winterwing Butterfly' :{h:0, col:0xd8894c, g:'\u{1F98B}', where:'snow',  eff:'spicy',   pot:2, elixir:true, sell:10},
+  'Summerwing Butterfly' :{h:0, col:0x8fd0e8, g:'\u{1F98B}', where:'grass', eff:'chilly',  pot:2, elixir:true, sell:10},
+
+  /* ---- monster parts ---- */
+  'Bokoblin Horn'        :{h:0, col:0x8a6a4a, g:'\u{1F9B4}', part:true, sell:3},
+  'Bokoblin Fang'        :{h:0, col:0xd8d0bc, g:'\u{1F9B7}', part:true, sell:6},
+  'Bokoblin Guts'        :{h:0, col:0x7a4a5a, g:'\u{1FAC0}', part:true, sell:12},
+  'Moblin Horn'          :{h:0, col:0x7a5a8a, g:'\u{1F9B4}', part:true, sell:6},
+  'Moblin Fang'          :{h:0, col:0xd8d0bc, g:'\u{1F9B7}', part:true, sell:12},
+  'Moblin Guts'          :{h:0, col:0x6a3a5a, g:'\u{1FAC0}', part:true, sell:24},
+  'Lizalfos Horn'        :{h:0, col:0x4a7a4a, g:'\u{1F9B4}', part:true, sell:8},
+  'Lizalfos Talon'       :{h:0, col:0x9a9a7a, g:'\u{1F9B7}', part:true, sell:16},
+  'Lizalfos Tail'        :{h:0, col:0x3f8a5a, g:'\u{1F98E}', part:true, sell:26},
+  'Lynel Horn'           :{h:0, col:0x8a3a2a, g:'\u{1F9B4}', part:true, sell:30},
+  'Lynel Hoof'           :{h:0, col:0x6a4a3a, g:'\u{1F40E}', part:true, sell:50},
+  'Lynel Guts'           :{h:0, col:0xc2503a, g:'\u{1FAC0}', part:true, sell:100},
+  'Chuchu Jelly'         :{h:0, col:0x74c6a4, g:'\u{1F7E2}', part:true, sell:3},
+  'Red Chuchu Jelly'     :{h:0, col:0xd9622f, g:'\u{1F534}', part:true, el:'fire',  sell:4},
+  'White Chuchu Jelly'   :{h:0, col:0x8fd0e8, g:'\u{26AA}',  part:true, el:'ice',   sell:4},
+  'Yellow Chuchu Jelly'  :{h:0, col:0xe3d055, g:'\u{1F7E1}', part:true, el:'shock', sell:4},
+  'Keese Wing'           :{h:0, col:0x574a6e, g:'\u{1F987}', part:true, sell:3},
+  'Fire Keese Wing'      :{h:0, col:0xd9622f, g:'\u{1F987}', part:true, el:'fire',  sell:6},
+  'Ice Keese Wing'       :{h:0, col:0x8fd0e8, g:'\u{1F987}', part:true, el:'ice',   sell:6},
+  'Electric Keese Wing'  :{h:0, col:0xe3d055, g:'\u{1F987}', part:true, el:'shock', sell:6},
+  'Keese Eyeball'        :{h:0, col:0xd8b0a0, g:'\u{1F441}', part:true, sell:8},
+  'Octorok Tentacle'     :{h:0, col:0x9a5a6a, g:'\u{1F419}', part:true, sell:6},
+  'Octorok Eyeball'      :{h:0, col:0xd8b0a0, g:'\u{1F441}', part:true, sell:10},
+  'Octo Balloon'         :{h:0, col:0xd8c0a0, g:'\u{1F388}', part:true, sell:10},
+  'Molduga Fin'          :{h:0, col:0xc2a774, g:'\u{1F41F}', part:true, sell:50},
+  'Molduga Guts'         :{h:0, col:0x8a6a4a, g:'\u{1FAC0}', part:true, sell:100},
+  'Hinox Toenail'        :{h:0, col:0xc4a48a, g:'\u{1F9B6}', part:true, sell:20},
+  'Hinox Tooth'          :{h:0, col:0xe8e0cc, g:'\u{1F9B7}', part:true, sell:35},
+  'Hinox Guts'           :{h:0, col:0x8a4a3a, g:'\u{1FAC0}', part:true, sell:60},
+
+  /* ---- ancient parts ---- */
+  'Ancient Screw'        :{h:0, col:0x86b8ac, g:'\u{1F529}', part:true, sell:20},
+  'Ancient Spring'       :{h:0, col:0x9ed3c6, g:'\u{1F300}', part:true, sell:30},
+  'Ancient Gear'         :{h:0, col:0x7aa89c, g:'\u{2699}',  part:true, sell:60},
+  'Ancient Shaft'        :{h:0, col:0xb4e0d4, g:'\u{1F5DC}', part:true, sell:80},
+  'Ancient Core'         :{h:0, col:0xc8ece2, g:'\u{1F535}', part:true, sell:100},
+  'Giant Ancient Core'   :{h:0, col:0xdcf4ea, g:'\u{1F535}', part:true, sell:200},
+
+  /* ---- ore and gems ---- */
+  'Wood'                 :{h:0, col:0x6b4a2a, g:'\u{1FAB5}', where:'tree', fuel:true, sell:2},
+  'Flint'                :{h:0, col:0x565048, g:'\u{1FAA8}', where:'rock', spark:true, sell:4},
+  'Amber'                :{h:0, col:0xd79b2e, g:'\u{1F48E}', where:'rock', gem:true, sell:30},
+  'Opal'                 :{h:0, col:0x7fd2d8, g:'\u{1F48E}', where:'rock', gem:true, sell:60},
+  'Luminous Stone'       :{h:0, col:0x9fd8e8, g:'\u{1F48E}', where:'rock', gem:true, sell:70},
+  'Topaz'                :{h:0, col:0xe0c23a, g:'\u{1F48E}', where:'rock', gem:true, sell:180},
+  'Ruby'                 :{h:0, col:0xd83f4a, g:'\u{1F48E}', where:'rock', gem:true, sell:210},
+  'Sapphire'             :{h:0, col:0x3f7fd8, g:'\u{1F48E}', where:'rock', gem:true, sell:260},
+  'Diamond'              :{h:0, col:0xe8f0f4, g:'\u{1F48E}', where:'rock', gem:true, sell:500},
+  'Star Fragment'        :{h:0, col:0xf4eec0, g:'\u{2B50}',  gem:true, sell:300},
+
+  /* ---- dragon parts ---- */
+  "Shard of Dinraal's Horn" :{h:0, col:0xd9622f, g:'\u{1F409}', part:true, dragon:true, sell:300},
+  "Shard of Dinraal's Fang" :{h:0, col:0xe08a4a, g:'\u{1F409}', part:true, dragon:true, sell:150},
+  "Dinraal's Claw"          :{h:0, col:0xd07a3a, g:'\u{1F409}', part:true, dragon:true, sell:100},
+  "Dinraal's Scale"         :{h:0, col:0xc45a2a, g:'\u{1F409}', part:true, dragon:true, sell:50},
+  "Shard of Naydra's Horn"  :{h:0, col:0x8fd0e8, g:'\u{1F409}', part:true, dragon:true, sell:300},
+  "Shard of Naydra's Fang"  :{h:0, col:0xa8dcf0, g:'\u{1F409}', part:true, dragon:true, sell:150},
+  "Naydra's Claw"           :{h:0, col:0x7fc0e0, g:'\u{1F409}', part:true, dragon:true, sell:100},
+  "Naydra's Scale"          :{h:0, col:0x6fb0d8, g:'\u{1F409}', part:true, dragon:true, sell:50},
+  "Shard of Farosh's Horn"  :{h:0, col:0xe3d055, g:'\u{1F409}', part:true, dragon:true, sell:300},
+  "Shard of Farosh's Fang"  :{h:0, col:0xeadc7a, g:'\u{1F409}', part:true, dragon:true, sell:150},
+  "Farosh's Claw"           :{h:0, col:0xd8c84a, g:'\u{1F409}', part:true, dragon:true, sell:100},
+  "Farosh's Scale"          :{h:0, col:0xc8b83a, g:'\u{1F409}', part:true, dragon:true, sell:50}
 };
+(function(){
+  for(const k of Object.keys(MATS)){
+    const c=k.replace(/'/g,'\u2019');
+    if(MATS[c]===undefined) MATS[c]=MATS[k];
+  }
+})();
+
 const MAT_MESH={};
 function matMesh(k){
   if(!MAT_MESH[k]) MAT_MESH[k]=new THREE.MeshLambertMaterial({color:MATS[k].col,flatShading:true});
@@ -4340,8 +4482,8 @@ function defense(){
 }
 function coldResist(){ return armourHas('cold')+(P.buff==='spicy'?P.buffLv:0)+(hasSet('snowquill')?2:0); }
 function heatResist(){ return armourHas('heat')+(P.buff==='chilly'?P.buffLv:0)+(hasSet('voe')?2:0); }
-function flameProof(){ return armourHas('flame')>0||hasSet('flamebreaker'); }
-function shockProof(){ return hasSet('rubber'); }
+function flameProof(){ return armourHas('flame')>0||hasSet('flamebreaker')||P.buff==='fireproof'; }
+function shockProof(){ return hasSet('rubber')||P.buff==='electro'; }
 function shockResist(){ return armourHas('shock'); }
 function swimBonus(){ return 1+armourHas('swim')*.35+(hasSet('zora')?.5:0); }
 function climbBonus(){ return 1-armourHas('climb')*.12-(hasSet('climb')?.15:0); }
@@ -4369,7 +4511,11 @@ function updatePlayer(dt){
   fwd.set(-Math.sin(P.look.yaw),0,-Math.cos(P.look.yaw));
   rgt.set(fwd.z,0,-fwd.x);
   let ix=0,iz=0;
-  if(keys.KeyW)iz+=1; if(keys.KeyS)iz-=1; if(keys.KeyD)ix+=1; if(keys.KeyA)ix-=1;
+  /* the arrow keys drive him as well as WASD - either will do */
+  if(keys.KeyW||keys.ArrowUp)   iz+=1;
+  if(keys.KeyS||keys.ArrowDown) iz-=1;
+  if(keys.KeyD||keys.ArrowRight)ix+=1;
+  if(keys.KeyA||keys.ArrowLeft) ix-=1;
   const moving=!!(ix||iz);
   tv.set(0,0,0); if(moving) tv.addScaledVector(fwd,iz).addScaledVector(rgt,ix).normalize();
   const sprint=(keys.ShiftLeft||keys.ShiftRight)&&!P.crouch;
@@ -4450,7 +4596,7 @@ function updatePlayer(dt){
       P.climbing=false; P.pos.y=st;
       P.pos.x+=tv.x*1.8; P.pos.z+=tv.z*1.8; P.onGround=true;}
     else if(!wall&&ng>=P.pos.y-.4){P.climbing=false;P.pos.y=ng;}
-    else if(keys.KeyS&&ng>=P.pos.y-1){P.climbing=false;}
+    else if((keys.KeyS||keys.ArrowDown)&&ng>=P.pos.y-1){P.climbing=false;}
     P.climbJumpCd=Math.max(0,(P.climbJumpCd||0)-dt);
   }
   else {
@@ -5503,27 +5649,152 @@ function updateClimate(dt){
 /* BotW rule: effects only carry if no two different effects are mixed.
    Named dishes are matched first; otherwise the pot works out a generic dish. */
 const RECIPES=[
+  /* The dish is chosen by the first recipe whose ingredients are all in the pot.
+     Specific dishes come before general ones so a Hearty Salmon Meuniere is not
+     served as a Salt-Grilled Fish. */
+
+  /* ---- the quest dish stays first ---- */
   {name:'Spicy Meat and Seafood Fry', need:['Raw Meat','Spicy Pepper','Hyrule Bass'], eff:'spicy', quest:'doublet'},
-  {name:'Meat and Mushroom Skewer',   need:['Raw Meat','Hylian Shroom']},
-  {name:'Meat Skewer',                need:['Raw Meat']},
-  {name:'Mushroom Skewer',            need:['Hylian Shroom']},
-  {name:'Fried Wild Greens',          need:['Hyrule Herb']},
-  {name:'Steamed Fish',               need:['Hyrule Bass','Hyrule Herb']},
-  {name:'Salt-Grilled Fish',          need:['Hyrule Bass']},
-  {name:'Baked Apple',                need:['Apple']},
-  {name:'Roasted Acorn',              need:['Acorn']},
-  {name:'Simmered Fruit',             need:['Apple','Wildberry']},
-  {name:'Fruitcake',                  need:['Apple','Wildberry','Bird Egg']},
-  {name:'Omelet',                     need:['Bird Egg']},
-  {name:'Poultry Pilaf',              need:['Raw Bird Drumstick','Bird Egg']},
-  {name:'Roasted Bird Drumstick',     need:['Raw Bird Drumstick']},
-  {name:'Hearty Mushroom Skewer',     need:['Hearty Truffle'], eff:'hearty'},
-  {name:'Hearty Salmon Meunière',     need:['Hearty Bass','Hyrule Herb'], eff:'hearty'},
-  {name:'Chilly Mushroom Skewer',     need:['Chillshroom'], eff:'chilly'},
-  {name:'Spicy Pepper Steak',         need:['Spicy Pepper','Raw Meat'], eff:'spicy'},
-  {name:'Energizing Mushroom Skewer', need:['Stamella Shroom'], eff:'energizing'},
-  {name:'Hasty Mushroom Skewer',      need:['Rushroom'], eff:'hasty'}
+
+  /* ---- cakes, tarts and sweets ---- */
+  {name:'Monster Cake',          need:['Monster Extract','Cane Sugar','Tabantha Wheat','Goat Butter']},
+  {name:'Fruitcake',             need:['Apple','Cane Sugar','Tabantha Wheat','Goat Butter']},
+  {name:'Nutcake',               need:['Chickaloo Tree Nut','Cane Sugar','Tabantha Wheat','Goat Butter']},
+  {name:'Wildberry Crepe',       need:['Wildberry','Cane Sugar','Tabantha Wheat','Bird Egg']},
+  {name:'Apple Pie',             need:['Apple','Cane Sugar','Tabantha Wheat']},
+  {name:'Egg Tart',              need:['Bird Egg','Cane Sugar','Tabantha Wheat']},
+  {name:'Fruit Pie',             need:['Wildberry','Cane Sugar','Tabantha Wheat']},
+  {name:'Carrot Cake',           need:['Swift Carrot','Cane Sugar','Tabantha Wheat']},
+  {name:'Pumpkin Pie',           need:['Fortified Pumpkin','Cane Sugar','Tabantha Wheat']},
+  {name:'Plain Crepe',           need:['Tabantha Wheat','Bird Egg','Fresh Milk']},
+  {name:'Honeyed Fruits',        need:['Apple','Cane Sugar']},
+  {name:'Fried Bananas',         need:['Mighty Bananas','Cane Sugar'], eff:'mighty'},
+  {name:'Hot Buttered Apple',    need:['Apple','Goat Butter']},
+
+  /* ---- rice and pilaf ---- */
+  {name:'Gourmet Poultry Pilaf', need:['Raw Whole Bird','Hylian Rice','Bird Egg','Goat Butter']},
+  {name:'Prime Poultry Pilaf',   need:['Raw Bird Thigh','Hylian Rice','Bird Egg','Goat Butter']},
+  {name:'Poultry Pilaf',         need:['Raw Bird Drumstick','Hylian Rice','Bird Egg','Goat Butter']},
+  {name:'Gourmet Meat Curry',    need:['Raw Gourmet Meat','Hylian Rice','Goron Spice']},
+  {name:'Curry Pilaf',           need:['Hylian Rice','Goron Spice','Bird Egg']},
+  {name:'Vegetable Curry',       need:['Hylian Rice','Goron Spice','Hyrule Herb']},
+  {name:'Seafood Curry',         need:['Hylian Rice','Goron Spice','Hyrule Bass']},
+  {name:'Fried Egg and Rice',    need:['Bird Egg','Hylian Rice']},
+  {name:'Mushroom Risotto',      need:['Hylian Shroom','Hylian Rice','Goat Butter']},
+  {name:'Vegetable Risotto',     need:['Hyrule Herb','Hylian Rice','Goat Butter']},
+  {name:'Seafood Rice Balls',    need:['Hyrule Bass','Hylian Rice']},
+  {name:'Veggie Rice Balls',     need:['Hyrule Herb','Hylian Rice']},
+  {name:'Salmon Risotto',        need:['Hearty Salmon','Hylian Rice','Goat Butter'], eff:'hearty'},
+
+  /* ---- fish ---- */
+  {name:'Salmon Meunière',       need:['Hearty Salmon','Tabantha Wheat','Goat Butter'], eff:'hearty'},
+  {name:'Seafood Meunière',      need:['Hyrule Bass','Tabantha Wheat','Goat Butter']},
+  {name:'Crab Omelet with Rice', need:['Razorclaw Crab','Bird Egg','Hylian Rice'], eff:'mighty'},
+  {name:'Crab Risotto',          need:['Ironshell Crab','Hylian Rice','Goat Butter'], eff:'tough'},
+  {name:'Crab Stir-Fry',         need:['Bright-Eyed Crab','Goat Butter'], eff:'energizing'},
+  {name:'Fish Pie',              need:['Hyrule Bass','Tabantha Wheat','Cane Sugar','Goat Butter']},
+  {name:'Fish and Mushroom Skewer', need:['Hyrule Bass','Hylian Shroom']},
+  {name:'Salt-Grilled Fish',     need:['Hyrule Bass','Rock Salt']},
+  {name:'Salt-Grilled Crab',     need:['Razorclaw Crab','Rock Salt'], eff:'mighty'},
+  {name:'Steamed Fish',          need:['Hyrule Bass','Hyrule Herb']},
+  {name:'Hearty Salmon Meunière',need:['Hearty Salmon','Hyrule Herb'], eff:'hearty'},
+  {name:'Chilly Fish Skewer',    need:['Chillfin Trout'], eff:'chilly'},
+  {name:'Sizzling Fish Skewer',  need:['Sizzlefin Trout'], eff:'spicy'},
+  {name:'Electro Fish Skewer',   need:['Voltfin Trout'], eff:'electro'},
+  {name:'Sneaky Fish Skewer',    need:['Stealthfin Trout'], eff:'sneaky'},
+  {name:'Energizing Fish Skewer',need:['Staminoka Bass'], eff:'energizing'},
+  {name:'Hearty Fish Skewer',    need:['Hearty Bass'], eff:'hearty'},
+  {name:'Fish Skewer',           need:['Hyrule Bass']},
+  {name:'Snail Skewer',          need:['Sneaky River Snail'], eff:'sneaky'},
+
+  /* ---- meat ---- */
+  {name:'Gourmet Meat Stew',     need:['Raw Gourmet Meat','Goat Butter','Fresh Milk']},
+  {name:'Prime Meat Stew',       need:['Raw Prime Meat','Goat Butter','Fresh Milk']},
+  {name:'Meat Stew',             need:['Raw Meat','Goat Butter','Fresh Milk']},
+  {name:'Gourmet Meat and Rice Bowl', need:['Raw Gourmet Meat','Hylian Rice']},
+  {name:'Prime Meat and Rice Bowl',   need:['Raw Prime Meat','Hylian Rice']},
+  {name:'Meat and Rice Bowl',    need:['Raw Meat','Hylian Rice']},
+  {name:'Gourmet Meat Skewer',   need:['Raw Gourmet Meat']},
+  {name:'Prime Meat Skewer',     need:['Raw Prime Meat']},
+  {name:'Meat and Mushroom Skewer', need:['Raw Meat','Hylian Shroom']},
+  {name:'Meat Skewer',           need:['Raw Meat']},
+  {name:'Meat-Stuffed Pumpkin',  need:['Raw Meat','Fortified Pumpkin'], eff:'tough'},
+  {name:'Pepper Steak',          need:['Raw Meat','Spicy Pepper'], eff:'spicy'},
+  {name:'Spiced Meat Skewer',    need:['Raw Meat','Goron Spice']},
+  {name:'Roasted Bird Drumstick',need:['Raw Bird Drumstick']},
+  {name:'Poultry Curry',         need:['Raw Bird Drumstick','Goron Spice','Hylian Rice']},
+  {name:'Glazed Meat',           need:['Raw Meat','Cane Sugar']},
+  {name:'Glazed Seafood',        need:['Hyrule Bass','Cane Sugar']},
+  {name:'Glazed Mushrooms',      need:['Hylian Shroom','Cane Sugar']},
+  {name:'Glazed Veggies',        need:['Hyrule Herb','Cane Sugar']},
+
+  /* ---- mushrooms and vegetables ---- */
+  {name:'Creamy Heart Soup',     need:['Hearty Radish','Fresh Milk','Goat Butter'], eff:'hearty'},
+  {name:'Creamy Meat Soup',      need:['Raw Meat','Fresh Milk','Goat Butter']},
+  {name:'Cream of Mushroom Soup',need:['Hylian Shroom','Fresh Milk','Goat Butter']},
+  {name:'Cream of Vegetable Soup',need:['Hyrule Herb','Fresh Milk','Goat Butter']},
+  {name:'Vegetable Omelet',      need:['Hyrule Herb','Bird Egg','Goat Butter']},
+  {name:'Mushroom Omelet',       need:['Hylian Shroom','Bird Egg','Goat Butter']},
+  {name:'Omelet',                need:['Bird Egg','Goat Butter']},
+  {name:'Curry Rice',            need:['Hylian Rice','Goron Spice']},
+  {name:'Veggie Cream Soup',     need:['Fortified Pumpkin','Fresh Milk'], eff:'tough'},
+  {name:'Pumpkin Stew',          need:['Fortified Pumpkin','Goat Butter','Fresh Milk'], eff:'tough'},
+  {name:'Carrot Stew',           need:['Swift Carrot','Goat Butter','Fresh Milk'], eff:'hasty'},
+  {name:'Hearty Mushroom Skewer',need:['Hearty Truffle'], eff:'hearty'},
+  {name:'Chilly Mushroom Skewer',need:['Chillshroom'], eff:'chilly'},
+  {name:'Sunny Mushroom Skewer', need:['Sunshroom'], eff:'spicy'},
+  {name:'Electro Mushroom Skewer',need:['Zapshroom'], eff:'electro'},
+  {name:'Hasty Mushroom Skewer', need:['Rushroom'], eff:'hasty'},
+  {name:'Mighty Mushroom Skewer',need:['Razorshroom'], eff:'mighty'},
+  {name:'Tough Mushroom Skewer', need:['Ironshroom'], eff:'tough'},
+  {name:'Sneaky Mushroom Skewer',need:['Silent Shroom'], eff:'sneaky'},
+  {name:'Enduring Mushroom Skewer',need:['Endura Shroom'], eff:'enduring'},
+  {name:'Energizing Mushroom Skewer',need:['Stamella Shroom'], eff:'energizing'},
+  {name:'Mushroom Skewer',       need:['Hylian Shroom']},
+  {name:'Steamed Mushrooms',     need:['Hylian Shroom','Hyrule Herb']},
+  {name:'Copious Mushroom Skewers',need:['Hylian Shroom','Hylian Shroom','Hylian Shroom']},
+
+  /* ---- greens and fruit ---- */
+  {name:'Fried Wild Greens',     need:['Hyrule Herb']},
+  {name:'Steamed Tomatoes',      need:['Hyrule Herb','Hydromelon'], eff:'chilly'},
+  {name:'Simmered Fruit',        need:['Apple','Wildberry']},
+  {name:'Fruit and Mushroom Mix',need:['Apple','Hylian Shroom']},
+  {name:'Baked Apple',           need:['Apple']},
+  {name:'Roasted Acorn',         need:['Acorn']},
+  {name:'Roasted Tree Nut',      need:['Chickaloo Tree Nut']},
+  {name:'Hearty Fried Wild Greens',need:['Hearty Radish','Hyrule Herb'], eff:'hearty'},
+  {name:'Hasty Fried Wild Greens',need:['Swift Carrot','Hyrule Herb'], eff:'hasty'},
+  {name:'Mighty Fried Wild Greens',need:['Mighty Thistle','Hyrule Herb'], eff:'mighty'},
+  {name:'Tough Fried Wild Greens',need:['Armoranth','Hyrule Herb'], eff:'tough'},
+  {name:'Sneaky Fried Wild Greens',need:['Blue Nightshade','Hyrule Herb'], eff:'sneaky'},
+  {name:'Chilly Fried Wild Greens',need:['Hydromelon','Hyrule Herb'], eff:'chilly'},
+  {name:'Spicy Fried Wild Greens',need:['Spicy Pepper','Hyrule Herb'], eff:'spicy'},
+  {name:'Electro Fried Wild Greens',need:['Voltfruit','Hyrule Herb'], eff:'electro'},
+  {name:'Enduring Fried Wild Greens',need:['Endura Carrot','Hyrule Herb'], eff:'enduring'},
+  {name:'Hearty Simmered Fruit', need:['Hearty Durian','Apple'], eff:'hearty'},
+  {name:'Hasty Simmered Fruit',  need:['Fleet-Lotus Seeds','Apple'], eff:'hasty'},
+  {name:'Mighty Simmered Fruit', need:['Mighty Bananas','Apple'], eff:'mighty'},
+  {name:'Chilly Simmered Fruit', need:['Hydromelon','Apple'], eff:'chilly'},
+  {name:'Spicy Simmered Fruit',  need:['Spicy Pepper','Apple'], eff:'spicy'},
+  {name:'Electro Simmered Fruit',need:['Voltfruit','Apple'], eff:'electro'},
+
+  /* ---- the plain elixir bases, matched last ---- */
+  {name:'Hearty Elixir',    need:['Hearty Lizard','Bokoblin Horn'],      eff:'hearty',    elixir:true},
+  {name:'Hasty Elixir',     need:['Hot-Footed Frog','Bokoblin Horn'],    eff:'hasty',     elixir:true},
+  {name:'Enduring Elixir',  need:['Tireless Frog','Bokoblin Horn'],      eff:'enduring',  elixir:true},
+  {name:'Sneaky Elixir',    need:['Sunset Firefly','Bokoblin Horn'],     eff:'sneaky',    elixir:true},
+  {name:'Mighty Elixir',    need:['Bladed Rhino Beetle','Bokoblin Horn'],eff:'mighty',    elixir:true},
+  {name:'Tough Elixir',     need:['Rugged Rhino Beetle','Bokoblin Horn'],eff:'tough',     elixir:true},
+  {name:'Spicy Elixir',     need:['Warm Darner','Bokoblin Horn'],        eff:'spicy',     elixir:true},
+  {name:'Chilly Elixir',    need:['Cold Darner','Bokoblin Horn'],        eff:'chilly',    elixir:true},
+  {name:'Electro Elixir',   need:['Electric Darner','Bokoblin Horn'],    eff:'electro',   elixir:true},
+  {name:'Fireproof Elixir', need:['Fireproof Lizard','Bokoblin Horn'],   eff:'fireproof', elixir:true},
+  {name:'Energizing Elixir',need:['Restless Cricket','Bokoblin Horn'],   eff:'energizing',elixir:true}
 ];
+/* Goron Spice is bought, not foraged, so it is not in the world tables above */
+if(typeof MATS!=='undefined'&&!MATS['Goron Spice'])
+  MATS['Goron Spice']={h:0, col:0xc4593a, g:'\u{1F336}', sell:16};
+
 const EFFDESC={hearty:'Hearty — full recovery and extra hearts',
   energizing:'Energizing — restores stamina', spicy:'Spicy — cold resistance',
   chilly:'Chilly — heat resistance', hasty:'Hasty — movement speed',
@@ -6774,7 +7045,9 @@ function updateSky(dt){
 /* ---- input ---- */
 addEventListener('keydown',e=>{
   keys[e.code]=true;
-  if(['Space','KeyM','Escape','KeyE','KeyQ','KeyR','KeyF','KeyC','Tab','KeyZ','Digit1','Digit2','Digit3','Digit4'].includes(e.code)) e.preventDefault();
+  if(['Space','KeyM','Escape','KeyE','KeyQ','KeyR','KeyF','KeyC','Tab','KeyZ','KeyG',
+      'ArrowUp','ArrowDown','ArrowLeft','ArrowRight',
+      'Digit1','Digit2','Digit3','Digit4'].includes(e.code)) e.preventDefault();
   if(inCut&&e.code==='Space'){ cutT=0; return; }
   if(!P.playing) return;
   if(e.code==='KeyM') toggleMap();
@@ -16493,6 +16766,167 @@ if(typeof animate==='function'){
   };
 }
 </script>
+<script>
+/* ================= BATCH 86 — cooking that means something, and the Blood Moon
+   Phase 2 finished and Phase 3 started.
+
+   The pot took any pile of ingredients and produced a dish with a flat three
+   minutes of effect, whatever went in.  Effects now have tiers and durations
+   that follow what you actually cooked, monster parts and insects make elixirs
+   instead of slop, and putting wood in the pot gets you what it deserves. */
+
+/* ---- 3. tiers and duration by what went in ---- */
+const EFF_BASE={            /* seconds per potency point, per the real game */
+  hasty:30, sneaky:30, mighty:20, tough:20, spicy:20, chilly:20, electro:20,
+  fireproof:20, enduring:0, hearty:0, energizing:0
+};
+function dishDuration(eff,pot,count){
+  if(!eff||!EFF_BASE[eff]) return 0;
+  /* every ingredient adds time, and potency adds more */
+  return Math.min(1800, 30*count + EFF_BASE[eff]*pot);
+}
+function dishTier(pot){ return pot>=7?3:pot>=4?2:1; }
+
+/* ---- 4 & 5. what the pot makes of it ---- */
+const _oldPredict=predictDish;
+predictDish=function(){
+  if(!potContents.length) return {name:'—',hearts:0,eff:null,lv:0,time:0};
+  const items=potContents.map(k=>MATS[k]||{});
+  const wood  = potContents.filter(k=>MATS[k]&&(MATS[k].fuel||MATS[k].spark));
+  const gems  = potContents.filter(k=>MATS[k]&&MATS[k].gem);
+  const parts = potContents.filter(k=>MATS[k]&&MATS[k].part);
+  const bugs  = potContents.filter(k=>MATS[k]&&MATS[k].elixir);
+  const food  = potContents.filter(k=>MATS[k]&&!MATS[k].part&&!MATS[k].gem&&!MATS[k].fuel&&!MATS[k].spark);
+
+  /* wood and ore are not food and never will be */
+  if(wood.length||gems.length)
+    return {name:'Rock-Hard Food',hearts:1,eff:null,lv:0,time:0,fail:true};
+
+  /* an elixir is a critter and a monster part, and nothing else */
+  if(bugs.length&&parts.length&&!food.length){
+    const effs=[...new Set(bugs.map(k=>MATS[k].eff).filter(Boolean))];
+    if(effs.length===1){
+      const eff=effs[0];
+      const pot=potContents.reduce((a,k)=>a+((MATS[k]&&MATS[k].pot)||0),0);
+      const lv=dishTier(pot);
+      let name=eff[0].toUpperCase()+eff.slice(1)+' Elixir';
+      for(const R of RECIPES) if(R.elixir&&R.eff===eff){ name=R.name; break; }
+      return {name,hearts:eff==='hearty'?99:0,eff,lv,
+              time:dishDuration(eff,pot,potContents.length),elixir:true,
+              stam:eff==='energizing'?bugs.length*300:0};
+    }
+  }
+  /* food mixed with monster parts is the classic mistake */
+  if(parts.length&&food.length)
+    return {name:'Dubious Food',hearts:Math.max(1,Math.floor(food.length/2)),
+            eff:null,lv:0,time:0,fail:true};
+  if(parts.length&&!bugs.length)
+    return {name:'Dubious Food',hearts:1,eff:null,lv:0,time:0,fail:true};
+
+  const d=_oldPredict();
+  const pot=potContents.reduce((a,k)=>a+((MATS[k]&&MATS[k].pot)||0),0);
+  d.lv=dishTier(pot);
+  d.time=dishDuration(d.eff,pot,potContents.length);
+  /* a hearty dish gives extra whole hearts, not a timer */
+  if(d.eff==='hearty') d.hearts=99;
+  if(d.eff==='enduring') d.endur=d.lv;
+  return d;
+};
+
+/* ---- eating: honour the duration, the tier, and the yellow stamina ---- */
+const _oldEat=eatMeal;
+eatMeal=function(){
+  const meal=P.meals.length?P.meals[0]:null;
+  const r=_oldEat.apply(this,arguments);
+  if(meal){
+    if(meal.time) P.buffT=meal.time;                    /* not a flat 180 any more */
+    if(meal.endur){                                     /* enduring: stamina past full */
+      P.stam=maxStam()+meal.endur*400;
+      toast('Stamina beyond full','good');
+    }
+    if(meal.fail) toast(meal.name==='Rock-Hard Food'
+      ? 'It could break a tooth' : 'It is barely food','bad');
+  }
+  return r;
+};
+
+/* ================= the Blood Moon =================
+   Phase 3, item 2 - and the answer to "enemy spawns are a fixed list".  Every
+   few days, at midnight, the sky turns and everything that has been killed
+   stands back up. */
+const BLOOD={active:false, t:0, nights:0, lastDay:-1, warned:false};
+function bloodMoonTick(dt){
+  if(!P.playing) return;
+  const day=Math.floor(P.time/DAY_LEN);
+  const f=(P.time/DAY_LEN)%1;
+  /* midnight is f≈0.75 in this clock, since dawn sits at 0.25 */
+  const midnight=f>0.72&&f<0.80;
+  if(day!==BLOOD.lastDay){ BLOOD.lastDay=day; BLOOD.nights++; BLOOD.warned=false; }
+  if(!BLOOD.active&&midnight&&BLOOD.nights>=3){
+    BLOOD.active=true; BLOOD.t=26; BLOOD.nights=0;
+    riseBloodMoon();
+  }
+  if(BLOOD.active){
+    BLOOD.t-=dt;
+    const k=clamp(BLOOD.t/26,0,1);
+    try{
+      scene.fog.color.lerp(new THREE.Color(0x6a0e16), 0.06*k);
+      renderer.setClearColor(scene.fog.color);
+      if(typeof skyMat!=='undefined'&&skyMat.uniforms&&skyMat.uniforms.night)
+        skyMat.uniforms.night.value=Math.max(skyMat.uniforms.night.value,0.9*k);
+    }catch(e){}
+    if(BLOOD.t<=0){ BLOOD.active=false; toast('The blood moon fades'); }
+  }
+}
+function riseBloodMoon(){
+  toast('The blood moon rises','bad');
+  try{ sfx('horn'); }catch(e){}
+  cut('Blood Moon','The blood moon rises once again. Ganon’s power swells, and the monsters he commands return to the earth.',{t:4.2});
+  let back=0;
+  for(const E of enemies){
+    if(!E) continue;
+    if(!E.alive||E.collapsed){
+      E.alive=true; E.collapsed=false; E.finished=false;
+      E.hp=E.hpMax; E.stun=0; E.burn=0; E.shock=0; E.hurtT=0;
+      E.state='idle'; E.aggroT=0; E.alert=0;
+      E.pos.copy(E.home); E.g.position.copy(E.home);
+      if(E.T&&E.T.fly) E.g.position.y=E.home.y+5;
+      E.g.visible=!E.night||isNight();
+      E.dormant=!!(E.night&&!isNight());
+      if(E.weapon) { try{ giveWeapon(E,E.T.wep||E.weapon); }catch(e){} }
+      back++;
+    }
+  }
+  if(back) toast(back+' monsters returned','bad');
+}
+/* ---- critical cooking: a dish made under a blood moon comes out better ---- */
+const _cookCrit=cookIt;
+cookIt=function(){
+  const crit=BLOOD.active&&potContents.length>0;
+  const r=_cookCrit.apply(this,arguments);
+  if(crit&&P.meals.length){
+    const d=P.meals[P.meals.length-1];
+    if(!d.fail){
+      d.hearts=d.hearts>=99?99:d.hearts+3;
+      if(d.time) d.time=Math.round(d.time*1.5);
+      d.lv=Math.min(3,(d.lv||1)+1);
+      toast('Critical cook!','good');
+    }
+  }
+  return r;
+};
+if(typeof animate==='function'){
+  const _animCook=animate;
+  animate=function(dt,moving,speed){
+    const r=_animCook.apply(this,arguments);
+    try{ bloodMoonTick(dt); }catch(e){}
+    return r;
+  };
+}
+console.log('cooking: '+RECIPES.length+' recipes, tiered effects with real durations, '
+  +'elixirs, Dubious and Rock-Hard failures, blood moon respawn + critical cooking');
+</script>
+
 
 
 
