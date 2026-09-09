@@ -4154,8 +4154,27 @@ const RES={rx:-188, ry:0, rz:-516, floorY:0, entry:null};
   const gl=new THREE.PointLight(0x63d6e2,2,26); gl.position.set(0,4.4,0); gs.add(gl);
   IA({kind:'guidance',room:'res',x:RES.rx,z:RES.rz-4,y:0,r:5,label:'Take the Sheikah Slate'});
   /* the two clothing chests, inside, where they really are */
-  RES.chestA=box(r,1.9,1.1,1.3,-5,.55,10,MAT.wood);
-  RES.chestB=box(r,1.9,1.1,1.3, 5,.55,10,MAT.wood);
+  /* olive stone body, dark green bands, a ring clasp and rope handles */
+  const CH_BODY=new THREE.MeshLambertMaterial({color:0x5a6a3a,flatShading:true});
+  const CH_BAND=new THREE.MeshLambertMaterial({color:0x3f4a28,flatShading:true});
+  const CH_ROPE=new THREE.MeshLambertMaterial({color:0x7a2a2a,flatShading:true});
+  function makeChest(px){
+    const g=new THREE.Group(); g.position.set(px,0,10); r.add(g);
+    box(g,1.9,1.0,1.3,0,.50,0,CH_BODY);
+    box(g,1.95,.30,1.35,0,1.05,0,CH_BODY);          /* the lid */
+    box(g,2.0,.20,1.4,0,.80,0,CH_BAND);             /* the band round the seam */
+    for(const sx of [-1,1]) box(g,.18,.95,1.38,sx*.62,.52,0,CH_BAND);
+    box(g,.42,.34,.16,0,.80,.70,CH_BAND);           /* the clasp */
+    const ring=new THREE.Mesh(new THREE.TorusGeometry(.17,.05,6,12),CH_BAND);
+    ring.position.set(0,.70,.78); g.add(ring);
+    for(const sx of [-1,1]){                        /* rope over the lid */
+      const rp=new THREE.Mesh(new THREE.TorusGeometry(.20,.055,5,10,Math.PI),CH_ROPE);
+      rp.position.set(sx*.5,1.20,0); rp.rotation.y=Math.PI/2; g.add(rp);
+    }
+    return g;
+  }
+  RES.chestA=makeChest(-5);
+  RES.chestB=makeChest( 5);
   IA({kind:'resChest',which:'Old Shirt',x:RES.rx-5,z:RES.rz+10,y:0,r:3.2,label:'Open the chest'});
   IA({kind:'resChest',which:'Well-Worn Trousers',x:RES.rx+5,z:RES.rz+10,y:0,r:3.2,label:'Open the chest'});
   /* the pedestal that opens the great door */
@@ -6269,7 +6288,7 @@ function interact(){
     case 'resChest':{
       if(P.chests['res_'+it.which]) return;
       P.chests['res_'+it.which]=1; sfx('open');
-      (it.which==='Old Shirt'?RES.chestA:RES.chestB).position.y+=.4;
+      (it.which==='Old Shirt'?RES.chestA:RES.chestB).position.y+=.45;
       give(it.which);
       if(P.ownedArmor&&P.ownedArmor['Old Shirt']&&P.ownedArmor['Well-Worn Trousers']){
         equipArmor('Old Shirt'); equipArmor('Well-Worn Trousers');
@@ -17622,66 +17641,158 @@ console.log('phase 4: '+TEMPER.length+' horse temperaments, '+Object.keys(HORSE_
    All geometry here is written from scratch - ribbed walls, a recessed basin,
    a line pattern in the floor, a corridor out past the door - and the waking
    is staged rather than beginning with you already stood up. */
+/* Rebuilt against reference shots of the real chamber, which is nothing like
+   what was here before.  The room is warm tan stone, not dark blue-grey; the
+   walls are heavy carved columns; and the whole ceiling is one enormous blue
+   organic structure with a pod hanging beneath it over the basin. */
 (function rebuildRes(){
   if(typeof RES==='undefined'||!RES.g) return;
   const r=RES.g, W=RES.W, L=RES.L;
-  const stone =new THREE.MeshLambertMaterial({color:0x22272c});
-  const rib   =new THREE.MeshLambertMaterial({color:0x2c333a});
-  const lineM =new THREE.MeshBasicMaterial({color:0x63d6e2});
-  const amber =new THREE.MeshBasicMaterial({color:0xd8963a});
+  const TAN   =new THREE.MeshLambertMaterial({color:0xb5a888,flatShading:true});
+  const TAN_D =new THREE.MeshLambertMaterial({color:0x8f8368,flatShading:true});
+  const BAND  =new THREE.MeshLambertMaterial({color:0x35322c,flatShading:true});
+  const FLOOR =new THREE.MeshLambertMaterial({color:0x9a8f70});
+  const DARK  =new THREE.MeshLambertMaterial({color:0x3f3a33});
+  const GLOW  =new THREE.MeshBasicMaterial({color:0x2fb8f0});
+  const GLOW_D=new THREE.MeshBasicMaterial({color:0x1a6f9a});
+  const EMBER =new THREE.MeshBasicMaterial({color:0xe08a2a});
+  const OBS   =new THREE.MeshLambertMaterial({color:0x23262b,flatShading:true});
 
-  /* --- ribbed walls: pilasters down both sides, as the Sheikah built them --- */
-  for(let i=0;i<9;i++){
-    const z=-L/2+4+i*(L-8)/8;
+  /* --- the ground is sand-coloured stone, with a raised dais at the far end --- */
+  const fl=new THREE.Mesh(new THREE.BoxGeometry(W,1,L),FLOOR);
+  fl.position.set(0,-0.5,0); r.add(fl);
+  box(r,W-6,0.7,10,0,0.35,L/2-9,TAN_D);
+  box(r,W-10,0.7,7 ,0,0.70,L/2-9,TAN_D);
+
+  /* --- heavy carved columns down both walls --- */
+  const COLS=7;
+  for(let i=0;i<COLS;i++){
+    const z=-L/2+7+i*(L-14)/(COLS-1);
     for(const sx of [-1,1]){
-      const p=box(r,.8,13,1.6,sx*(W/2-0.6),6.5,z,rib);
-      /* a lit seam up the face of each rib */
-      const s=box(r,.16,9,.2,sx*(W/2-1.1),6.0,z,lineM);
-      s.material=lineM;
+      const x=sx*(W/2-2.6);
+      const shaft=new THREE.Mesh(new THREE.CylinderGeometry(2.5,2.9,15,10),TAN);
+      shaft.position.set(x,7.5,z); r.add(shaft);
+      /* the dark bands that break each column into drums */
+      for(const h of [2.6,7.0,11.6]){
+        const bd=new THREE.Mesh(new THREE.CylinderGeometry(2.72,2.72,1.1,10),BAND);
+        bd.position.set(x,h,z); r.add(bd);
+      }
+      /* a capital where it meets the roof */
+      const cap=new THREE.Mesh(new THREE.CylinderGeometry(3.3,2.6,1.6,10),TAN_D);
+      cap.position.set(x,15.4,z); r.add(cap);
+      /* the little orange constellation dots on the wall behind */
+      for(let k=0;k<3;k++){
+        const e=new THREE.Mesh(new THREE.SphereGeometry(.16,6,5),EMBER);
+        e.position.set(sx*(W/2-0.9), 4+k*4.2+((i%2)?1.4:0), z+(k-1)*1.8);
+        r.add(e);
+      }
     }
   }
-  /* --- a line pattern set into the floor, running from the basin to the door --- */
-  for(let i=0;i<14;i++){
-    const z=-18+i*3.2;
-    const w=(i%2)?5.5:3.0;
-    const seam=box(r,w,.06,.22,0,0.03,z,lineM); seam.material=lineM;
+  /* the walls themselves, behind the columns */
+  box(r,W,18,1.2,0,9,-L/2,DARK); box(r,W,18,1.2,0,9,L/2,DARK);
+  box(r,1.2,18,L,-W/2,9,0,DARK); box(r,1.2,18,L,W/2,9,0,DARK);
+  box(r,W,1,L,0,18,0,DARK);
+
+  /* --- the ceiling: one great blue organic thing, arms radiating from a hub --- */
+  const sky=new THREE.Group(); sky.position.set(0,17.2,-20); r.add(sky);
+  const hub=new THREE.Mesh(new THREE.SphereGeometry(3.0,12,10),GLOW_D);
+  sky.add(hub);
+  const ARMS=14;
+  for(let i=0;i<ARMS;i++){
+    const a=i/ARMS*Math.PI*2, len=9+((i%3)*3.2);
+    const arm=new THREE.Mesh(new THREE.CylinderGeometry(.55,1.5,len,6),GLOW_D);
+    arm.position.set(Math.cos(a)*len*0.45,-0.8-((i%2)*0.6),Math.sin(a)*len*0.45);
+    arm.rotation.z=Math.PI/2-0.35; arm.rotation.y=-a;
+    sky.add(arm);
+    /* the bright blisters along each arm */
+    for(let k=1;k<=3;k++){
+      const t=k/3.4, bl=new THREE.Mesh(new THREE.SphereGeometry(.5+ (3-k)*0.18,8,6),GLOW);
+      bl.position.set(Math.cos(a)*len*t,-0.9-t*1.2,Math.sin(a)*len*t);
+      sky.add(bl);
+    }
   }
-  for(const sx of [-1,1]){
-    const rail=box(r,.22,.06,44,sx*3.4,0.03,2,lineM); rail.material=lineM;
+  /* the pod that hangs beneath it, right over the basin */
+  const pod=new THREE.Group(); pod.position.set(0,-5.2,0); sky.add(pod);
+  const bell=new THREE.Mesh(new THREE.SphereGeometry(2.6,14,8,0,Math.PI*2,0,Math.PI/2),OBS);
+  bell.rotation.x=Math.PI; pod.add(bell);
+  for(let i=0;i<7;i++){
+    const a=i/7*Math.PI*2;
+    const d=new THREE.Mesh(new THREE.SphereGeometry(.36,7,6),GLOW);
+    d.position.set(Math.cos(a)*2.0,-0.15,Math.sin(a)*2.0); pod.add(d);
+    const horn=new THREE.Mesh(new THREE.CylinderGeometry(.10,.26,2.2,5),GLOW_D);
+    horn.position.set(Math.cos(a)*1.5,1.5,Math.sin(a)*1.5);
+    horn.rotation.z=Math.cos(a)*0.35; horn.rotation.x=-Math.sin(a)*0.35; pod.add(horn);
   }
-  /* --- the basin is sunk into the floor, so you rise out of it --- */
+  RES.pod=pod; RES.sky=sky;
+  const podL=new THREE.PointLight(0x2fb8f0,2.6,70); podL.position.set(0,11,-20); r.add(podL);
+
+  /* --- motes of orange light hanging in the air --- */
+  RES.motes=[];
+  for(let i=0;i<44;i++){
+    const m=new THREE.Mesh(new THREE.SphereGeometry(.13,5,4),EMBER);
+    m.position.set((Math.random()-.5)*(W-5),1.5+Math.random()*13,(Math.random()-.5)*(L-6));
+    r.add(m); RES.motes.push({m,p:Math.random()*6.28,s:.25+Math.random()*.5});
+  }
+
+  /* --- the basin, sunk into the floor, ringed with glowing line-work --- */
   const basin=new THREE.Group(); basin.position.set(0,0,-20); r.add(basin);
-  for(let i=0;i<20;i++){
-    const a=i/20*Math.PI*2;
-    const seg=box(basin,1.5,2.4,.5,Math.cos(a)*5.0,-1.0,Math.sin(a)*5.0,stone);
-    seg.rotation.y=-a;
+  const bowl=new THREE.Mesh(new THREE.CylinderGeometry(5.0,4.2,2.4,24),TAN_D);
+  bowl.position.y=-1.2; basin.add(bowl);
+  const lip=new THREE.Mesh(new THREE.TorusGeometry(5.0,.42,8,28),TAN);
+  lip.rotation.x=Math.PI/2; lip.position.y=.1; basin.add(lip);
+  for(let k=0;k<3;k++){
+    const ring=new THREE.Mesh(new THREE.TorusGeometry(2.0+k*1.25,.10,6,30),GLOW);
+    ring.rotation.x=Math.PI/2; ring.position.y=.16; basin.add(ring);
+    if(k===0) RES.basinRing=ring;
   }
-  const sunk=new THREE.Mesh(new THREE.CylinderGeometry(4.6,4.2,2.2,22),stone);
-  sunk.position.y=-1.1; basin.add(sunk);
-  const ring=new THREE.Mesh(new THREE.TorusGeometry(5.0,.16,8,28),lineM);
-  ring.rotation.x=Math.PI/2; ring.position.y=.06; basin.add(ring);
-  RES.basinRing=ring;
+  /* the radiating lines and their node lamps, as on the real floor */
+  for(let i=0;i<8;i++){
+    const a=i/8*Math.PI*2;
+    const ln=new THREE.Mesh(new THREE.BoxGeometry(.14,.05,4.6),GLOW);
+    ln.position.set(Math.cos(a)*7.2,.14,Math.sin(a)*7.2); ln.rotation.y=-a; basin.add(ln);
+    const nd=new THREE.Mesh(new THREE.SphereGeometry(.42,8,6),GLOW);
+    nd.position.set(Math.cos(a)*9.4,.16,Math.sin(a)*9.4); basin.add(nd);
+  }
 
-  /* --- a ring of light overhead, and warm Sheikah amber at the far end --- */
-  const halo=new THREE.Mesh(new THREE.TorusGeometry(6.5,.2,8,32),lineM);
-  halo.rotation.x=Math.PI/2; halo.position.set(0,15.2,-20); r.add(halo);
-  for(let i=0;i<6;i++){
-    const t=box(r,.3,.3,3.4,(i%2?1:-1)*(W/2-2.2),14.4,6+((i>>1)*9),amber);
-    t.material=amber;
+  /* --- the Guidance Stone: a dark slab, orange glyphs, the blue eye --- */
+  if(RES.slateMesh&&RES.slateMesh.parent){
+    const gs=RES.slateMesh.parent;
+    const slab=new THREE.Mesh(new THREE.BoxGeometry(2.3,5.2,.9),OBS);
+    slab.position.set(0,3.4,0); gs.add(slab);
+    const gly=new THREE.Mesh(new THREE.BoxGeometry(2.0,.9,.10),EMBER);
+    gly.position.set(0,5.4,.48); gs.add(gly);
+    const eye=new THREE.Mesh(new THREE.CylinderGeometry(.62,.62,.12,18),GLOW);
+    eye.rotation.x=Math.PI/2; eye.position.set(0,3.6,.5); gs.add(eye);
+    const pupil=new THREE.Mesh(new THREE.CylinderGeometry(.26,.26,.16,14),GLOW_D);
+    pupil.rotation.x=Math.PI/2; pupil.position.set(0,3.6,.54); gs.add(pupil);
+    for(const sx of [-1,1]){
+      const t=new THREE.Mesh(new THREE.ConeGeometry(.22,.6,4),EMBER);
+      t.position.set(sx*.85,4.5,.48); gs.add(t);
+      const w=new THREE.Mesh(new THREE.BoxGeometry(.10,.05,1.1),EMBER);
+      w.position.set(sx*.75,2.6,.48); w.rotation.y=sx*.5; gs.add(w);
+    }
   }
-  /* --- past the great door: a corridor, then daylight --- */
-  const cor=new THREE.Group(); cor.position.set(0,0,L/2+9); r.add(cor);
-  box(cor,10,1,20,0,-0.5,0,stone);
-  box(cor,1,10,20,-5,5,0,stone); box(cor,1,10,20,5,5,0,stone);
-  box(cor,10,1,20,0,10,0,stone);
-  const mouth=new THREE.Mesh(new THREE.PlaneGeometry(9,9),
-    new THREE.MeshBasicMaterial({color:0xdfe9f0,transparent:true,opacity:.92,
+
+  /* --- past the great door, a rough cave and daylight --- */
+  const cor=new THREE.Group(); cor.position.set(0,0,L/2+11); r.add(cor);
+  const rock=new THREE.MeshLambertMaterial({color:0x2f2a24,flatShading:true});
+  box(cor,14,1,24,0,-0.5,0,rock);
+  box(cor,1.4,14,24,-7,7,0,rock); box(cor,1.4,14,24,7,7,0,rock);
+  box(cor,14,1,24,0,14,0,rock);
+  for(let i=0;i<10;i++){
+    const e=new THREE.Mesh(new THREE.SphereGeometry(.12,5,4),EMBER);
+    e.position.set((Math.random()-.5)*11,2+Math.random()*9,(Math.random()-.5)*20);
+    cor.add(e);
+  }
+  const mouth=new THREE.Mesh(new THREE.PlaneGeometry(12,11),
+    new THREE.MeshBasicMaterial({color:0xdfe9f0,transparent:true,opacity:.94,
                                  side:THREE.DoubleSide}));
-  mouth.position.set(0,4.5,10); cor.add(mouth);
+  mouth.position.set(0,5.5,12); cor.add(mouth);
   RES.mouth=mouth;
-  RES.L=L+20;                       /* the room is longer now, so the clamp follows */
+  RES.L=L+24;
 
-  console.log('Shrine of Resurrection rebuilt: ribbed walls, sunken basin, exit corridor');
+  console.log('Shrine of Resurrection rebuilt from reference: tan stone, '
+    +COLS*2+' carved columns, a '+ARMS+'-armed ceiling with its pod, 44 motes');
 })();
 
 /* ---- the waking itself ---- */
@@ -17729,6 +17840,16 @@ if(typeof animate==='function'){
     const r=_aRes.apply(this,arguments);
     try{
       resWakeTick(dt);
+      /* the motes drift, the pod breathes, the ceiling pulses */
+      if(P.inRes&&RES.motes){
+        const t=performance.now()/1000;
+        for(const o of RES.motes){
+          o.m.position.y+=Math.sin(t*o.s+o.p)*dt*0.35;
+          o.m.position.x+=Math.cos(t*o.s*0.7+o.p)*dt*0.20;
+        }
+        if(RES.pod) RES.pod.position.y=-5.2+Math.sin(t*0.6)*0.35;
+        if(RES.sky) RES.sky.rotation.y+=dt*0.035;
+      }
       /* the basin keeps its slow glow the whole time you are in there */
       if(P.inRes&&RES.basinRing&&resWake<=0)
         RES.basinRing.material.color.setHSL(0.52,0.65,0.42+0.06*Math.sin(performance.now()/700));
