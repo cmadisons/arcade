@@ -21409,6 +21409,206 @@ addEventListener('keydown',e=>{
 })();
 console.log('Sheikah Slate: map zoom/pan/pins/filters/readout, rune wheel (hold R), Slate screen (O), amiibo from dumps and NFC');
 </script>
+<script>
+/* ================= BATCH 101 — Group 7 item 9: level of detail ================
+   A standing view over central Hyrule drew about 17,600 meshes in 3,450 draw
+   calls.  Nearly all of it was detail nobody could see: every monster, horse
+   and villager is a skeleton hung with twenty to forty parts, and every
+   building is dozens of boxes.
+
+   Now each of them has a stand-in: the same shape merged into a single mesh
+   in one colour-per-vertex draw call, made the first time it is needed and
+   shared by every monster of the same kind.  Close up you see the real
+   thing, animating; past 55 m (monsters, horses, people) or 320 m
+   (buildings) you see the stand-in; buildings that are not tall landmarks
+   drop out past 2.4 km, where the haze has them anyway. */
+const LOD={near:55, bNear:320, bFar:2400, made:0, merged:0};
+const LOD_MAT=new THREE.MeshLambertMaterial({vertexColors:true,flatShading:true});
+function mergeToProxy(root,skip){
+  root.updateMatrixWorld(true);
+  const inv=new THREE.Matrix4().copy(root.matrixWorld).invert();
+  const pos=[], nor=[], col=[], m=new THREE.Matrix4(), nm=new THREE.Matrix3(), v=new THREE.Vector3(), c=new THREE.Color();
+  root.traverse(o=>{
+    if(!o.isMesh||o.isInstancedMesh||o.isSprite||!o.geometry||!o.geometry.attributes.position) return;
+    if(skip&&skip(o)) return;
+    for(let p=o;p&&p!==root;p=p.parent) if(!p.visible) return;
+    const mat=Array.isArray(o.material)?o.material[0]:o.material;
+    if(!mat||mat.transparent&&mat.opacity<.6) return;
+    let g=o.geometry; if(g.index) g=g.toNonIndexed();
+    const P=g.attributes.position, N=g.attributes.normal;
+    m.multiplyMatrices(inv,o.matrixWorld); nm.getNormalMatrix(m);
+    c.copy(mat.color||new THREE.Color(0x888888));
+    if(mat.emissive&&mat.emissive.r+mat.emissive.g+mat.emissive.b>.2) c.lerp(mat.emissive,.5);
+    if(mat.map&&!mat.color) c.set(0x888888);
+    for(let i=0;i<P.count;i++){
+      v.fromBufferAttribute(P,i).applyMatrix4(m); pos.push(v.x,v.y,v.z);
+      if(N){ v.fromBufferAttribute(N,i).applyMatrix3(nm).normalize(); nor.push(v.x,v.y,v.z); } else nor.push(0,1,0);
+      col.push(c.r,c.g,c.b);
+    }
+    if(g!==o.geometry) g.dispose();
+  });
+  if(!pos.length) return null;
+  const geo=new THREE.BufferGeometry();
+  geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+  geo.setAttribute('normal',new THREE.Float32BufferAttribute(nor,3));
+  geo.setAttribute('color',new THREE.Float32BufferAttribute(col,3));
+  geo.computeBoundingSphere();
+  LOD.merged++;
+  return geo;
+}
+/* ---- creatures: one shared stand-in per kind ---- */
+const LOD_CACHE={};
+function creatureProxy(owner,key){
+  if(owner.__lodProxy) return owner.__lodProxy;
+  if(!owner.rig||!owner.rig.root) return null;
+  let geo=LOD_CACHE[key];
+  if(geo===undefined){ geo=mergeToProxy(owner.rig.root); LOD_CACHE[key]=geo; }
+  if(!geo) return null;
+  const mesh=new THREE.Mesh(geo,LOD_MAT); mesh.matrixAutoUpdate=true;
+  mesh.position.copy(owner.rig.root.position); mesh.rotation.copy(owner.rig.root.rotation); mesh.scale.copy(owner.rig.root.scale);
+  owner.rig.root.parent.add(mesh); owner.__lodProxy=mesh; LOD.made++;
+  return mesh;
+}
+function lodCreature(owner,key,d){
+  if(!owner.rig||!owner.rig.root||!owner.rig.root.parent) return;
+  if(d<LOD.near){ if(owner.__lodProxy) owner.__lodProxy.visible=false; return; }
+  const wasVisible=owner.rig.root.visible||(owner.__lodProxy&&owner.__lodProxy.visible);
+  const inRange=d<(owner.__lodFar||420);
+  if(!inRange){ if(owner.__lodProxy) owner.__lodProxy.visible=false; return; }
+  const px=creatureProxy(owner,key); if(!px) return;
+  owner.rig.root.visible=false; px.visible=true;
+  px.rotation.y=owner.rig.root.rotation.y;
+}
+{ const _updateEnemiesLOD=updateEnemies;
+  updateEnemies=function(dt){
+    _updateEnemiesLOD(dt);
+    for(const E of enemies){
+      if(!E.alive||!E.g.visible||E.collapsed){ if(E.__lodProxy) E.__lodProxy.visible=false; continue; }
+      lodCreature(E,'E:'+E.t,Math.hypot(E.pos.x-camera.position.x,E.pos.z-camera.position.z));
+    }
+  };
+}
+{ const _updateNPCsLOD=updateNPCs;
+  updateNPCs=function(dt){
+    _updateNPCsLOD(dt);
+    for(const N of npcs){
+      const d=Math.hypot(N.pos.x-camera.position.x,N.pos.z-camera.position.z);
+      N.__lodFar=200;
+      if(d>200){ if(N.__lodProxy) N.__lodProxy.visible=false; continue; }
+      if(d>=LOD.near) N.rig.root.visible=true;       /* let the proxy logic decide */
+      lodCreature(N,'N:'+N.race+':'+(N.kind||''),d);
+    }
+  };
+}
+{ const _updateHorsesLOD=updateHorses;
+  updateHorses=function(dt){
+    _updateHorsesLOD(dt);
+    for(const H of horses){
+      if(H===P.mount||!H.rig){ if(H.__lodProxy) H.__lodProxy.visible=false; if(H.rig) H.rig.root.visible=true; continue; }
+      H.__lodFar=230;
+      lodCreature(H,'H:'+(H.giant?'g':H.royal?'r':'n'),Math.hypot(H.pos.x-camera.position.x,H.pos.z-camera.position.z));
+    }
+  };
+}
+
+/* ---- buildings: each group gets its own merged stand-in ---- */
+const LOD_BUILD=[];
+(function registerBuildings(){
+  const protectedObjs=new Set();
+  for(const it of interactables){ if(it.obj&&it.obj.isObject3D) protectedObjs.add(it.obj); }
+  if(typeof shrineObjs!=='undefined') for(const k in shrineObjs) protectedObjs.add(shrineObjs[k]);
+  for(const g of world.children){
+    if(!g.isGroup||protectedObjs.has(g)) continue;
+    const meshes=[]; g.traverse(o=>{ if(o.isMesh&&!o.isInstancedMesh) meshes.push(o); });
+    if(meshes.length<8) continue;
+    const box=new THREE.Box3().setFromObject(g);
+    const tall=box.max.y-box.min.y>30;
+    LOD_BUILD.push({g,meshes,tall,proxy:null,state:'near',c:box.getCenter(new THREE.Vector3()),hidden:new Set()});
+  }
+})();
+let lodBuildT=0, lodBuildI=0;
+function updateBuildingLOD(dt){
+  lodBuildT-=dt; if(lodBuildT>0) return; lodBuildT=.2;
+  const cam=camera.position;
+  let merges=0;
+  /* a slice at a time, so no frame pays for all of them */
+  const n=LOD_BUILD.length, step=Math.max(60,Math.ceil(n/5));
+  for(let k=0;k<step&&n;k++){
+    const B=LOD_BUILD[lodBuildI=(lodBuildI+1)%n];
+    if(!B.g.parent||!B.g.visible) continue;
+    const d=Math.hypot(B.c.x-cam.x,B.c.z-cam.z);
+    const want=d<LOD.bNear?'near':(d<LOD.bFar||B.tall)?'far':'off';
+    if(want===B.state) continue;
+    if(want!=='near'&&!B.proxy){
+      if(merges>=6) continue;
+      const geo=mergeToProxy(B.g,o=>o.material&&o.material.isMeshBasicMaterial&&o.material.transparent);
+      merges++;
+      if(!geo){ B.state=want; continue; }
+      B.proxy=new THREE.Mesh(geo,LOD_MAT); B.proxy.visible=false; B.g.add(B.proxy);
+    }
+    if(want==='near'){
+      for(const m of B.hidden) m.visible=true; B.hidden.clear();
+      if(B.proxy) B.proxy.visible=false;
+    } else {
+      for(const m of B.meshes) if(m.visible&&m!==B.proxy){ m.visible=false; B.hidden.add(m); }
+      if(B.proxy) B.proxy.visible=(want==='far');
+    }
+    B.state=want;
+  }
+}
+{ const _updateSkyLOD=updateSky;
+  updateSky=function(dt){ _updateSkyLOD(dt); if(!(P.inShrine||P.inRes||P.inBeast||P.inCastle)) try{ updateBuildingLOD(Math.max(dt,.016)); }catch(e){} };
+}
+console.log('LOD: '+LOD_BUILD.length+' building groups with stand-ins; creatures swap to shared stand-ins past '+LOD.near+' m');
+</script>
+<script>
+/* ---- small things stop drawing when they would be a few pixels ----
+   Birds, boars, ingredients, crates, camp props, signs and ruins had no
+   distance limit at all - 262 critters alone were 5,500 meshes on screen from
+   anywhere.  Each top-level thing now has a draw distance that follows its
+   size (seventy times its radius, between 90 m and 1.4 km).  It is done with
+   render layers, so the game's own visible flags are never touched. */
+const CULL={items:[],i:0,t:0,hidden:0};
+(function registerCullables(){
+  const skip=new Set([terrain,water,sky,player]);
+  for(const o of [typeof hyruleMesh!=='undefined'&&hyruleMesh,typeof hWater!=='undefined'&&hWater,typeof PATCH!=='undefined'&&PATCH.mesh,
+                  typeof rainMesh!=='undefined'&&rainMesh,RES.g,typeof oldMan!=='undefined'&&oldMan]) if(o) skip.add(o);
+  if(typeof ROOMS!=='undefined') for(const k in ROOMS) if(ROOMS[k]&&ROOMS[k].g) skip.add(ROOMS[k].g);
+  const building=new Set(LOD_BUILD.map(b=>b.g));
+  const box=new THREE.Box3(), sph=new THREE.Sphere();
+  const consider=o=>{
+    if(skip.has(o)||building.has(o)||o.isLight||o.isCamera||o.isInstancedMesh) return;
+    const meshes=[]; o.traverse(m=>{ if((m.isMesh&&!m.isInstancedMesh)||m.isSprite||m.isPoints||m.isLine) meshes.push(m); });
+    if(!meshes.length) return;
+    box.setFromObject(o); if(box.isEmpty()) return;
+    box.getBoundingSphere(sph);
+    if(sph.radius>60) return;                     /* big things are landmarks - leave them */
+    CULL.items.push({o,meshes,r:sph.radius,off:false,dist:clamp(sph.radius*70,90,1400)});
+  };
+  for(const o of scene.children) consider(o);
+  for(const o of world.children) consider(o);
+})();
+const _cullWP=new THREE.Vector3();
+function updateCulling(dt){
+  CULL.t-=dt; if(CULL.t>0) return; CULL.t=.15;
+  const n=CULL.items.length; if(!n) return;
+  const cam=camera.position, step=Math.max(400,Math.ceil(n/4));
+  for(let k=0;k<step;k++){
+    const it=CULL.items[CULL.i=(CULL.i+1)%n];
+    it.o.getWorldPosition(_cullWP);
+    const d=Math.hypot(_cullWP.x-cam.x,_cullWP.z-cam.z);
+    const off=d>it.dist;
+    if(off===it.off) continue;
+    it.off=off;
+    for(const m of it.meshes) m.layers.set(off?1:0);
+    CULL.hidden+=off?1:-1;
+  }
+}
+{ const _updateSkyCull=updateSky;
+  updateSky=function(dt){ _updateSkyCull(dt); try{ updateCulling(Math.max(dt,.016)); }catch(e){} };
+}
+console.log('culling: '+CULL.items.length+' small things draw only while they are big enough to see');
+</script>
 
 
 
