@@ -20077,6 +20077,115 @@ const RAIN_LINES=['Wait it out with me. It never lasts, not this time of year.',
 })();
 console.log('group 4: rain shelter for '+npcs.length+' people; Travel Medallion; EX rewards corrected');
 </script>
+<script>
+/* ================= BATCH 96 — Group 5: terrain ==========================
+   Part 1. The Plateau's own terrain was never where the Plateau is.
+
+   When the Plateau was placed into Hyrule (PCX, PCZ = -870, 1954), every
+   height lookup, landmark and sculpting pass moved with it - but the fine
+   1.6 km terrain mesh and the Plateau's water were still drawn around the
+   world origin.  At the real Plateau you stood on the coarse 25 m Hyrule
+   mesh instead; 1.6 km away a second Plateau hung over a lake.  The same
+   slip meant the Plateau's vegetation pass tested local coordinates against
+   a world-space shoreline and planted nothing (the load log said "0 trees"),
+   most of its ingredients were never placed, and its ground colours were
+   read off the wrong hillsides. */
+(function relocatePlateau(){
+  terrain.position.set(PCX,0,PCZ); terrain.updateMatrix(); terrain.updateMatrixWorld(true);
+  water.position.set(PCX,WATER,PCZ); water.updateMatrix(); water.updateMatrixWorld(true);
+  scene.traverse(o=>{ if(o.isMesh&&o.material&&falls.includes(o.material)&&!o.userData.moved){ o.position.x+=PCX; o.position.z+=PCZ; o.userData.moved=true; } });
+
+  /* the colours again, this time from the right place */
+  const p=tGeo.attributes.position.array, col=tGeo.attributes.color.array;
+  const C={grass:new THREE.Color(0x5d8a44),grass2:new THREE.Color(0x7f9750),
+    rock:new THREE.Color(0x8d8272),sand:new THREE.Color(0xcbb98d),snow:new THREE.Color(0xeef2f6),
+    dirt:new THREE.Color(0x6d5a3f),voidc:new THREE.Color(0x3a3630)};
+  const t=new THREE.Color();
+  for(let k=0,vi=0;k<p.length;k+=3,vi++){
+    const x=p[k]+PCX, z=p[k+2]+PCZ, y=p[k+1];
+    const gx=clamp(Math.round((p[k]+HALF)/CELL),0,GRID-1), gz=clamp(Math.round((p[k+2]+HALF)/CELL),0,GRID-1);
+    const sl=slopeAt(x,z), n=fbm(x*.035,z*.035,2), temp=tempAt(x,z,y);
+    let b;
+    if(y<-30){t.copy(C.voidc); b=5;}
+    else if(y<WATER+1.6){t.copy(C.sand); b=3;}
+    else if(temp<0.5 && y>WATER+2){t.copy(C.snow).lerp(C.rock,clamp((sl-.6)*1.2,0,.6)); b=2;}
+    else if(sl>.82){t.copy(C.rock).lerp(C.dirt,n*.5); b=1;}
+    else {t.copy(C.grass).lerp(C.grass2,clamp(n*1.5+(y-150)/120,0,1));
+          t.lerp(C.rock,clamp((sl-.46)*1.5,0,.8)); b=0;}
+    t.offsetHSL(0,0,(n-.5)*.05);
+    col[k]=t.r; col[k+1]=t.g; col[k+2]=t.b;
+    BIOME[gz*GRID+gx]=b;
+  }
+  tGeo.attributes.color.needsUpdate=true;
+})();
+biomeAt=function(x,z){
+  const gx=clamp(Math.round((x-PCX+HALF)/CELL),0,GRID-1), gz=clamp(Math.round((z-PCZ+HALF)/CELL),0,GRID-1);
+  return BIOME[gz*GRID+gx];
+};
+/* the Plateau's trees, rocks, bushes and grass, planted in world space */
+(function replantPlateau(){
+  const I=VEG, d=new THREE.Object3D();
+  const R=(()=>{ let s=91173; return ()=>((s=(s*1664525+1013904223)>>>0)/4294967296); })();
+  const cap=m=>m.instanceMatrix.count;
+  const put=(m,x,y,z,s,ry,sy)=>{ if(m.count>=cap(m)) return -1; d.position.set(x,y,z); d.rotation.set(0,ry,0);
+    d.scale.set(s,sy||s,s); d.updateMatrix(); m.setMatrixAt(m.count++,d.matrix); return m.count-1; };
+  let planted=0;
+  for(let i=0;i<120000;i++){
+    const x=PCX+(R()*2-1)*760, z=PCZ+(R()*2-1)*760;
+    if(!onPlateau(x,z)) continue;
+    const y=groundAt(x,z); if(y<WATER+.7) continue;
+    const sl=slopeAt(x,z), b=biomeAt(x,z), temp=tempAt(x,z,y);
+    const inForest=Math.hypot(x-LM.forest.x,z-LM.forest.z)<170;
+    const inWoods=Math.hypot(x-LM.cabin.x,z-LM.cabin.z)<190;
+    const dens=fbm(x*.004+40,z*.004+9,3);
+    if(sl<.7&&b!==2&&b!==3&&I.trunk.count<cap(I.trunk)-2&&R()<(inForest?.62:inWoods?.42:dens*.15)){
+      const s=.8+R()*.75, ry=R()*TAU;
+      const ti=put(I.trunk,x,y+5.4*s*.5,z,s,ry);
+      const pine=temp<9||R()<.3;
+      put(pine?I.pine:I.leaf,x,y+(pine?6.4:6.0)*s,z,s*(pine?1:1.06),ry);
+      if(!pine) put(I.leaf,x,y+8.2*s,z,s*.7,ry+.6);
+      trees.push({x,y,z,s,burning:0,burnt:false,idx:ti,pine,fruit:R()<.3?'Apple':(R()<.3?'Acorn':null)});
+      planted++;
+    } else if(temp<2&&sl<.75&&I.snowpine.count<cap(I.snowpine)&&R()<.22){
+      const s=.8+R()*.6; const ti=put(I.trunk,x,y+5.4*s*.5,z,s,R()*TAU);
+      put(I.snowpine,x,y+6.6*s,z,s,R()*TAU);
+      trees.push({x,y,z,s,burning:0,burnt:false,idx:ti,pine:true,fruit:null,snow:true}); planted++;
+    } else if(I.rock.count<cap(I.rock)&&R()<.05){
+      put(I.rock,x,y+.6+R()*.6,z,.6+R()*2,R()*TAU,.6+R()*1.3);
+    } else if(I.bush.count<cap(I.bush)&&sl<.55&&R()<.1){
+      put(I.bush,x,y+.8,z,.75+R()*.7,R()*TAU);
+    } else if(I.grass.count<cap(I.grass)&&sl<.55&&b===0&&R()<.5){
+      const gi=put(I.grass,x,y+.7,z,.7+R()*.7,R()*TAU);
+      if(gi>=0) grassTufts.push({x,y,z,burning:0,burnt:false,idx:gi});
+    }
+  }
+  for(const k in I) I[k].instanceMatrix.needsUpdate=true;
+  /* ingredients that the first pass could not find ground for */
+  const plan=[['Apple',70,'tree'],['Wildberry',40,'bush'],['Rushroom',20,'cliff'],['Hyrule Herb',40,'grass'],
+    ['Warm Safflina',16,'grass'],['Spicy Pepper',34,'bush'],['Acorn',30,'tree'],['Bird Egg',12,'nest'],
+    ['Flint',36,'rock'],['Amber',6,'rock'],['Opal',4,'rock']];
+  let food=0;
+  for(const [k,n,where] of plan){
+    if(!MATS[k]) continue;
+    let placed=0, guard=0;
+    while(placed<n&&guard++<9000){
+      const x=PCX+(R()*2-1)*740, z=PCZ+(R()*2-1)*740;
+      if(!onPlateau(x,z)) continue;
+      const y=groundAt(x,z), sl=slopeAt(x,z), b=biomeAt(x,z), temp=tempAt(x,z,y);
+      if(y<WATER+.8) continue;
+      if(where==='grass'&&(b!==0||temp<6)) continue;
+      if(where==='bush'&&(b!==0||sl>.6)) continue;
+      if(where==='rock'&&(b!==1&&sl<.7)) continue;
+      if(where==='cliff'&&sl<.85) continue;
+      if(where==='tree'&&b===2) continue;
+      const g=new THREE.Mesh(new THREE.IcosahedronGeometry(.34,0),matMesh(k));
+      g.position.set(x,y+(where==='tree'?3.4:.9),z); g.castShadow=false; scene.add(g);
+      forage.push({m:g,k,taken:false,x,z}); placed++; food++;
+    }
+  }
+  console.log('Plateau terrain moved to where the Plateau is; replanted '+planted+' trees and '+food+' ingredients');
+})();
+</script>
 
 
 
