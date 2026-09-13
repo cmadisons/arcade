@@ -20186,6 +20186,224 @@ biomeAt=function(x,z){
   console.log('Plateau terrain moved to where the Plateau is; replanted '+planted+' trees and '+food+' ingredients');
 })();
 </script>
+<script>
+/* ================= BATCH 97 — Group 5: terrain textures and a finer grid =====
+   1. Textures.  The ground was a flat vertex colour per 3 m (Plateau) or
+      25 m (Hyrule) cell.  The terrain shader now reads the surface it is
+      drawing: grass gets blades and clumps, steep rock gets strata and
+      cracks, sand gets ripples, snow glints, and everything gets two scales
+      of weathering - all worked out per pixel from world position, no image.
+   3. A finer grid.  Around you the ground is a 1.25 m mesh, not the 25 m
+      one, and it carries real extra relief - hummocks, dips and rubble -
+      that you walk, climb and slide on, because the height lookup everything
+      uses carries the same detail.  It fades to nothing near buildings,
+      shrines, chests, camps, people and the shoreline, so nothing that was
+      placed on the old ground ends up buried or floating.  The coarse mesh
+      is lowered out of the way under the fine one, so they never fight. */
+
+const TERR_U={uPatch:{value:new THREE.Vector4(0,0,110,0)}, uPatchSink:{value:6}};
+const TERR_FRAG_FN=`
+float thash(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
+float tnoise(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.0-2.0*f);
+  return mix(mix(thash(i),thash(i+vec2(1,0)),f.x),mix(thash(i+vec2(0,1)),thash(i+vec2(1,1)),f.x),f.y); }
+varying vec3 vTW; varying vec3 vTN;`;
+const TERR_FRAG_BODY=`
+  {
+    vec3 w=vTW; float sl=1.0-clamp(normalize(vTN).y,0.0,1.0);
+    vec3 c=diffuseColor.rgb;
+    float lum=dot(c,vec3(.299,.587,.114));
+    float grassy=smoothstep(.015,.09,c.g-max(c.r,c.b)*.92);
+    float snowy=smoothstep(.74,.88,min(c.r,min(c.g,c.b)));
+    float sandy=smoothstep(.04,.16,c.r-c.b)*smoothstep(.42,.58,lum)*(1.0-grassy)*(1.0-snowy);
+    float rocky=smoothstep(.30,.55,sl)*(1.0-snowy);
+    float n1=tnoise(w.xz*.07), n2=tnoise(w.xz*.5+17.0), n3=tnoise(w.xz*2.1+5.0);
+    c*=1.0+(n1-.5)*.12+(n2-.5)*.08;
+    float blade=tnoise(vec2(w.x*2.7+w.z*.35,w.z*8.5-w.x*.2))*tnoise(w.xz*1.4+3.0);
+    c*=1.0+grassy*(1.0-rocky)*((blade-.34)*.17+(n1-.5)*.10);
+    c.r+=grassy*(n2-.5)*.035;
+    float strata=sin(w.y*1.6+n2*3.5+n1*6.0);
+    float crack=smoothstep(.47,.5,abs(tnoise(w.xz*.9+w.y*.3)-.5)) ;
+    c*=1.0+rocky*(strata*.10+(n3-.5)*.12-crack*.10);
+    float rip=sin(dot(w.xz,vec2(.83,.56))*2.2+n2*2.6);
+    c*=1.0+sandy*(1.0-rocky)*rip*.07;
+    c+=snowy*step(.986,thash(floor(w.xz*5.0)))*.30;
+    diffuseColor.rgb=c;
+  }`;
+function terrainShader(mat,tag){
+  if(!mat||mat.__terr) return;
+  mat.__terr=true;
+  const prev=mat.onBeforeCompile;
+  mat.onBeforeCompile=function(sh){
+    if(prev) prev.call(this,sh);
+    sh.uniforms.uPatch=TERR_U.uPatch; sh.uniforms.uPatchSink=TERR_U.uPatchSink;
+    sh.vertexShader='uniform vec4 uPatch; uniform float uPatchSink; varying vec3 vTW; varying vec3 vTN;\n'+
+      sh.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\n'+
+      (tag==='patch'?`vec4 twp=modelMatrix*vec4(transformed,1.0);`:
+      `vec4 twp=modelMatrix*vec4(transformed,1.0);
+       float pd=max(abs(twp.x-uPatch.x),abs(twp.z-uPatch.y));
+       transformed.y-=uPatchSink*uPatch.w*(1.0-smoothstep(uPatch.z-36.0,uPatch.z-28.0,pd));`)+
+      `vTW=twp.xyz; vTN=normalize(mat3(modelMatrix)*objectNormal);`);
+    sh.fragmentShader=TERR_FRAG_FN+'\n'+sh.fragmentShader.replace('#include <color_fragment>','#include <color_fragment>\n'+TERR_FRAG_BODY);
+  };
+  mat.customProgramCacheKey=()=> 'terr-'+tag;
+  mat.needsUpdate=true;
+}
+terrainShader(terrain.material,'plateau');
+terrainShader(hyruleMesh.material,'hyrule');
+
+/* ---- detail height, and where it must stay flat ---- */
+const groundCoarse=groundAt;
+const DM_CELL=40, DM_N=Math.ceil(HW/DM_CELL)+1, DMASK=new Float32Array(DM_N*DM_N).fill(1);
+function dmStamp(x,z,r){
+  const R=r+30;
+  const i0=Math.max(0,Math.floor((x-R+HHALF)/DM_CELL)), i1=Math.min(DM_N-1,Math.ceil((x+R+HHALF)/DM_CELL));
+  const j0=Math.max(0,Math.floor((z-R+HHALF)/DM_CELL)), j1=Math.min(DM_N-1,Math.ceil((z+R+HHALF)/DM_CELL));
+  for(let j=j0;j<=j1;j++) for(let i=i0;i<=i1;i++){
+    const cx=i*DM_CELL-HHALF, cz=j*DM_CELL-HHALF, d=Math.hypot(cx-x,cz-z);
+    const v=clamp((d-r)/30,0,1);
+    if(v<DMASK[j*DM_N+i]) DMASK[j*DM_N+i]=v;
+  }
+}
+(function buildDetailMask(){
+  for(const o of STRUCTS) dmStamp(o.x,o.z,(o.r!==undefined?o.r:Math.max(o.hx,o.hz))+8);
+  for(const it of interactables) if(isFinite(it.x)&&Math.abs(it.x)<HHALF) dmStamp(it.x,it.z,8);
+  for(const N of npcs) dmStamp(N.home.x,N.home.z,14);
+  for(const pf of platforms) if(Math.abs(pf.x)<HHALF&&Math.abs(pf.z)<HHALF) dmStamp(pf.x,pf.z,Math.max(pf.hx,pf.hz)+4);
+  for(const k of ['kakariko','hateno','lurelin','gerudoTown','zora','rito','korok']) if(REGIONS[k]) dmStamp(REGIONS[k].x,REGIONS[k].z,REGIONS[k].r*.55);
+  if(typeof CAMPS!=='undefined') for(const c of CAMPS) if(c&&isFinite(c.x)) dmStamp(c.x,c.z,20);
+  for(const k in LM) dmStamp(LM[k].x,LM[k].z,24);
+  if(typeof STABLES!=='undefined') for(const s of STABLES) dmStamp(s.x,s.z,30);
+  if(typeof TOWERS!=='undefined') for(const t of TOWERS) dmStamp(t.x,t.z,16);
+})();
+function dmAt(x,z){
+  const gx=(x+HHALF)/DM_CELL, gz=(z+HHALF)/DM_CELL, i=Math.floor(gx), j=Math.floor(gz);
+  if(i<0||j<0||i>=DM_N-1||j>=DM_N-1) return 0;
+  const fx=gx-i, fz=gz-j, a=DMASK[j*DM_N+i], b=DMASK[j*DM_N+i+1], c=DMASK[(j+1)*DM_N+i], d=DMASK[(j+1)*DM_N+i+1];
+  return (a*(1-fx)+b*fx)*(1-fz)+(c*(1-fx)+d*fx)*fz;
+}
+function terrainDetail(x,z,g){
+  const m=dmAt(x,z); if(m<=0) return 0;
+  const shore=clamp((g-waterAt(x,z)-1.2)/4,0,1); if(shore<=0) return 0;
+  const e=5, s=Math.hypot(groundCoarse(x+e,z)-groundCoarse(x-e,z), groundCoarse(x,z+e)-groundCoarse(x,z-e))/(2*e);
+  const amp=(.26+Math.min(1.0,s*.75))*m*shore;
+  return amp*((fbm(x*.07+311,z*.07+97,3)-.44)*1.9+(vnoise(x*.43+17,z*.43+5)-.5)*.5);
+}
+groundAt=function(x,z){ const g=groundCoarse(x,z); return g+terrainDetail(x,z,g); };
+
+/* ---- the fine mesh that follows you ---- */
+const PATCH={R:110, seg:176, cx:1e9, cz:1e9, mesh:null};
+(function makePatch(){
+  const geo=new THREE.PlaneGeometry(PATCH.R*2,PATCH.R*2,PATCH.seg,PATCH.seg); geo.rotateX(-Math.PI/2);
+  geo.setAttribute('color',new THREE.BufferAttribute(new Float32Array(geo.attributes.position.count*3),3));
+  const mat=new THREE.MeshLambertMaterial({vertexColors:true});
+  mat.polygonOffset=true; mat.polygonOffsetFactor=-4; mat.polygonOffsetUnits=-4;
+  terrainShader(mat,'patch');
+  const m=new THREE.Mesh(geo,mat); m.receiveShadow=true; m.renderOrder=2; m.frustumCulled=false; m.visible=false;
+  scene.add(m); PATCH.mesh=m;
+})();
+function sampleColor(x,z,out){
+  if(onPlateau(x,z)){
+    const gx=clamp((x-PCX+HALF)/CELL,0,GRID-1.001), gz=clamp((z-PCZ+HALF)/CELL,0,GRID-1.001);
+    const i=Math.floor(gx), j=Math.floor(gz), fx=gx-i, fz=gz-j, C=tGeo.attributes.color.array;
+    for(let c=0;c<3;c++){ const a=C[(j*GRID+i)*3+c], b=C[(j*GRID+i+1)*3+c], d=C[((j+1)*GRID+i)*3+c], e=C[((j+1)*GRID+i+1)*3+c];
+      out[c]=(a*(1-fx)+b*fx)*(1-fz)+(d*(1-fx)+e*fx)*fz; }
+  } else {
+    const gx=clamp((x+HHALF)/HCELL,0,HGRID-1.001), gz=clamp((z+HHALF)/HCELL,0,HGRID-1.001);
+    const i=Math.floor(gx), j=Math.floor(gz), fx=gx-i, fz=gz-j, C=hGeo.attributes.color.array;
+    for(let c=0;c<3;c++){ const a=C[(j*HGRID+i)*3+c], b=C[(j*HGRID+i+1)*3+c], d=C[((j+1)*HGRID+i)*3+c], e=C[((j+1)*HGRID+i+1)*3+c];
+      out[c]=(a*(1-fx)+b*fx)*(1-fz)+(d*(1-fx)+e*fx)*fz; }
+  }
+  return out;
+}
+function rebuildPatch(cx,cz){
+  const m=PATCH.mesh, geo=m.geometry, p=geo.attributes.position.array, col=geo.attributes.color.array, rgb=[0,0,0];
+  cx=Math.round(cx/1.25)*1.25; cz=Math.round(cz/1.25)*1.25;
+  PATCH.cx=cx; PATCH.cz=cz; m.position.set(cx,0,cz); m.updateMatrix();
+  const R=PATCH.R, base=new THREE.PlaneGeometry(R*2,R*2,PATCH.seg,PATCH.seg); base.rotateX(-Math.PI/2);
+  const bp=base.attributes.position.array;
+  for(let k=0;k<bp.length;k+=3){
+    const lx=bp[k], lz=bp[k+2], x=cx+lx, z=cz+lz;
+    const g=groundCoarse(x,z);
+    const edge=1-smooth(clamp((Math.max(Math.abs(lx),Math.abs(lz))-(R-26))/22,0,1));
+    p[k]=lx; p[k+1]=g+terrainDetail(x,z,g)*edge; p[k+2]=lz;
+    sampleColor(x,z,rgb); col[k]=rgb[0]; col[k+1]=rgb[1]; col[k+2]=rgb[2];
+  }
+  base.dispose();
+  geo.attributes.position.needsUpdate=true; geo.attributes.color.needsUpdate=true;
+  geo.computeVertexNormals(); geo.computeBoundingSphere();
+  TERR_U.uPatch.value.set(cx,cz,R,1);
+}
+function updatePatch(){
+  const indoors=!!(P.inShrine||P.inRes||P.inBeast||P.inCastle||P.inCave);
+  if(indoors){ PATCH.mesh.visible=false; TERR_U.uPatch.value.w=0; return; }
+  const src=(P.playing||!inCut)?P.pos:camera.position;
+  if(Math.abs(src.x-PATCH.cx)>24||Math.abs(src.z-PATCH.cz)>24) rebuildPatch(src.x,src.z);
+  PATCH.mesh.visible=true; TERR_U.uPatch.value.w=1;
+}
+{ const _updateSkyPatch=updateSky;
+  updateSky=function(dt){ _updateSkyPatch(dt); try{ updatePatch(); }catch(e){} };
+}
+console.log('terrain: textures in the shader; fine 1.25 m ground within '+PATCH.R+' m, detail masked on '
+  +DMASK.filter(v=>v<1).length+' of '+DMASK.length+' coarse cells');
+</script>
+<script>
+/* ================= BATCH 97b — colour that is not bleached, and a light budget ====
+   Every colour in the game is written as an sRGB hex and handed to three.js,
+   which treats it as linear light - and the renderer then encoded the output
+   to sRGB a second time.  Every surface was lifted toward white; grass read
+   as pale mint and snow as the ground everywhere.  The output now stays
+   linear, so the colours are the ones that were chosen, and the sun and sky
+   are scaled to suit.
+
+   And 397 point lights - every shrine glow, campfire and lantern in Hyrule -
+   were live at once.  three.js puts every visible light into every lit
+   material's shader, which is slow everywhere and can exceed a GPU's uniform
+   limit outright.  Only the twelve that matter to the camera are on now. */
+renderer.outputEncoding=THREE.LinearEncoding;
+scene.traverse(o=>{
+  const ms=o.material?(Array.isArray(o.material)?o.material:[o.material]):[];
+  for(const m of ms){ if(m.map&&m.map.isCanvasTexture) m.map.encoding=THREE.LinearEncoding;
+    if(m.emissiveMap&&m.emissiveMap.isCanvasTexture) m.emissiveMap.encoding=THREE.LinearEncoding; m.needsUpdate=true; }
+});
+{ const _texEnc=THREE.CanvasTexture;
+  THREE.CanvasTexture=function(){ const t=new _texEnc(...arguments); t.encoding=THREE.LinearEncoding; return t; };
+  THREE.CanvasTexture.prototype=_texEnc.prototype;
+}
+const LIGHT_SCALE={sun:.62,hemi:.62};
+{ const _updateSkyLook=updateSky;
+  updateSky=function(dt){ _updateSkyLook(dt); sun.intensity*=LIGHT_SCALE.sun; hemi.intensity*=LIGHT_SCALE.hemi; moon.intensity*=.8; };
+}
+
+const LIGHT_BUDGET=12;
+let lightTick=0;
+function visibleChain(o){ for(let p=o.parent;p;p=p.parent) if(!p.visible) return false; return true; }
+let allLights=[], lightScanT=0;
+function budgetLights(){
+  const now=performance.now();
+  if(now-lightScanT>2000){ lightScanT=now; allLights=[]; scene.traverse(o=>{ if(o.isPointLight||o.isSpotLight) allLights.push(o); }); }
+  const cand=[];
+  allLights.forEach(o=>{
+    if(o.userData.budgetSkip||!o.parent) return;
+    if(!visibleChain(o)){ return; }
+    o.getWorldPosition(_lbv);
+    const reach=o.distance>0?o.distance:60;
+    const d=_lbv.distanceTo(camera.position)-reach*.6;
+    cand.push([d,o]);
+  });
+  cand.sort((a,b)=>a[0]-b[0]);
+  for(let i=0;i<cand.length;i++){
+    const on=i<LIGHT_BUDGET&&cand[i][0]<reachCut(cand[i][1]);
+    cand[i][1].visible=on;
+  }
+}
+const _lbv=new THREE.Vector3();
+function reachCut(L){ return (L.distance>0?L.distance:60)*1.5; }
+{ const _updateSkyLights=updateSky;
+  updateSky=function(dt){ _updateSkyLights(dt); lightTick-=Math.max(dt,.016); if(lightTick<=0){ lightTick=.25; try{ budgetLights(); }catch(e){} } };
+}
+budgetLights();
+console.log('look: linear output, sun and sky scaled; point lights budgeted to '+LIGHT_BUDGET);
+</script>
 
 
 
