@@ -5565,7 +5565,7 @@ function explode(p,dmg,rad){
 }
 function updateRunes(dt){
   for(const k in P.runeCd) P.runeCd[k]=Math.max(0,P.runeCd[k]-dt);
-  if(magnetHold){
+  if(magnetHold&&!magnetHold.rb){
     const t=aimPoint(magnetDist);
     magnetHold.mesh.position.lerp(t,1-Math.pow(.0008,dt));
     if(keys.KeyQ) magnetHold.mesh.rotation.y+=dt*2;
@@ -5573,7 +5573,7 @@ function updateRunes(dt){
     magnetHold.pf.top=magnetHold.mesh.position.y+magnetHold.sy/2;
   }
   for(const o of metalObjs){
-    if(o.held) continue;
+    if(o.held||o.rb) continue;
     o.vel.y+=GRAV*dt;
     o.mesh.position.addScaledVector(o.vel,dt);
     const fl=(P.inShrine&&Math.abs(o.mesh.position.x-P.inShrine.rx)<300?P.inShrine.floorY:
@@ -5602,12 +5602,14 @@ function updateRunes(dt){
         }
       }
     } else {
+      if(!o.rb){
       o.vel.y+=GRAV*dt;
       o.mesh.position.addScaledVector(o.vel,dt);
       const fl=(P.inShrine&&Math.abs(o.mesh.position.x-P.inShrine.rx)<300?P.inShrine.floorY:
         groundAt(o.mesh.position.x,o.mesh.position.z))+o.r;
       if(o.mesh.position.y<fl){o.mesh.position.y=fl;o.vel.multiplyScalar(.35);o.vel.y=0;
         if(o.vel.length()<.5)o.vel.set(0,0,0);}
+      }
       if(o.vel.length()>4){
         for(const w of crackedWalls) if(!w.broken&&o.mesh.position.distanceTo(new THREE.Vector3(w.x,w.y+2,w.z))<5){
           w.broken=true;w.g.visible=false;o.vel.multiplyScalar(.2);toast('The boulder smashes through','good');}
@@ -16551,7 +16553,7 @@ function grabOrThrow(){
 function throwCarried(){
   const b=carried; if(!b) return;
   carried=null; b.held=false;
-  const dir=new THREE.Vector3(); cam.getWorldDirection(dir);
+  const dir=new THREE.Vector3(); camera.getWorldDirection(dir);
   /* a heavy thing leaves your hands slower - that is the whole of the feel */
   const power=26/Math.sqrt(b.mass||1);
   b.vel.copy(dir).multiplyScalar(power); b.vel.y+=3;
@@ -16561,7 +16563,7 @@ function throwCarried(){
 }
 function carryTick(dt){
   if(!carried) return;
-  const dir=new THREE.Vector3(); cam.getWorldDirection(dir);
+  const dir=new THREE.Vector3(); camera.getWorldDirection(dir);
   const p=P.pos.clone().addScaledVector(dir,2.0); p.y+=1.1;
   carried.mesh.position.lerp(p,1-Math.pow(.001,dt));
   carried.vel.set(0,0,0);
@@ -18318,6 +18320,817 @@ promptFor=function(it){
   return '<b>E</b> '+(say||K.hint||'Search');
 };
 console.log('Shrine of Resurrection: cave exit with a climbable shelf, no door; Korok E-puzzles reachable again');
+</script>
+<script>
+/* ================= BATCH 93 — a rigid-body solver, and the runes on anything =====
+   Group 2, items 9 and 11.
+
+   There were four separate bits of motion code - metal boxes, boulders, crates
+   and whatever you carried - each integrating its own velocity and each
+   stopping at the ground with a hard clamp.  Nothing had an orientation that
+   meant anything, nothing had inertia, and two things touching simply pushed
+   apart along whichever overlap was shallowest.
+
+   This replaces all four with one solver:
+   - every body has a mass, an orientation and a real inertia tensor (a box's
+     m(b²+c²)/12 about each axis, a ball's 2/5·m·r²), applied in world space
+   - contacts come as manifolds: every corner of a box under the ground, every
+     corner of one box inside another (found with the full 15-axis separating
+     axis test), the closest point for a ball against a box
+   - sequential impulses, ten passes a step, with restitution, Baumgarte
+     position correction and Coulomb friction clamped to the friction cone
+     (a pyramid, |λt| <= μ·λn, on two tangent axes)
+   - bodies sleep when they settle and wake when something disturbs them
+
+   And the runes stop being limited to a list of props made for them:
+   - Magnesis takes any metal - metal boxes, dropped metal weapons, treasure
+     chests - and what you swing with it collides and hits
+   - Stasis freezes any body, stores every blow and launches it along the
+     last one, with the arrow growing as it charges
+   - Cryonis raises ice on any water surface in Hyrule, pushes up whatever
+     sits above it, and shatters a pillar you aim at */
+const RB=(function(){
+  const list=[];
+  const GRAV=-30, ITER=12, SLOP=.03, BETA=.06, RANGE=190, CELL=8;
+  let nextId=1, errLogged=false;
+  const _q=new THREE.Quaternion(), _v=new THREE.Vector3(), _v2=new THREE.Vector3(), _v3=new THREE.Vector3();
+  const UP=new THREE.Vector3(0,1,0);
+
+  function add(owner,mesh,shape,dims,mass,opts){
+    opts=opts||{};
+    const b={id:nextId++,owner,mesh,shape,
+      h:shape==='box'?dims.clone():null, r:shape==='sphere'?dims:0,
+      mass, invMass:mass>0?1/mass:0, invI:new THREE.Vector3(),
+      v:(owner&&owner.vel)||new THREE.Vector3(),
+      w:(owner&&owner.angVel)||new THREE.Vector3(),
+      mu:opts.mu!==undefined?opts.mu:.6, e:opts.e!==undefined?opts.e:.15,
+      matter:opts.matter||'wood', buoy:opts.buoy!==undefined?opts.buoy:0,
+      sleepT:0, asleep:opts.awake?false:true, kin:false, isStatic:!!opts.isStatic,
+      frozen:false, charge:0, ft:0, kind:opts.kind||'body', pf:opts.pf||null, gone:false};
+    if(shape==='box'){
+      const sx=2*b.h.x, sy=2*b.h.y, sz=2*b.h.z;
+      b.invI.set(12/(mass*(sy*sy+sz*sz)), 12/(mass*(sx*sx+sz*sz)), 12/(mass*(sx*sx+sy*sy)));
+    } else {
+      const I=0.4*mass*b.r*b.r; b.invI.set(1/I,1/I,1/I);
+    }
+    if(b.isStatic){ b.invMass=0; b.invI.set(0,0,0); b.asleep=false; }
+    if(owner) owner.rb=b;
+    list.push(b);
+    return b;
+  }
+  function remove(b){ if(!b) return; b.gone=true; const i=list.indexOf(b); if(i>=0) list.splice(i,1); if(b.owner) b.owner.rb=null; }
+  function wake(b){ if(b&&b.asleep){ b.asleep=false; b.sleepT=0; } }
+  const dynamic=b=>!(b.isStatic||b.kin||b.frozen||b.held);
+  const im=b=>dynamic(b)?b.invMass:0;
+
+  /* R · I⁻¹ · Rᵀ · x, without building the matrix */
+  function applyInvI(b,x,out){
+    if(!dynamic(b)) return out.set(0,0,0);
+    if(b.shape==='sphere') return out.copy(x).multiplyScalar(b.invI.x);
+    _q.copy(b.mesh.quaternion).invert();
+    out.copy(x).applyQuaternion(_q);
+    out.x*=b.invI.x; out.y*=b.invI.y; out.z*=b.invI.z;
+    return out.applyQuaternion(b.mesh.quaternion);
+  }
+  function axes(b,arr){
+    const q=b.mesh.quaternion;
+    arr[0].set(1,0,0).applyQuaternion(q); arr[1].set(0,1,0).applyQuaternion(q); arr[2].set(0,0,1).applyQuaternion(q);
+    return arr;
+  }
+  /* how far the body reaches along a world direction */
+  function extentAlong(b,n,ax){
+    if(b.shape==='sphere') return b.r;
+    return b.h.x*Math.abs(ax[0].dot(n))+b.h.y*Math.abs(ax[1].dot(n))+b.h.z*Math.abs(ax[2].dot(n));
+  }
+
+  /* ---- where the ground is for a body, indoors or out ---- */
+  function nearPlatforms(x,z,rad){
+    const out=[];
+    if(typeof platforms==='undefined') return out;
+    for(const pf of platforms){
+      if(pf.dead||pf.tag==='metal'||pf.tag==='body'||pf.tag==='ice') continue;
+      if(Math.abs(x-pf.x)<=pf.hx+rad&&Math.abs(z-pf.z)<=pf.hz+rad) out.push(pf);
+    }
+    return out;
+  }
+  function floorAt(x,z,y,pfs){
+    let g;
+    if(P.inShrine&&Math.abs(x-P.inShrine.rx)<400&&Math.abs(z-P.inShrine.rz)<400) g=P.inShrine.floorY;
+    else if(P.inRes&&Math.abs(x-RES.rx)<400) g=(typeof resFloorRaw==='function')?resFloorRaw(x,z):RES.floorY;
+    else if(P.inBeast&&P.inBeast.floorY!==undefined) g=P.inBeast.floorY;
+    else if(P.inCastle&&P.inCastle.floorY!==undefined) g=P.inCastle.floorY;
+    else g=groundAt(x,z);
+    const indoors=!!(P.inShrine||P.inRes||P.inBeast||P.inCastle);
+    if(pfs) for(const pf of pfs)
+      if(Math.abs(x-pf.x)<=pf.hx&&Math.abs(z-pf.z)<=pf.hz&&pf.top<=y+.7&&pf.top>g){ g=pf.top; }
+    return {g,indoors};
+  }
+
+  /* ---- contacts ---- */
+  const contacts=[];
+  let warm=new Map(), warmNext=new Map();
+  function contact(a,b,px,py,pz,nx,ny,nz,depth,key){
+    const ref=b||a, lx=px-ref.mesh.position.x, ly=py-ref.mesh.position.y, lz=pz-ref.mesh.position.z;
+    const kk=b?(Math.round(lx*4)+','+Math.round(ly*4)+','+Math.round(lz*4)):(key||0);
+    contacts.push({a,b,key:(a.id+':'+(b?b.id:0)+':'+kk),p:new THREE.Vector3(px,py,pz),n:new THREE.Vector3(nx,ny,nz),depth,
+      ln:0,l1:0,l2:0,t1:new THREE.Vector3(),t2:new THREE.Vector3(),rA:new THREE.Vector3(),rB:new THREE.Vector3(),
+      mN:0,m1:0,m2:0,bias:0});
+  }
+  const AXA=[new THREE.Vector3(),new THREE.Vector3(),new THREE.Vector3()];
+  const AXB=[new THREE.Vector3(),new THREE.Vector3(),new THREE.Vector3()];
+  const nrmT=new THREE.Vector3();
+  function groundContacts(b){
+    const pos=b.mesh.position, rad=b.shape==='box'?b.h.length():b.r;
+    const pfs=nearPlatforms(pos.x,pos.z,rad);
+    if(b.shape==='sphere'){
+      const f=floorAt(pos.x,pos.z,pos.y-b.r,pfs);
+      let n=UP;
+      if(!f.indoors&&f.g===groundAt(pos.x,pos.z)){ normalAt(pos.x,pos.z,nrmT); n=nrmT; }
+      const d=(pos.y-f.g)*n.y-b.r;
+      if(d<0) contact(b,null,pos.x-n.x*b.r,pos.y-n.y*b.r,pos.z-n.z*b.r,n.x,n.y,n.z,-d,1);
+      return;
+    }
+    axes(b,AXA);
+    for(let i=0;i<8;i++){
+      const sx=(i&1)?1:-1, sy=(i&2)?1:-1, sz=(i&4)?1:-1;
+      const cx=pos.x+AXA[0].x*b.h.x*sx+AXA[1].x*b.h.y*sy+AXA[2].x*b.h.z*sz;
+      const cy=pos.y+AXA[0].y*b.h.x*sx+AXA[1].y*b.h.y*sy+AXA[2].y*b.h.z*sz;
+      const cz=pos.z+AXA[0].z*b.h.x*sx+AXA[1].z*b.h.y*sy+AXA[2].z*b.h.z*sz;
+      const f=floorAt(cx,cz,cy,pfs);
+      if(cy>=f.g) continue;
+      let nx=0,ny=1,nz=0;
+      if(!f.indoors&&f.g===groundAt(cx,cz)){ normalAt(cx,cz,nrmT); nx=nrmT.x; ny=nrmT.y; nz=nrmT.z; }
+      contact(b,null,cx,cy,cz,nx,ny,nz,(f.g-cy)*ny,i+1);
+    }
+  }
+  function pointInBox(b,ax,p,tol){
+    _v.copy(p).sub(b.mesh.position);
+    return Math.abs(_v.dot(ax[0]))<=b.h.x+tol&&Math.abs(_v.dot(ax[1]))<=b.h.y+tol&&Math.abs(_v.dot(ax[2]))<=b.h.z+tol;
+  }
+  function boxBox(A,B){
+    axes(A,AXA); axes(B,AXB);
+    const d=_v3.copy(A.mesh.position).sub(B.mesh.position);
+    let best=1e9, bn=new THREE.Vector3(), L=new THREE.Vector3();
+    const test=(axis,cross)=>{
+      const len=axis.length(); if(len<1e-5) return true;
+      L.copy(axis).divideScalar(len);
+      const ov=extentAlong(A,L,AXA)+extentAlong(B,L,AXB)-Math.abs(d.dot(L));
+      if(ov<0) return false;
+      const score=cross?ov*1.08+.01:ov;       /* prefer a face axis when it is close */
+      if(score<best){ best=score; bn.copy(L); if(d.dot(bn)<0) bn.negate(); bn.ov=ov; }
+      return true;
+    };
+    for(let i=0;i<3;i++){ if(!test(AXA[i],false)) return; if(!test(AXB[i],false)) return; }
+    for(let i=0;i<3;i++) for(let j=0;j<3;j++){ if(!test(_v2.crossVectors(AXA[i],AXB[j]),true)) return; }
+    const depth=bn.ov, pts=[];
+    /* Which axis won decides the manifold.  On a face axis the touching faces
+       are clipped against each other (Sutherland-Hodgman), which gives the
+       whole contact patch - a box turned on top of another still gets four
+       corners to stand on.  On an edge-edge axis there is one point. */
+    let refBox=null, refAx=null, refIdx=-1, nR=new THREE.Vector3();
+    for(let i=0;i<3;i++){
+      if(Math.abs(Math.abs(AXA[i].dot(bn))-1)<1e-4){ refBox=A; refAx=AXA; refIdx=i; nR.copy(bn).negate(); break; }
+      if(Math.abs(Math.abs(AXB[i].dot(bn))-1)<1e-4){ refBox=B; refAx=AXB; refIdx=i; nR.copy(bn); break; }
+    }
+    if(refBox){
+      const incBox=refBox===A?B:A, incAx=refBox===A?AXB:AXA;
+      const hR=[refBox.h.x,refBox.h.y,refBox.h.z], hI=[incBox.h.x,incBox.h.y,incBox.h.z];
+      /* the reference face, facing the other box */
+      const sR=Math.sign(refAx[refIdx].dot(nR))||1;
+      const cR=new THREE.Vector3().copy(refBox.mesh.position).addScaledVector(refAx[refIdx],sR*hR[refIdx]);
+      const u=(refIdx+1)%3, v=(refIdx+2)%3;
+      /* the incident face: the one most turned against it */
+      let k=0, best=-1;
+      for(let i=0;i<3;i++){ const d2=Math.abs(incAx[i].dot(nR)); if(d2>best){ best=d2; k=i; } }
+      const sI=-(Math.sign(incAx[k].dot(nR))||1);
+      const cI=new THREE.Vector3().copy(incBox.mesh.position).addScaledVector(incAx[k],sI*hI[k]);
+      const iu=(k+1)%3, iv=(k+2)%3;
+      let poly=[];
+      for(const [a1,b1] of [[1,1],[-1,1],[-1,-1],[1,-1]])
+        poly.push(new THREE.Vector3().copy(cI).addScaledVector(incAx[iu],a1*hI[iu]).addScaledVector(incAx[iv],b1*hI[iv]));
+      /* clip against the four sides of the reference face */
+      for(const [ax,h] of [[u,hR[u]],[v,hR[v]]]) for(const sg of [1,-1]){
+        const n2=refAx[ax].clone().multiplyScalar(sg), off=n2.dot(refBox.mesh.position)+h;
+        const out2=[];
+        for(let i=0;i<poly.length;i++){
+          const P1=poly[i], P2=poly[(i+1)%poly.length];
+          const d1=n2.dot(P1)-off, d2=n2.dot(P2)-off;
+          if(d1<=0) out2.push(P1);
+          if((d1<0&&d2>0)||(d1>0&&d2<0)) out2.push(P1.clone().lerp(P2,d1/(d1-d2)));
+        }
+        poly=out2; if(!poly.length) break;
+      }
+      for(const q of poly){
+        const pd=nR.dot(new THREE.Vector3().subVectors(cR,q));   /* how far past the reference face */
+        if(pd<-.02) continue;
+        q.pd=Math.max(0,pd); pts.push(q);
+      }
+      if(pts.length>4){
+        pts.sort((p1,p2)=>p2.pd-p1.pd);
+        /* keep the deepest, then the three that spread furthest from it */
+        const keep=[pts[0]];
+        while(keep.length<4){
+          let bi=-1,bd=-1;
+          for(let i=1;i<pts.length;i++){ if(keep.includes(pts[i])) continue;
+            let md=1e9; for(const q of keep) md=Math.min(md,q.distanceToSquared(pts[i]));
+            if(md>bd){ bd=md; bi=i; } }
+          if(bi<0) break; keep.push(pts[bi]);
+        }
+        pts.length=0; pts.push(...keep);
+      }
+      pts.forEach((q,i)=>{ q.k=i+1; q.depth=q.pd; });
+    }
+    if(!pts.length){
+      const e=new THREE.Vector3().copy(A.mesh.position).addScaledVector(bn,-(extentAlong(A,bn,AXA)-depth/2)); e.k=17;
+      pts.push(e);
+    }
+    for(const p of pts) contact(A,B,p.x,p.y,p.z,bn.x,bn.y,bn.z,p.depth!==undefined?p.depth:depth,p.k);
+  }
+  function sphereBox(S,B,flip){
+    axes(B,AXB);
+    const rel=_v.copy(S.mesh.position).sub(B.mesh.position);
+    const lx=rel.dot(AXB[0]), ly=rel.dot(AXB[1]), lz=rel.dot(AXB[2]);
+    const cx=clamp(lx,-B.h.x,B.h.x), cy=clamp(ly,-B.h.y,B.h.y), cz=clamp(lz,-B.h.z,B.h.z);
+    const dx=lx-cx, dy=ly-cy, dz=lz-cz, dist=Math.hypot(dx,dy,dz);
+    let nl=new THREE.Vector3(), depth;
+    if(dist>S.r) return;
+    if(dist>1e-5){ nl.set(dx/dist,dy/dist,dz/dist); depth=S.r-dist; }
+    else {
+      const fx=B.h.x-Math.abs(lx), fy=B.h.y-Math.abs(ly), fz=B.h.z-Math.abs(lz);
+      if(fx<fy&&fx<fz){ nl.set(Math.sign(lx)||1,0,0); depth=S.r+fx; }
+      else if(fy<fz){ nl.set(0,Math.sign(ly)||1,0); depth=S.r+fy; }
+      else { nl.set(0,0,Math.sign(lz)||1); depth=S.r+fz; }
+    }
+    const n=new THREE.Vector3().addScaledVector(AXB[0],nl.x).addScaledVector(AXB[1],nl.y).addScaledVector(AXB[2],nl.z);
+    const p=new THREE.Vector3().copy(B.mesh.position).addScaledVector(AXB[0],cx).addScaledVector(AXB[1],cy).addScaledVector(AXB[2],cz);
+    if(!flip) contact(S,B,p.x,p.y,p.z,n.x,n.y,n.z,depth,1);
+    else      contact(B,S,p.x,p.y,p.z,-n.x,-n.y,-n.z,depth,1);
+  }
+  function sphereSphere(A,B){
+    const d=_v.copy(A.mesh.position).sub(B.mesh.position), len=d.length();
+    if(len>=A.r+B.r||len<1e-6) return;
+    const n=d.divideScalar(len);
+    const p=_v2.copy(B.mesh.position).addScaledVector(n,B.r);
+    contact(A,B,p.x,p.y,p.z,n.x,n.y,n.z,A.r+B.r-len,1);
+  }
+  function pair(A,B){
+    if(A.shape==='box'&&B.shape==='box') boxBox(A,B);
+    else if(A.shape==='sphere'&&B.shape==='sphere') sphereSphere(A,B);
+    else if(A.shape==='sphere') sphereBox(A,B,false);
+    else sphereBox(B,A,true);
+  }
+
+  /* ---- the solver ---- */
+  const _ra=new THREE.Vector3(), _rb=new THREE.Vector3(), _j=new THREE.Vector3(), _t=new THREE.Vector3();
+  function velAt(b,r,out){
+    out.copy(b.v);
+    if(!b.isStatic) out.add(_t.crossVectors(b.w,r));
+    return out;
+  }
+  function kFor(c,dir){
+    const a=c.a, b=c.b;
+    let k=im(a)+(b?im(b):0);
+    _t.crossVectors(c.rA,dir); applyInvI(a,_t,_j); k+=dir.dot(_v.crossVectors(_j,c.rA));
+    if(b){ _t.crossVectors(c.rB,dir); applyInvI(b,_t,_j); k+=dir.dot(_v.crossVectors(_j,c.rB)); }
+    return k>1e-9?1/k:0;
+  }
+  function impulse(c,J){
+    const a=c.a, b=c.b;
+    if(dynamic(a)){ a.v.addScaledVector(J,a.invMass); applyInvI(a,_t.crossVectors(c.rA,J),_j); a.w.add(_j); }
+    if(b&&dynamic(b)){ b.v.addScaledVector(J,-b.invMass); applyInvI(b,_t.crossVectors(c.rB,J),_j); b.w.sub(_j); }
+  }
+  const _va=new THREE.Vector3(), _vb=new THREE.Vector3(), _vr=new THREE.Vector3();
+  function relVel(c){
+    velAt(c.a,c.rA,_va);
+    if(c.b) velAt(c.b,c.rB,_vb); else _vb.set(0,0,0);
+    return _vr.copy(_va).sub(_vb);
+  }
+  function prestep(c,dt){
+    c.rA.copy(c.p).sub(c.a.mesh.position);
+    if(c.b) c.rB.copy(c.p).sub(c.b.mesh.position);
+    const n=c.n;
+    if(Math.abs(n.x)>.57) c.t1.set(n.y,-n.x,0).normalize(); else c.t1.set(0,n.z,-n.y).normalize();
+    c.t2.crossVectors(n,c.t1);
+    c.mN=kFor(c,n); c.m1=kFor(c,c.t1); c.m2=kFor(c,c.t2);
+    const vn=relVel(c).dot(n);
+    const e=c.b?Math.max(c.a.e,c.b.e):c.a.e;
+    c.bias=BETA/dt*Math.max(c.depth-SLOP,0)+(vn<-2.5?-e*vn:0);
+    c.mu=c.b?Math.sqrt(c.a.mu*c.b.mu):c.a.mu;
+    /* warm start from last step's impulses, so a resting stack does not
+       have to be re-solved from nothing every frame */
+    const w=warm.get(c.key);
+    if(w){
+      c.ln=w.ln*.85; c.l1=w.l1*.85; c.l2=w.l2*.85;
+      _j.copy(n).multiplyScalar(c.ln).addScaledVector(c.t1,c.l1).addScaledVector(c.t2,c.l2);
+      impulse(c,_j.clone());
+    }
+  }
+  /* push overlapping bodies apart directly, without adding energy */
+  function project(c){
+    const ia=im(c.a), ib=c.b?im(c.b):0, tot=ia+ib;
+    const corr=Math.max(c.depth-SLOP,0)*.35/Math.max(tot,1e-9)/(c.count||1);
+    if(corr<=0||tot<=0) return;
+    if(ia) c.a.mesh.position.addScaledVector(c.n,corr*ia);
+    if(ib) c.b.mesh.position.addScaledVector(c.n,-corr*ib);
+  }
+  function solve(c){
+    const vr=relVel(c);
+    let d=c.mN*(-vr.dot(c.n)+c.bias);
+    const old=c.ln; c.ln=Math.max(old+d,0); d=c.ln-old;
+    if(d!==0){ _j.copy(c.n).multiplyScalar(d); impulse(c,_j.clone()); }
+    const lim=c.mu*c.ln;
+    for(const [t,m,key] of [[c.t1,c.m1,'l1'],[c.t2,c.m2,'l2']]){
+      const vt=relVel(c).dot(t);
+      let dl=m*(-vt);
+      const o=c[key]; c[key]=clamp(o+dl,-lim,lim); dl=c[key]-o;
+      if(dl!==0){ _j.copy(t).multiplyScalar(dl); impulse(c,_j.clone()); }
+    }
+  }
+
+  /* ---- the broadphase, and statics made from the climbable buildings ---- */
+  const statics=[]; let staticsBuilt=0;
+  function buildStatics(){
+    if(typeof STRUCTS==='undefined'||STRUCTS.length===staticsBuilt) return;
+    for(let i=staticsBuilt;i<STRUCTS.length;i++){
+      const o=STRUCTS[i];
+      const hx=o.hx!==undefined?o.hx:o.r*.85, hz=o.hz!==undefined?o.hz:o.r*.85, hy=Math.max(.5,(o.top-o.base)/2);
+      const m=new THREE.Object3D(); m.position.set(o.x,(o.base+o.top)/2,o.z);
+      statics.push({id:nextId++,shape:'box',h:new THREE.Vector3(hx,hy,hz),mesh:m,isStatic:true,
+        v:new THREE.Vector3(),w:new THREE.Vector3(),invMass:0,invI:new THREE.Vector3(),mu:.7,e:.1});
+    }
+    staticsBuilt=STRUCTS.length;
+  }
+  function radiusOf(b){ return b.shape==='box'?b.h.length():b.r; }
+
+  /* ---- player, water, held and frozen bodies ---- */
+  function playerPush(b,dt){
+    const pos=b.mesh.position, rad=b.shape==='box'?Math.max(b.h.x,b.h.z):b.r;
+    const dx=pos.x-P.pos.x, dz=pos.z-P.pos.z, dd=Math.hypot(dx,dz);
+    if(dd>rad+1.0||dd<1e-4) return;
+    const top=pos.y+(b.shape==='box'?extentAlong(b,UP,axes(b,AXA)):b.r);
+    if(P.pos.y>top-.35||P.pos.y+1.8<pos.y-radiusOf(b)) return;       /* standing on it, or under it */
+    const sp=Math.hypot(P.vel.x,P.vel.z);
+    if(sp<.5) return;
+    wake(b);
+    const push=Math.min(sp,6)*dt*14/Math.max(1,b.mass*.5);
+    b.v.x+=dx/dd*push; b.v.z+=dz/dd*push;
+  }
+  function buoyancy(b,dt){
+    if(P.inShrine||P.inRes||P.inBeast||P.inCastle) return;
+    const pos=b.mesh.position, wl=waterAt(pos.x,pos.z);
+    if(groundAt(pos.x,pos.z)>wl-1) return;
+    const ext=b.shape==='box'?extentAlong(b,UP,axes(b,AXA)):b.r;
+    const frac=clamp((wl-(pos.y-ext))/(2*ext),0,1);
+    if(frac<=0) return;
+    wake(b);
+    b.v.y+=-GRAV*b.buoy*frac*dt;
+    const k=Math.max(0,1-2.2*frac*dt);
+    b.v.multiplyScalar(k); b.w.multiplyScalar(Math.max(0,1-3*frac*dt));
+    /* drift with the wind on the surface */
+    if(typeof WIND!=='undefined'&&b.buoy>1){ b.v.x+=WIND.x*WIND.str*.5*frac*dt; b.v.z+=WIND.z*WIND.str*.5*frac*dt; }
+  }
+  function syncPlatform(b){
+    if(!b.pf) return;
+    const pos=b.mesh.position;
+    b.pf.x=pos.x; b.pf.z=pos.z;
+    if(b.shape==='box'){
+      axes(b,AXA);
+      b.pf.top=pos.y+extentAlong(b,UP,AXA);
+      b.pf.hx=b.h.x*Math.abs(AXA[0].x)+b.h.y*Math.abs(AXA[1].x)+b.h.z*Math.abs(AXA[2].x);
+      b.pf.hz=b.h.x*Math.abs(AXA[0].z)+b.h.y*Math.abs(AXA[1].z)+b.h.z*Math.abs(AXA[2].z);
+    } else b.pf.top=pos.y+b.r;
+  }
+
+  function substep(dt,active,near){
+    contacts.length=0;
+    for(const b of active){
+      if(dynamic(b)){
+        b.v.y+=GRAV*dt;
+        buoyancy(b,dt);
+        b.w.multiplyScalar(Math.pow(b.shape==='sphere'?.55:.7,dt));
+      }
+      if(!b.isStatic&&!b.frozen) groundContacts(b);
+    }
+    /* body against body, bucketed on a grid */
+    const grid=new Map(), seen=new Set();
+    const put=(b)=>{
+      const r=radiusOf(b), p=b.mesh.position;
+      const x0=Math.floor((p.x-r)/CELL), x1=Math.floor((p.x+r)/CELL), z0=Math.floor((p.z-r)/CELL), z1=Math.floor((p.z+r)/CELL);
+      for(let i=x0;i<=x1;i++) for(let j=z0;j<=z1;j++){
+        const k=i*73856093^j*19349663; let a=grid.get(k); if(!a) grid.set(k,a=[]); a.push(b);
+      }
+    };
+    for(const b of near) put(b);
+    for(const s of statics){
+      const p=s.mesh.position;
+      if(Math.abs(p.x-P.pos.x)>RANGE+60||Math.abs(p.z-P.pos.z)>RANGE+60) continue;
+      put(s);
+    }
+    for(const a of grid.values()){
+      for(let i=0;i<a.length;i++) for(let j=i+1;j<a.length;j++){
+        const A=a[i], B=a[j];
+        if(A.isStatic&&B.isStatic) continue;
+        if((A.asleep||!dynamic(A))&&(B.asleep||!dynamic(B))) continue;
+        const key=A.id<B.id?A.id*1e6+B.id:B.id*1e6+A.id;
+        if(seen.has(key)) continue; seen.add(key);
+        const ra=radiusOf(A), rb=radiusOf(B);
+        if(A.mesh.position.distanceToSquared(B.mesh.position)>(ra+rb)*(ra+rb)) continue;
+        const before=contacts.length;
+        if(A.isStatic) pair(B,A); else if(B.isStatic) pair(A,B); else if(A.id<B.id) pair(A,B); else pair(B,A);
+        if(contacts.length>before){
+          /* something moving hit something asleep: wake it */
+          const c=contacts[before];
+          const other=c.a.asleep?c.a:(c.b&&c.b.asleep?c.b:null);
+          const mover=other===c.a?c.b:c.a;
+          if(other&&mover&&(mover.v.lengthSq()>.25||mover.w.lengthSq()>.25)) wake(other);
+        }
+      }
+    }
+    { const per=new Map();
+      for(const c of contacts){ const k=c.a.id+':'+(c.b?c.b.id:0); per.set(k,(per.get(k)||0)+1); }
+      for(const c of contacts) c.count=per.get(c.a.id+':'+(c.b?c.b.id:0)); }
+    for(const c of contacts) prestep(c,dt);
+    for(let k=0;k<ITER;k++) for(const c of contacts){
+      if(c.a.asleep&&(!c.b||c.b.asleep)) continue;
+      solve(c);
+    }
+    warmNext.clear();
+    for(const c of contacts){ warmNext.set(c.key,{ln:c.ln,l1:c.l1,l2:c.l2}); }
+    { const t=warm; warm=warmNext; warmNext=t; }
+    for(const c of contacts) if(!(c.a.asleep&&(!c.b||c.b.asleep))) project(c);
+    /* integrate */
+    for(const b of active){
+      if(b.isStatic||b.frozen) continue;
+      if(b.v.lengthSq()>6400) b.v.setLength(80);
+      if(b.w.lengthSq()>625) b.w.setLength(25);
+      b.mesh.position.addScaledVector(b.v,dt);
+      if(!b.kin&&!b.held&&b.w.lengthSq()>1e-8){
+        const q=b.mesh.quaternion;
+        const dq=new THREE.Quaternion(b.w.x*dt*.5,b.w.y*dt*.5,b.w.z*dt*.5,0).multiply(q);
+        q.set(q.x+dq.x,q.y+dq.y,q.z+dq.z,q.w+dq.w).normalize();
+      }
+      /* never let a fast body end a step deep in the ground */
+      const f=floorAt(b.mesh.position.x,b.mesh.position.z,b.mesh.position.y,null);
+      if(b.mesh.position.y<f.g-radiusOf(b)) { b.mesh.position.y=f.g+radiusOf(b)*.5; b.v.y=Math.max(0,b.v.y); }
+    }
+  }
+
+  function step(dtFrame){
+    try{
+      buildStatics();
+      const dt=Math.min(dtFrame,.05); if(dt<=0) return;
+      const active=[], near=[];
+      for(const b of list){
+        if(b.gone||b.isStatic&&!b.kin) { if(b.isStatic&&b.kin) active.push(b); continue; }
+        const p=b.mesh.position;
+        if(Math.abs(p.x-P.pos.x)>RANGE||Math.abs(p.z-P.pos.z)>RANGE) continue;
+        if(b.mesh.parent&&!b.mesh.visible) continue;
+        /* someone else set it moving - a bomb, a throw, the wind - so it wakes */
+        if(b.asleep&&(b.v.lengthSq()>.04||b.w.lengthSq()>.04)) wake(b);
+        if(b.held||b.owner&&b.owner.held) heldMotion(b,dt);
+        if(b.frozen) { b.v.set(0,0,0); b.w.set(0,0,0); }
+        if(dynamic(b)) playerPush(b,dt);
+        near.push(b);
+        if(!b.asleep||!dynamic(b)) active.push(b);
+      }
+      if(!active.length) return;
+      const n=dt>.034?3:2;
+      for(let i=0;i<n;i++) substep(dt/n,active,near);
+      for(const b of active){
+        syncPlatform(b);
+        if(!dynamic(b)||b.asleep) continue;
+        if(b.v.lengthSq()<.06&&b.w.lengthSq()<.09){ b.sleepT+=dt; if(b.sleepT>.5){ b.asleep=true; b.v.set(0,0,0); b.w.set(0,0,0); } }
+        else b.sleepT=0;
+      }
+    }catch(e){ if(!errLogged){ errLogged=true; console.error('rigid bodies:',e); } }
+  }
+
+  /* a held body is driven by velocity toward the aim point, so it still collides */
+  function heldMotion(b,dt){
+    b.kin=true; wake(b);
+    if(b.carryTarget){ _v.copy(b.carryTarget).sub(b.mesh.position); }
+    else { const t=aimPoint(magnetDist); _v.copy(t).sub(b.mesh.position); }
+    const want=_v.multiplyScalar(9);
+    if(want.length()>28) want.setLength(28);
+    b.v.lerp(want,1-Math.pow(.0005,dt));
+    b.w.set(0,0,0);
+    if(keys.KeyQ&&!b.carryTarget) b.mesh.rotateY(dt*2);
+    /* it will not dig itself into the ground */
+    const f=floorAt(b.mesh.position.x,b.mesh.position.z,b.mesh.position.y,null);
+    const ext=b.shape==='box'?extentAlong(b,UP,axes(b,AXA)):b.r;
+    if(b.mesh.position.y-ext<f.g){ b.mesh.position.y=f.g+ext; if(b.v.y<0) b.v.y=0; }
+  }
+
+  return {list,add,remove,wake,step,statics,dynamic,extentAlong,axes,contacts};
+})();
+
+/* ---- every body the world already has joins the solver ---- */
+function rbMetal(o){
+  if(!o||o.rb) return;
+  const vol=o.sx*o.sy*o.sz;
+  RB.add(o,o.mesh,'box',new THREE.Vector3(o.sx/2,o.sy/2,o.sz/2),clamp(2.4*vol/2,1.5,60),
+    {matter:'metal',mu:.45,e:.1,buoy:1.25,kind:'metal',pf:o.pf});
+}
+function rbBoulder(o){
+  if(!o||o.rb) return;
+  RB.add(o,o.mesh,'sphere',o.r,clamp(3.2*o.r*o.r*o.r,2,120),{matter:'stone',mu:.8,e:.12,buoy:.35,kind:'boulder'});
+}
+function rbCrate(b){
+  if(!b||b.rb||!b.mesh) return;
+  const pf=addPlatform(b.mesh.position.x,b.mesh.position.z,b.hx,b.hz,b.mesh.position.y+b.hy,'body');
+  RB.add(b,b.mesh,'box',new THREE.Vector3(b.hx,b.hy,b.hz),b.mass||1,{matter:'wood',mu:.6,e:.2,buoy:2.2,kind:'crate',pf});
+}
+for(const o of metalObjs) rbMetal(o);
+for(const o of stasisObjs) rbBoulder(o);
+if(typeof bodies!=='undefined') for(const b of bodies) rbCrate(b);
+/* and anything made later */
+{ const _am=addMetal;   addMetal=function(){ const o=_am.apply(this,arguments); rbMetal(o); return o; }; }
+{ const _ab=addBoulder; addBoulder=function(){ const o=_ab.apply(this,arguments); rbBoulder(o); return o; }; }
+if(typeof addBody==='function'){ const _ad=addBody; addBody=function(){ const o=_ad.apply(this,arguments); rbCrate(o); return o; }; }
+
+/* the four old integrators hand over */
+updateBodies=function(){};
+updatePhysicsBodies=function(dt){ RB.step(dt); };
+bodyImpacts=function(){};
+
+/* ---- carrying (L) goes through the solver too ---- */
+carryTick=function(dt){
+  if(!carried) return;
+  const b=carried.rb;
+  const dir=new THREE.Vector3(); camera.getWorldDirection(dir);
+  const p=P.pos.clone().addScaledVector(dir.setY(0).normalize(),2.0); p.y+=1.6;
+  if(b){ b.carryTarget=p; b.held=true; }
+  else { carried.mesh.position.lerp(p,1-Math.pow(.001,dt)); carried.vel.set(0,0,0); }
+};
+{ const _throw=throwCarried;
+  throwCarried=function(){
+    const c=carried; if(c&&c.rb){ c.rb.held=false; c.rb.kin=false; c.rb.carryTarget=null; RB.wake(c.rb); }
+    _throw();
+  };
+}
+
+/* ---- momentum lands on monsters, whatever is carrying it ---- */
+function rbImpacts(dt){
+  for(const b of RB.list){
+    if(b.isStatic||b.frozen||b.asleep) continue;
+    if(b._hitCd>0){ b._hitCd-=dt; continue; }
+    const sp=b.v.length();
+    if(sp<6) continue;
+    const pos=b.mesh.position, rad=b.shape==='box'?b.h.length():b.r;
+    for(const E of enemies){
+      if(!E||!E.alive||E.dormant) continue;
+      if(pos.distanceTo(E.pos)>rad+1.2+(E.s||1)*.6) continue;
+      const p=b.mass*sp, dmg=Math.round(clamp(p*.9,4,120));
+      const nx=b.v.x/sp, nz=b.v.z/sp;
+      try{ hitEnemy(E,dmg,nx,nz,null); }catch(e){}
+      E.vel&&(E.vel.x+=nx*p*.08, E.vel.z+=nz*p*.08); E.stun=Math.max(E.stun||0,.5);
+      if(!(b.held||b.kin)) b.v.multiplyScalar(-.25);
+      b._hitCd=.45;
+      sfx(b.matter==='metal'?'clang':'hit');
+      break;
+    }
+  }
+}
+{ const _upb=updatePhysicsBodies; updatePhysicsBodies=function(dt){ _upb(dt); rbImpacts(dt); rbStasisTick(dt); rbMagnetGlow(dt); }; }
+
+/* ---- Stasis on anything ---- */
+const STASIS_SHELL=new THREE.MeshBasicMaterial({color:0xf2c23a,transparent:true,opacity:.35,depthWrite:false,blending:THREE.AdditiveBlending});
+function rbShell(b,mat){
+  const m=b.mesh;
+  let geo;
+  if(b.shape==='sphere') geo=new THREE.SphereGeometry(b.r*1.1,14,10);
+  else geo=new THREE.BoxGeometry(b.h.x*2.12,b.h.y*2.12,b.h.z*2.12);
+  const s=new THREE.Mesh(geo,mat);
+  s.scale.set(1/(m.scale.x||1),1/(m.scale.y||1),1/(m.scale.z||1));
+  m.add(s); return s;
+}
+function stasisFreeze(b){
+  b.frozen=true; b.ft=P.stasisPlus?8:5; b.charge=0; b.hitDir=null;
+  b.v.set(0,0,0); b.w.set(0,0,0); RB.wake(b);
+  if(b.owner&&stasisObjs.includes(b.owner)){ b.owner.frozen=true; b.owner.ft=b.ft; b.owner.charge=0; b.owner.vel.set(0,0,0); }
+  b.shell=rbShell(b,STASIS_SHELL.clone());
+  b.arrow=new THREE.ArrowHelper(new THREE.Vector3(1,0,0),b.mesh.position.clone(),1,0xffa030,.7,.45);
+  b.arrow.visible=false; scene.add(b.arrow);
+  sfx('rune'); toast('Stasis — strike it to store momentum');
+}
+function stasisRelease(b){
+  b.frozen=false;
+  if(b.shell){ b.mesh.remove(b.shell); b.shell.geometry.dispose(); b.shell=null; }
+  if(b.arrow){ scene.remove(b.arrow); b.arrow=null; }
+  const charge=b.charge;
+  if(charge>0){
+    const d=b.hitDir?b.hitDir.clone():b.mesh.position.clone().sub(P.pos).setY(0).normalize();
+    b.v.copy(d).multiplyScalar(9+charge*9); b.v.y=7+charge*2.4;
+    b.w.set((Math.random()-.5)*charge*2,(Math.random()-.5)*charge*2,(Math.random()-.5)*charge*2);
+    toast('It launches!','good');
+  }
+  b.charge=0; RB.wake(b);
+}
+function rbStasisTick(dt){
+  for(const b of RB.list){
+    if(!b.frozen) continue;
+    const own=b.owner&&stasisObjs.includes(b.owner)?b.owner:null;
+    if(own){
+      /* the boulder code keeps its own timer and launch; follow it */
+      b.charge=own.charge;
+      if(!own.frozen){ b.charge=0; b.frozen=false; stasisRelease(b); continue; }
+    } else {
+      b.ft-=dt;
+      if(b.ft<=0){ stasisRelease(b); continue; }
+    }
+    const t=performance.now()/1000, left=own?own.ft:b.ft;
+    if(b.shell) b.shell.material.opacity=.28+.12*Math.sin(t*(left<1.6?18:6))+Math.min(.3,b.charge*.05);
+    if(b.arrow){
+      b.arrow.visible=b.charge>0;
+      if(b.charge>0){
+        const d=b.hitDir||b.mesh.position.clone().sub(P.pos).setY(0).normalize();
+        b.arrow.position.copy(b.mesh.position); b.arrow.setDirection(d);
+        const len=1.2+b.charge*.9; b.arrow.setLength(len,.7,.45);
+        b.arrow.setColor(new THREE.Color().setHSL(.1-Math.min(.1,b.charge*.012),1,.55));
+      }
+    }
+  }
+}
+{ const _swingRB=swing;
+  swing=function(){
+    const r=_swingRB.apply(this,arguments);
+    const f=new THREE.Vector3(-Math.sin(P.look.yaw),0,-Math.cos(P.look.yaw));
+    for(const b of RB.list){
+      if(!b.frozen||P.pos.distanceTo(b.mesh.position)>6) continue;
+      if(!(b.owner&&stasisObjs.includes(b.owner))){ b.charge++; sfx('clang'); }
+      b.hitDir=f.clone();
+      if(b.owner&&stasisObjs.includes(b.owner)) b.owner.hitDir=f.clone();
+    }
+    return r;
+  };
+}
+function stasisAny(){
+  if(!runeReady('stasis')){ toast('Stasis recharging'); return; }
+  const cands=RB.list.filter(b=>!b.isStatic&&!b.held&&!b.frozen&&b.mesh.visible!==false);
+  const b=pickInView(cands,30,b=>b.mesh.position);
+  if(b){ stasisFreeze(b); P.runeCd.stasis=RUNES.stasis.cd; return; }
+  let best=null,bd=1e9;
+  for(const E of enemies){ if(!E.alive||E.dormant)continue;
+    const d=E.pos.distanceTo(P.pos); if(d<22&&d<bd){bd=d;best=E;} }
+  if(best){ best.stun=4; toast(best.T.n+' frozen in time'); sfx('rune'); P.runeCd.stasis=RUNES.stasis.cd; }
+  else toast('Nothing to freeze');
+}
+
+/* ---- Magnesis on anything metal ---- */
+function metalCandidates(){
+  const out=[];
+  for(const b of RB.list) if(!b.isStatic&&!b.frozen&&b.matter==='metal'&&b.mesh.visible!==false)
+    out.push({pos:b.mesh.position,get:()=>b});
+  for(const p of pickups){
+    if(!p.d||!p.d.w||!isMetal(p.d.w)||!p.mesh) continue;
+    out.push({pos:p.mesh.position,get:()=>{
+      const i=pickups.indexOf(p); if(i>=0) pickups.splice(i,1);
+      const s=p.mesh.scale;
+      const owner={vel:new THREE.Vector3(),mesh:p.mesh,pickup:p};
+      return RB.add(owner,p.mesh,'box',new THREE.Vector3(Math.max(.08,s.x/2),Math.max(.08,s.y/2),Math.max(.08,s.z/2)),.8,
+        {matter:'metal',mu:.5,e:.2,buoy:0,kind:'weapon',awake:true});
+    }});
+  }
+  if(typeof chestObjs!=='undefined') for(const g of chestObjs){
+    if(!g.visible||g.userData.rb===false) continue;
+    out.push({pos:g.position,get:()=>{
+      if(g.userData.rbBody) return g.userData.rbBody;
+      const ia=interactables.find(i=>i.obj===g);
+      const owner={vel:new THREE.Vector3(),mesh:g,chestIA:ia};
+      const b=RB.add(owner,g,'box',new THREE.Vector3(1.0,.62,.7),6,{matter:'metal',mu:.6,e:.05,buoy:0,kind:'chest',awake:true});
+      g.userData.rbBody=b; return b;
+    }});
+  }
+  return out;
+}
+function magnesisAny(){
+  if(magnetHold){ releaseMagnet(); sfx('click'); return; }
+  const c=pickInView(metalCandidates(),34,o=>o.pos);
+  if(!c){ toast('No metal in sight'); return; }
+  const b=c.get();
+  magnetHold=b.owner; b.owner.held=true; b.held=true; RB.wake(b);
+  magnetDist=Math.max(5,P.pos.distanceTo(b.mesh.position));
+  sfx('rune');
+}
+function releaseMagnet(){
+  const o=magnetHold; if(!o) return;
+  o.held=false;
+  if(o.rb){ o.rb.held=false; o.rb.kin=false; RB.wake(o.rb); }
+  magnetHold=null;
+}
+/* dropped weapons become pickups again once they settle; chests carry their prompt */
+const MAG_GLOW=new THREE.MeshBasicMaterial({color:0xe0457e,transparent:true,opacity:.28,depthWrite:false,blending:THREE.AdditiveBlending});
+let magGlowT=0; const magGlows=[];
+function rbMagnetGlow(dt){
+  for(const b of RB.list.slice()){
+    const o=b.owner; if(!o) continue;
+    if(o.chestIA){ o.chestIA.x=b.mesh.position.x; o.chestIA.z=b.mesh.position.z; o.chestIA.y=b.mesh.position.y+.6; }
+    if(o.pickup&&b.asleep&&!b.held){
+      RB.remove(b); pickups.push(o.pickup); o.pickup.t=0;
+    }
+  }
+  if(magnetHold&&(P.inShrine?false:false)) {}
+  if(magnetHold&&magnetHold.rb&&P.pos.distanceTo(magnetHold.rb.mesh.position)>42){ releaseMagnet(); toast('Out of range'); }
+  /* while Magnesis is the rune in hand, metal shows pink */
+  magGlowT-=dt; if(magGlowT>0) return; magGlowT=.3;
+  const on=P.playing&&P.rune>=0&&P.runes[P.rune]==='magnesis';
+  for(const g of magGlows){ if(g.parent) g.parent.remove(g); }
+  magGlows.length=0;
+  if(!on) return;
+  let n=0;
+  for(const b of RB.list){
+    if(n>=24) break;
+    if(b.matter!=='metal'||b.isStatic||b.mesh.visible===false) continue;
+    if(b.mesh.position.distanceTo(P.pos)>34) continue;
+    magGlows.push(rbShell(b,MAG_GLOW)); n++;
+  }
+}
+
+/* ---- Cryonis on any water ---- */
+function cryonisAny(alt){
+  /* aim at a pillar and it shatters */
+  for(let d=2;d<26;d+=.5){
+    const p=aimPoint(d);
+    for(let i=icePillars.length-1;i>=0;i--){
+      const q=icePillars[i], m=q.m;
+      if(Math.abs(p.x-m.position.x)<1.4&&Math.abs(p.z-m.position.z)<1.4&&Math.abs(p.y-m.position.y)<m.scale.y/2){
+        removeIce(q); icePillars.splice(i,1); sfx('break'); toast('The ice shatters'); return;
+      }
+    }
+  }
+  let hit=null, surf=0;
+  for(let d=3;d<30;d+=.5){
+    const p=aimPoint(d), wl=waterAt(p.x,p.z);
+    if(p.y<=wl+.2&&groundAt(p.x,p.z)<wl-.6){ hit=p; surf=wl; break; }
+  }
+  if(!hit){ toast('Aim at water'); return; }
+  const h=6.5, finalY=surf-h/2+h*.6, startY=surf-h/2-.4;
+  const m=new THREE.Mesh(BOX,MAT.ice); m.scale.set(2.6,h,2.6);
+  m.position.set(hit.x,startY,hit.z); scene.add(m);
+  const pf=addPlatform(hit.x,hit.z,1.3,1.3,startY+h/2,'ice');
+  const holder={vel:new THREE.Vector3()};
+  const b=RB.add(holder,m,'box',new THREE.Vector3(1.3,h/2,1.3),1,{isStatic:true,kind:'ice',mu:.08,e:0});
+  b.kin=true; b.v.set(0,(finalY-startY)/.55,0); b.riseTo=finalY;
+  const pil={m,pf,life:180,rb:b};
+  icePillars.push(pil);
+  if(icePillars.length>3){ removeIce(icePillars.shift()); }
+  sfx('ice');
+}
+{ const _removeIce=removeIce; removeIce=function(p){ if(p&&p.rb) RB.remove(p.rb); _removeIce(p); }; }
+/* the pillar rises, lifting whatever is on it, then stops */
+{ const _stepIce=RB.step; RB.step=function(dt){
+    for(const p of icePillars){
+      const b=p.rb; if(!b||!b.kin) continue;
+      if(b.mesh.position.y>=b.riseTo){ b.mesh.position.y=b.riseTo; b.v.set(0,0,0); b.kin=false; }
+      p.pf.top=b.mesh.position.y+b.h.y;
+      /* the player rides it up too */
+      if(Math.abs(P.pos.x-b.mesh.position.x)<1.6&&Math.abs(P.pos.z-b.mesh.position.z)<1.6&&
+         P.pos.y<p.pf.top+.2&&P.pos.y>p.pf.top-2.5){ P.pos.y=p.pf.top; if(P.vel.y<0) P.vel.y=0; }
+    }
+    _stepIce(dt);
+  };
+  /* statics that move are integrated by hand */
+  const _s2=RB.step; RB.step=function(dt){
+    for(const p of icePillars){ const b=p.rb; if(b&&b.kin) b.mesh.position.addScaledVector(b.v,Math.min(dt,.05)); }
+    _s2(dt);
+  };
+}
+
+/* ---- bombs throw everything, and feed Stasis ---- */
+{ const _explodeRB=explode;
+  explode=function(p,dmg,rad){
+    _explodeRB(p,dmg,rad);
+    for(const b of RB.list){
+      if(b.isStatic) continue;
+      const d=b.mesh.position.distanceTo(p); if(d>rad+2) continue;
+      const dir=b.mesh.position.clone().sub(p).normalize();
+      if(b.frozen){ if(!(b.owner&&stasisObjs.includes(b.owner))) b.charge+=2; b.hitDir=dir.setY(0).normalize(); continue; }
+      if(b.owner&&stasisObjs.includes(b.owner)) continue;           /* the boulder code already threw it */
+      const k=(1-d/(rad+2))*24/Math.sqrt(Math.max(1,b.mass));
+      b.v.addScaledVector(dir,k); b.v.y+=k*.45;
+      b.w.set((Math.random()-.5)*6,(Math.random()-.5)*6,(Math.random()-.5)*6);
+      RB.wake(b);
+    }
+  };
+}
+
+/* ---- the rune key goes to the new versions ---- */
+{ const _useRuneRB=useRune;
+  useRune=function(alt){
+    if(P.rune<0||!P.runes.length) return _useRuneRB(alt);
+    const r=P.runes[P.rune];
+    if(r==='stasis'){ stasisAny(); updateGear(); return; }
+    if(r==='magnesis'){ magnesisAny(); updateGear(); return; }
+    if(r==='cryonis'){
+      if(alt||(P.inShrine&&(P.inShrine.pool1||P.inShrine.pool2))) return _useRuneRB(alt);
+      cryonisAny(alt); updateGear(); return;
+    }
+    return _useRuneRB(alt);
+  };
+}
+console.log('rigid bodies: '+RB.list.length+' bodies in one solver ('
+  +RB.list.filter(b=>b.kind==='metal').length+' metal, '+RB.list.filter(b=>b.kind==='boulder').length+' boulders, '
+  +RB.list.filter(b=>b.kind==='crate').length+' crates); runes work on anything they should');
 </script>
 
 
