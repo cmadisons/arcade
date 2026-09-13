@@ -1774,7 +1774,7 @@ function groundAt(x,z){
    the terrain when you are not */
 function floorUnder(x,z){
   if(P.inShrine) return P.inShrine.floorY;
-  if(P.inRes)    return RES.floorY;
+  if(P.inRes)    return (typeof resFloorAt==='function')?resFloorAt(x,z,P.pos.y):RES.floorY;
   if(P.inBeast&&P.inBeast.floorY!==undefined)  return P.inBeast.floorY;
   if(P.inCastle&&P.inCastle.floorY!==undefined) return P.inCastle.floorY;
   return groundAt(x,z);
@@ -4111,18 +4111,51 @@ let templeRoofY=0;
   IA({kind:'templeRoof',x:LM.temple.x,z:LM.temple.z+10*c,y:templeRoofY,r:14,label:'Meet the old man'});
 })();
 /* ================= BATCH 8 — Shrine of Resurrection, interior included ================= */
+/* a boulder that looks broken rather than modelled: an icosahedron with every
+   corner pushed in or out by a hash of where it sits, so shared corners stay shut */
+function roughRock(parent,sx,sy,sz,x,y,z,mat,seed){
+  const geo=new THREE.IcosahedronGeometry(1,1), p=geo.attributes.position.array;
+  for(let i=0;i<p.length;i+=3){
+    const h=Math.sin((Math.round(p[i]*97)*12.9898+Math.round(p[i+1]*97)*78.233+Math.round(p[i+2]*97)*37.719+(seed||0)*.618)*43758.5453);
+    const k=0.78+(h-Math.floor(h))*0.42;
+    p[i]*=k; p[i+1]*=k; p[i+2]*=k;
+  }
+  geo.computeVertexNormals();
+  const m=new THREE.Mesh(geo,mat);
+  m.scale.set(sx/2,sy/2,sz/2); m.position.set(x,y,z);
+  m.rotation.y=(seed||0)*.37;
+  parent.add(m); return m;
+}
 const RES={rx:-188, ry:0, rz:-516, floorY:0, entry:null};
 (function(){
   const y=groundAt(LM.resurrection.x,LM.resurrection.z);
   /* exterior: the mouth in the cliff */
   const g=new THREE.Group(); g.position.set(LM.resurrection.x,y,LM.resurrection.z); g.rotation.y=.4; world.add(g);
-  box(g,44,22,26,0,11,12,MAT.sheikah);
-  box(g,12,13,1.4,0,6.5,-1.6,MAT.glowB);
-  box(g,52,2,18,0,1,-10,MAT.stoneD);
-  for(let i=0;i<5;i++) box(g,2,16,2,-16+i*8,8,-2.4,MAT.sheikah);
-  for(let i=0;i<4;i++){const t=new THREE.Mesh(new THREE.TorusGeometry(3.2,.24,6,20),MAT.glowB);
-    t.position.set(-12+i*8,15,-1.9); g.add(t);}
-  const l=new THREE.PointLight(0x63d6e2,1.8,60); l.position.set(0,8,-6); g.add(l);
+  /* There is no door and nothing Sheikah-blue out here: the chamber is dug into
+     the cliff and all you see is a rough cave mouth in the rock. */
+  const RK =new THREE.MeshLambertMaterial({color:0x6f665a,flatShading:true});
+  const RKD=new THREE.MeshLambertMaterial({color:0x544c42,flatShading:true});
+  const RKM=new THREE.MeshLambertMaterial({color:0x5f7a3e,flatShading:true});     /* moss and grass on top */
+  /* the outcrop the chamber sits inside - the same 44 x 22 x 26 block, broken up */
+  for(const [sx,sy,sz,x,y2,z,m] of [
+    [15,11,13,-14, 8,14,RK ],[14,12,14, 13, 9,13,RK ],[17,10,15, 0,15,16,RK ],
+    [12, 9,12,-17,17, 8,RKD],[12,10,12, 17,16, 9,RKD],[16, 9,11, 0,20,10,RKM],
+    [ 9, 8, 9,-10, 3,-1,RKD],[ 9, 8, 9, 10, 3,-1,RKD],[13, 7,10, 0,14, 5,RK ]])
+    roughRock(g,sx,sy,sz,x,y2,z,m,x*7+z*3+y2);
+  /* the mouth itself: a dark hollow framed by boulders */
+  const hole=new THREE.Mesh(new THREE.CircleGeometry(5.6,20),
+    new THREE.MeshBasicMaterial({color:0x0b0907}));
+  hole.position.set(0,6.2,-2.6); hole.rotation.y=Math.PI; g.add(hole);
+  for(let i=0;i<9;i++){
+    const a=Math.PI*(-0.12+i/8*1.24);                  /* an arch - nothing along the bottom */
+    roughRock(g,2.6+(i%3)*.7,2.4+(i%2)*.8,2.4,Math.cos(a)*6.9,6.2+Math.sin(a)*6.9,-3.1,RKD,i*13+5);
+  }
+  box(g,26,1.2,12,0,.6,-9,RKD);                          /* the rocky shelf in front of it */
+  for(let i=0;i<3;i++){                                   /* embers drifting in the dark */
+    const e=new THREE.Mesh(new THREE.SphereGeometry(.14,5,4),new THREE.MeshBasicMaterial({color:0xe08a2a}));
+    e.position.set(-2+i*2,4.5+i*1.3,-1.5); g.add(e);
+  }
+  RES.exterior=g;
   IA({kind:'resDoor',x:LM.resurrection.x,z:LM.resurrection.z-6,y:y+2,r:9,label:'Shrine of Resurrection'});
 
   /* interior room, off the world grid so the terrain never intrudes */
@@ -4154,9 +4187,9 @@ const RES={rx:-188, ry:0, rz:-516, floorY:0, entry:null};
   const gl=new THREE.PointLight(0x63d6e2,2,26); gl.position.set(0,4.4,0); gs.add(gl);
   IA({kind:'guidance',room:'res',x:RES.rx,z:RES.rz-4,y:0,r:5,label:'Take the Sheikah Slate'});
   /* the two clothing chests, inside, where they really are */
-  /* olive stone body, dark green bands, a ring clasp and rope handles */
-  const CH_BODY=new THREE.MeshLambertMaterial({color:0x5a6a3a,flatShading:true});
-  const CH_BAND=new THREE.MeshLambertMaterial({color:0x3f4a28,flatShading:true});
+  /* brown body, darker brown bands, a ring clasp and rope handles */
+  const CH_BODY=new THREE.MeshLambertMaterial({color:0x6e4a2c,flatShading:true});
+  const CH_BAND=new THREE.MeshLambertMaterial({color:0x4a311d,flatShading:true});
   const CH_ROPE=new THREE.MeshLambertMaterial({color:0x7a2a2a,flatShading:true});
   function makeChest(px){
     const g=new THREE.Group(); g.position.set(px,0,10); r.add(g);
@@ -4616,7 +4649,11 @@ function updatePlayer(dt){
   if(!P.inShrine&&!P.inRes) structPush(P.pos);
   /* wall detection for climbing: terrain, and now buildings too */
   let wall=false;
-  if(moving&&!P.inRes&&!P.inShrine){
+  if(moving&&P.inRes&&typeof resFloorRaw==='function'){
+    /* the only climbable thing in the chamber is the rock ledge in the exit cave */
+    wall=resFloorRaw(P.pos.x+tv.x*1.3,P.pos.z+tv.z*1.3)>P.pos.y+1.15;
+  }
+  else if(moving&&!P.inRes&&!P.inShrine){
     const ax=P.pos.x+tv.x*1.3, az=P.pos.z+tv.z*1.3;
     wall=(groundAt(ax,az)>P.pos.y+1.15)&&slopeAt(ax,az)>1.0;
     if(!wall) wall=structWall(ax,az,P.pos.y);
@@ -4770,10 +4807,13 @@ function updatePlayer(dt){
       toast('You climb back out of the pit'); }
   }
   if(P.inRes){
-    P.pos.x=clamp(P.pos.x,RES.rx-RES.W/2+1.2,RES.rx+RES.W/2-1.2);
-    P.pos.z=clamp(P.pos.z,RES.rz-RES.L/2+1.2,RES.rz+RES.L/2-1.2);
-    if(RES.bigDoor.visible&&P.pos.z>RES.rz+RES.L/2-5) P.pos.z=RES.rz+RES.L/2-5;
-    if(P.pos.y<RES.floorY){P.pos.y=RES.floorY;P.vel.y=0;P.onGround=true;}
+    if(typeof resBounds==='function') resBounds(P.pos);
+    else {
+      P.pos.x=clamp(P.pos.x,RES.rx-RES.W/2+1.2,RES.rx+RES.W/2-1.2);
+      P.pos.z=clamp(P.pos.z,RES.rz-RES.L/2+1.2,RES.rz+RES.L/2-1.2);
+    }
+    const rf=floorUnder(P.pos.x,P.pos.z);
+    if(P.pos.y<rf&&!P.climbing){P.pos.y=rf;P.vel.y=0;P.onGround=true;}
   }
   if(P.pos.y<VOID_Y&&!P.inShrine&&!P.inRes) die('Off the edge.','void');
   /* stamina regen */
@@ -6191,8 +6231,8 @@ function updateCut(dt){
 /* quest log */
 const QUESTS={
   wake   :{h:'Main Quest',  t:'Follow the Sheikah Slate — take the slate from the Guidance Stone.'},
-  dress  :{h:'Main Quest',  t:'Follow the Sheikah Slate — find something to wear, then dock the slate.'},
-  leave  :{h:'Main Quest',  t:'Follow the Sheikah Slate — step out onto the Great Plateau.'},
+  dress  :{h:'Main Quest',  t:'Follow the Sheikah Slate — open the two chests and find something to wear.'},
+  leave  :{h:'Main Quest',  t:'Follow the Sheikah Slate — climb out through the cave onto the Great Plateau.'},
   tower  :{h:'Main Quest',  t:'Follow the Sheikah Slate — reach the Great Plateau Tower.'},
   shrines:{h:'Main Quest',  t:'The Isolated Plateau — clear all four ancient shrines.'},
   temple :{h:'Main Quest',  t:'The Isolated Plateau — meet the old man on the Temple of Time roof.'},
@@ -6233,7 +6273,7 @@ function promptFor(it){
     case 'resChest': return P.chests['res_'+it.which]?'':'<b>E</b> Open the chest';
     case 'resPedestal': return P.slateDocked?'<b>The door is open</b>':
       (P.hasSlate?'<b>E</b> Set the slate in the pedestal':'Find the Sheikah Slate first');
-    case 'resExit': return P.slateDocked?'<b>E</b> Step into the light':'';
+    case 'resExit': return P.hasSlate?'<b>E</b> Step into the light':'Take the Sheikah Slate first';
     case 'resDoor': return P.leftRes?'<b>E</b> Enter the Shrine of Resurrection':'';
     case 'shrine':{ const s=SHRINES.find(x=>x.id===it.id);
       return P.shrines[it.id]?'<b>'+s.name+'</b> · cleared':'<b>E</b> Enter '+s.name; }
@@ -6292,6 +6332,7 @@ function interact(){
       give(it.which);
       if(P.ownedArmor&&P.ownedArmor['Old Shirt']&&P.ownedArmor['Well-Worn Trousers']){
         equipArmor('Old Shirt'); equipArmor('Well-Worn Trousers');
+        if(P.quest==='dress') setQuest('leave');
       }
       break; }
     case 'resPedestal':
@@ -6302,7 +6343,7 @@ function interact(){
       setQuest('leave');
       cut('A voice','The door is open. Step into the light, Link — Hyrule is waiting, and it has waited a hundred years.');
       break;
-    case 'resExit': exitRes(); break;
+    case 'resExit': if(!P.hasSlate){ toast('Take the Sheikah Slate first'); return; } exitRes(); break;
     case 'resDoor': enterRes(); break;
     case 'shrine':{
       const s=SHRINES.find(x=>x.id===it.id);
@@ -15872,7 +15913,7 @@ function voiceOf(t){
   return 'boko';
 }
 /* base pitch and character per voice */
-const VOICE={
+const MON_VOICE={
   boko    :{f:300,w:'sawtooth',g:.055},
   moblin  :{f:170,w:'sawtooth',g:.070},
   lizal   :{f:420,w:'square',  g:.045},
@@ -15888,7 +15929,7 @@ const VOICE={
 function enemyVoice(E,ev){
   try{
     if(!E||!E.alive&&ev!=='die') return;
-    const v=voiceOf(E.t), V=VOICE[v]||VOICE.boko;
+    const v=voiceOf(E.t), V=MON_VOICE[v]||MON_VOICE.boko;
     const j=0.92+R1()*0.18;                    /* no two of a kind sound alike */
     const f=V.f*j;
     if(v==='guardian'){                        /* machines, not throats */
@@ -16014,7 +16055,7 @@ if(typeof animate==='function'){
   };
 }
 console.log('audio: footsteps on '+Object.keys(FOOT).length+' surfaces, '
-  +Object.keys(VOICE).length+' monster voices, ambient beds live');
+  +Object.keys(MON_VOICE).length+' monster voices, ambient beds live');
 </script>
 <script>
 /* ================= BATCH 80 — Link with nothing on =================
@@ -17392,7 +17433,8 @@ const TEMPER=[
   {n:'spirited',turn:0.80, spurs:3, flee:1.3, say:'Spirited. She will fight you for the first mile.'},
   {n:'wild',    turn:0.65, spurs:2, flee:1.8, say:'Wild. Sneak up, or do not bother.'}
 ];
-const HORSE_GEAR={
+/* the Roadmap 18 table already exists; merge this pass into it rather than redeclare it */
+for(const [k,v] of Object.entries({
   'Traveler’s Saddle' :{kind:'saddle',cost:0,   spurs:0, turn:0},
   'Traveler’s Bridle' :{kind:'bridle',cost:0,   spurs:0, turn:0},
   'Extravagant Saddle'     :{kind:'saddle',cost:1000,spurs:1, turn:0.05},
@@ -17401,7 +17443,7 @@ const HORSE_GEAR={
   'Knight’s Bridle'   :{kind:'bridle',cost:600, spurs:0, turn:0.12},
   'Monster Saddle'         :{kind:'saddle',cost:400, spurs:0, turn:0, calm:1},
   'Monster Bridle'         :{kind:'bridle',cost:400, spurs:0, turn:0.08, calm:1}
-};
+})) HORSE_GEAR[k]=Object.assign(HORSE_GEAR[k]||{},v);
 /* every horse gets a temperament the first time you meet it */
 function temperOf(H){
   if(!H._temper){
@@ -17658,40 +17700,130 @@ console.log('phase 4: '+TEMPER.length+' horse temperaments, '+Object.keys(HORSE_
   const EMBER =new THREE.MeshBasicMaterial({color:0xe08a2a});
   const OBS   =new THREE.MeshLambertMaterial({color:0x23262b,flatShading:true});
 
-  /* --- the ground is sand-coloured stone, with a raised dais at the far end --- */
-  const fl=new THREE.Mesh(new THREE.BoxGeometry(W,1,L),FLOOR);
-  fl.position.set(0,-0.5,0); r.add(fl);
-  box(r,W-6,0.7,10,0,0.35,L/2-9,TAN_D);
-  box(r,W-10,0.7,7 ,0,0.70,L/2-9,TAN_D);
-
-  /* --- heavy carved columns down both walls --- */
-  const COLS=7;
-  for(let i=0;i<COLS;i++){
-    const z=-L/2+7+i*(L-14)/(COLS-1);
-    for(const sx of [-1,1]){
-      const x=sx*(W/2-2.6);
-      const shaft=new THREE.Mesh(new THREE.CylinderGeometry(2.5,2.9,15,10),TAN);
-      shaft.position.set(x,7.5,z); r.add(shaft);
-      /* the dark bands that break each column into drums */
-      for(const h of [2.6,7.0,11.6]){
-        const bd=new THREE.Mesh(new THREE.CylinderGeometry(2.72,2.72,1.1,10),BAND);
-        bd.position.set(x,h,z); r.add(bd);
-      }
-      /* a capital where it meets the roof */
-      const cap=new THREE.Mesh(new THREE.CylinderGeometry(3.3,2.6,1.6,10),TAN_D);
-      cap.position.set(x,15.4,z); r.add(cap);
-      /* the little orange constellation dots on the wall behind */
-      for(let k=0;k<3;k++){
-        const e=new THREE.Mesh(new THREE.SphereGeometry(.16,6,5),EMBER);
-        e.position.set(sx*(W/2-0.9), 4+k*4.2+((i%2)?1.4:0), z+(k-1)*1.8);
-        r.add(e);
+  /* the first pass's dark box walls and cyan strips are still in the room; the
+     carved walls replace them, and its end wall would plug the cave */
+  for(const o of r.children.slice()){
+    const m=o.material; if(!o.isMesh||!m||!m.color||o.geometry!==BOX) continue;
+    const hex=m.color.getHex();
+    if(hex===0x1e2226||(m.isMeshBasicMaterial&&hex===0x63d6e2)) r.remove(o);
+  }
+  /* ---- carved surfaces, drawn once onto canvases ----
+     From the close-up of a column: the stone is dark, and the tan is a raised
+     maze of swirls standing proud of it, each line with a groove down its
+     middle.  The walls behind are the same dark stone with orange dots joined
+     into constellations. */
+  const rng=seed=>{ let v=seed>>>0; return ()=>((v=(v*1664525+1013904223)>>>0)/4294967296); };
+  function carvedCanvas(w,h,seed,bg,fg,density){
+    const c=document.createElement('canvas'); c.width=w; c.height=h;
+    const x=c.getContext('2d'), R=rng(seed);
+    x.fillStyle=bg; x.fillRect(0,0,w,h);
+    for(let i=0;i<w*h/1400;i++){                       /* weathering */
+      x.fillStyle='rgba(0,0,0,'+(R()*.07).toFixed(3)+')';
+      x.beginPath(); x.arc(R()*w,R()*h,3+R()*22,0,6.2832); x.fill();
+    }
+    const lines=[];
+    for(let i=0;i<w*h/9000*density;i++){               /* spirals */
+      const cx=R()*w, cy=R()*h, turns=1.2+R()*1.5, grow=3.2+R()*2.2, dir=R()<.5?1:-1, pts=[];
+      for(let t=0;t<turns*6.2832;t+=.22){ const rr=4+t*grow; pts.push([cx+Math.cos(t*dir)*rr, cy+Math.sin(t*dir)*rr]); }
+      lines.push(pts);
+    }
+    for(let i=0;i<w*h/4200*density;i++){               /* meanders filling between them */
+      let px=R()*w, py=R()*h, t=R()*6.2832; const pts=[[px,py]], n=8+(R()*26|0);
+      for(let k=0;k<n;k++){ t+=(R()-.5)*1.5; px+=Math.cos(t)*8; py+=Math.sin(t)*8; pts.push([px,py]); }
+      lines.push(pts);
+    }
+    x.lineCap='round'; x.lineJoin='round';
+    const pass=(lw,col,ox,oy)=>{ x.strokeStyle=col; x.lineWidth=lw;
+      for(const dx of [-w,0,w]) for(const pts of lines){
+        x.beginPath(); pts.forEach((q,k)=>k?x.lineTo(q[0]+dx+ox,q[1]+oy):x.moveTo(q[0]+dx+ox,q[1]+oy)); x.stroke(); } };
+    pass(15,'rgba(0,0,0,.5)',2,3);                      /* the shadow the relief casts */
+    pass(13,fg,0,0);                                    /* the raised line */
+    pass(3.2,'rgba(60,45,30,.55)',0,0);                 /* the groove down its middle */
+    return c;
+  }
+  function constellationCanvas(w,h,seed,bg,emissive){
+    const c=document.createElement('canvas'); c.width=w; c.height=h;
+    const x=c.getContext('2d'), R=rng(seed);
+    x.fillStyle=bg; x.fillRect(0,0,w,h);
+    if(!emissive){
+      for(let i=0;i<w*h/900;i++){
+        x.fillStyle=(R()<.5?'rgba(0,0,0,':'rgba(255,240,210,')+(R()*.05).toFixed(3)+')';
+        x.beginPath(); x.arc(R()*w,R()*h,4+R()*30,0,6.2832); x.fill();
       }
     }
+    for(let i=0;i<w*h/26000;i++){
+      let px=R()*w, py=R()*h; const n=3+(R()*4|0), pts=[[px,py]];
+      for(let k=1;k<n;k++){ px+=(R()-.5)*90; py+=(R()-.35)*70; pts.push([px,py]); }
+      x.strokeStyle=emissive?'rgba(224,138,42,.75)':'rgba(170,110,50,.8)'; x.lineWidth=1.6;
+      x.beginPath(); pts.forEach((q,k)=>k?x.lineTo(q[0],q[1]):x.moveTo(q[0],q[1])); x.stroke();
+      for(const q of pts){
+        const r=2+R()*4.5;
+        x.fillStyle=emissive?'#e8902e':'#b8702e';
+        x.beginPath(); x.arc(q[0],q[1],r,0,6.2832); x.fill();
+        if(emissive){ x.fillStyle='rgba(255,190,90,.9)'; x.beginPath(); x.arc(q[0],q[1],r*.45,0,6.2832); x.fill(); }
+      }
+    }
+    return c;
   }
-  /* the walls themselves, behind the columns */
-  box(r,W,18,1.2,0,9,-L/2,DARK); box(r,W,18,1.2,0,9,L/2,DARK);
-  box(r,1.2,18,L,-W/2,9,0,DARK); box(r,1.2,18,L,W/2,9,0,DARK);
+  const tex=(c,rx,ry)=>{ const t=new THREE.CanvasTexture(c); t.wrapS=t.wrapT=THREE.RepeatWrapping;
+    t.repeat.set(rx||1,ry||1); t.encoding=THREE.sRGBEncoding; t.anisotropy=4; return t; };
+
+  const SWIRL =new THREE.MeshLambertMaterial({map:tex(carvedCanvas(1024,256,11,'#3b3631','#b39c78',1.0))});
+  const FRIEZE=new THREE.MeshLambertMaterial({map:tex(carvedCanvas(1024,256,23,'#4a433a','#b8a27e',1.4),3,1)});
+  const wallC=constellationCanvas(1024,288,37,'#3d3833',false), wallE=constellationCanvas(1024,288,37,'#000',true);
+  const WALL  =new THREE.MeshLambertMaterial({map:tex(wallC,1,1),emissive:0xffffff,emissiveMap:tex(wallE,1,1)});
+  const ENDW  =new THREE.MeshLambertMaterial({map:tex(wallC,.45,1),emissive:0xffffff,emissiveMap:tex(wallE,.45,1)});
+
+  /* --- the ground is sand-coloured stone, with a paler walkway down the middle --- */
+  const fl=new THREE.Mesh(new THREE.BoxGeometry(W,1,L),FLOOR);
+  fl.position.set(0,-0.5,0); r.add(fl);
+  box(r,8,0.06,L-4,0,0.03,2,new THREE.MeshLambertMaterial({color:0xb3a47f}));
+
+  /* --- the columns: stacked urns of dark stone, the carving tan and raised ---
+     From the floor up: plinth, a swollen drum, a band, a narrow neck, a band, a
+     body that flares up to a band, and a wide carved bowl under the roof. */
+  const COLS=6;
+  const lathe=(pts,mat)=>new THREE.Mesh(new THREE.LatheGeometry(pts.map(q=>new THREE.Vector2(q[0],q[1])),16),mat);
+  const COL_PARTS=[
+    [[[3.2,0],[3.2,.8],[2.7,.95]], TAN],                                   /* plinth */
+    [[[2.6,.95],[3.05,2.4],[3.05,4.0],[2.5,5.4]], SWIRL],                  /* lower drum */
+    [[[2.62,5.35],[2.62,6.25]], TAN],                                      /* band */
+    [[[2.55,6.25],[2.05,6.7],[1.95,7.6],[2.2,7.9]], BAND],                 /* neck */
+    [[[2.3,7.85],[2.3,8.5]], TAN],                                         /* band */
+    [[[2.2,8.5],[2.55,10.4],[3.0,12.1]], SWIRL],                           /* flaring body */
+    [[[3.12,12.05],[3.12,12.9]], TAN],                                     /* band */
+    [[[3.0,12.9],[3.55,14.8],[3.95,16.3]], SWIRL],                         /* the bowl */
+    [[[4.05,16.25],[4.05,17.1],[3.3,17.4]], TAN]                           /* rim */
+  ];
+  for(let i=0;i<COLS;i++){
+    const z=-L/2+8+i*(L-16)/(COLS-1);
+    for(const sx of [-1,1]){
+      const x=sx*(W/2-3.2);
+      for(const [pts,m] of COL_PARTS){ const part=lathe(pts,m); part.position.set(x,0,z); part.rotation.y=i*1.3+sx; r.add(part); }
+    }
+  }
+  /* the walls behind them, and the carved frieze heaped behind the basin */
+  box(r,W,18,1.2,0,9,-L/2,ENDW);
+  box(r,1.2,18,L,-W/2,9,0,WALL); box(r,1.2,18,L,W/2,9,0,WALL);
   box(r,W,1,L,0,18,0,DARK);
+  box(r,W-4,4.2,1.6,0,2.1,-L/2+1.4,FRIEZE);
+  for(let k=0;k<5;k++){                                  /* mounds of it, not a flat panel */
+    const m=new THREE.Mesh(new THREE.SphereGeometry(2.6,14,8,0,Math.PI*2,0,Math.PI/2),FRIEZE);
+    m.scale.set(1.5,1.2,.6); m.position.set(-10+k*5,0,-L/2+2.2); r.add(m);
+  }
+  /* the far wall is where the cave starts - an opening in it, not a door */
+  box(r,9,18,1.2,-10.5,9,L/2,ENDW); box(r,9,18,1.2,10.5,9,L/2,ENDW);
+  box(r,12,7,1.2,0,14.5,L/2,ENDW);
+  const CAVE=new THREE.MeshLambertMaterial({color:0x332d26,flatShading:true});
+  for(let i=0;i<8;i++){
+    const a=Math.PI*(-0.05+i/7*1.1);
+    roughRock(r,2.4+(i%3)*.6,2.2+(i%2)*.7,2.2,Math.cos(a)*6.6,5.2+Math.sin(a)*6.0,L/2+.2,CAVE,i*17+3);
+  }
+  /* the pedestal and the door it used to open are gone */
+  if(RES.bigDoor&&RES.bigDoor.parent) RES.bigDoor.parent.remove(RES.bigDoor);
+  RES.bigDoor={visible:false};
+  if(RES.dock&&RES.dock.parent&&RES.dock.parent.parent) RES.dock.parent.parent.remove(RES.dock.parent);
+  for(let i=interactables.length-1;i>=0;i--) if(interactables[i].kind==='resPedestal') interactables.splice(i,1);
 
   /* --- the ceiling: one great blue organic thing, arms radiating from a hub --- */
   const sky=new THREE.Group(); sky.position.set(0,17.2,-20); r.add(sky);
@@ -17773,23 +17905,78 @@ console.log('phase 4: '+TEMPER.length+' horse temperaments, '+Object.keys(HORSE_
     }
   }
 
-  /* --- past the great door, a rough cave and daylight --- */
-  const cor=new THREE.Group(); cor.position.set(0,0,L/2+11); r.add(cor);
-  const rock=new THREE.MeshLambertMaterial({color:0x2f2a24,flatShading:true});
-  box(cor,14,1,24,0,-0.5,0,rock);
-  box(cor,1.4,14,24,-7,7,0,rock); box(cor,1.4,14,24,7,7,0,rock);
-  box(cor,14,1,24,0,14,0,rock);
-  for(let i=0;i<10;i++){
-    const e=new THREE.Mesh(new THREE.SphereGeometry(.12,5,4),EMBER);
-    e.position.set((Math.random()-.5)*11,2+Math.random()*9,(Math.random()-.5)*20);
-    cor.add(e);
+  /* --- the way out is a cave, not a corridor ---
+     Rough dark rock with embers hanging in it.  Part way along, a rock shelf
+     you have to climb, then a slope up to a round mouth full of daylight and
+     pine trees.  Local z runs 0 at the chamber wall to 44 at the mouth. */
+  const cor=new THREE.Group(); cor.position.set(0,0,L/2); r.add(cor);
+  const ROCK =new THREE.MeshLambertMaterial({color:0x2f2a24,flatShading:true});
+  const ROCK2=new THREE.MeshLambertMaterial({color:0x3a332b,flatShading:true});
+  const DIRT =new THREE.MeshLambertMaterial({color:0x4a4034,flatShading:true});
+  const GRASS=new THREE.MeshLambertMaterial({color:0x56703a,flatShading:true});
+  const Rc=rng(91);
+  box(cor,14,1,18,0,-0.5,9,DIRT);                               /* floor up to the shelf */
+  box(cor,14,4,12,0,2,24,ROCK2);                                /* the shelf */
+  const ramp=box(cor,14,1,10.4,0,0,35,DIRT);                    /* slope up to the mouth */
+  ramp.rotation.x=-Math.atan2(2,10); ramp.position.y=5-0.5/Math.cos(Math.atan2(2,10));
+  box(cor,14,1,6,0,5.5,43,GRASS);
+  /* the shelf's face is broken rock, handholds and all */
+  for(let i=0;i<6;i++) roughRock(cor,3+Rc()*1.6,3.4+Rc()*1.4,1.8,-5.5+i*2.2,1.6+Rc()*1.4,18.6,ROCK,40+i);
+  /* walls and roof, boulder by boulder, following the floor up */
+  const floorLocal=cz=>cz<18?0:cz<30?4:cz<40?4+(cz-30)/5:6;
+  for(let cz=1;cz<=44;cz+=2.6){
+    const fy=floorLocal(cz);
+    for(const sx of [-1,1]){
+      roughRock(cor,4.5+Rc()*2,6+Rc()*2.5,4+Rc()*1.5,sx*(8.2+Rc()*.8),fy+2.6,cz,ROCK,cz*3+sx);
+      roughRock(cor,4+Rc()*2,5+Rc()*2,4+Rc()*1.5,sx*(7.6+Rc()*.8),fy+8,cz+1.2,ROCK2,cz*5+sx);
+    }
+    roughRock(cor,10+Rc()*3,3.5+Rc()*1.5,4.5,(Rc()-.5)*3,fy+12.6,cz+.6,ROCK,cz*7);
   }
-  const mouth=new THREE.Mesh(new THREE.PlaneGeometry(12,11),
-    new THREE.MeshBasicMaterial({color:0xdfe9f0,transparent:true,opacity:.94,
-                                 side:THREE.DoubleSide}));
-  mouth.position.set(0,5.5,12); cor.add(mouth);
-  RES.mouth=mouth;
-  RES.L=L+24;
+  for(let i=0;i<18;i++){                                        /* embers */
+    const e=new THREE.Mesh(new THREE.SphereGeometry(.12+Rc()*.08,5,4),EMBER);
+    const cz=Rc()*40; e.position.set((Rc()-.5)*10,floorLocal(cz)+2+Rc()*8,cz);
+    cor.add(e); RES.motes.push({m:e,p:Rc()*6.28,s:.2+Rc()*.4});
+  }
+  /* the mouth: a ring of rock round a disc of daylight */
+  const ring=new THREE.Shape(); ring.moveTo(-15,-6); ring.lineTo(15,-6); ring.lineTo(15,18); ring.lineTo(-15,18); ring.lineTo(-15,-6);
+  const holeP=new THREE.Path(); holeP.absarc(0,5.2,5.0,0,Math.PI*2,true); ring.holes.push(holeP);
+  const wallM=new THREE.Mesh(new THREE.ExtrudeGeometry(ring,{depth:2,bevelEnabled:false}),ROCK);
+  wallM.position.set(0,6,44.5); cor.add(wallM);
+  for(let i=0;i<12;i++){
+    const a=i/12*Math.PI*2;
+    roughRock(cor,2.2+Rc(),2.2+Rc(),2,Math.cos(a)*5.6,11.2+Math.sin(a)*5.6,44.2,ROCK2,200+i);
+  }
+  /* daylight beyond: sky, a line of pines, grass */
+  const dc=document.createElement('canvas'); dc.width=512; dc.height=512;
+  { const x=dc.getContext('2d'), g2=x.createLinearGradient(0,0,0,512);
+    g2.addColorStop(0,'#8cc0ec'); g2.addColorStop(.62,'#e4f0f6'); g2.addColorStop(.63,'#6f9448'); g2.addColorStop(1,'#4d6e33');
+    x.fillStyle=g2; x.fillRect(0,0,512,512);
+    const Rd=rng(7);
+    for(let i=0;i<14;i++){
+      const px=Rd()*512, h=120+Rd()*170, base=330+Rd()*20;
+      x.fillStyle=i%2?'#2f5a3a':'#3b6b44';
+      for(let k=0;k<5;k++){ const w=(18+k*9)*(h/220), y0=base-h+k*h/5.2;
+        x.beginPath(); x.moveTo(px,y0); x.lineTo(px-w,y0+h/3.4); x.lineTo(px+w,y0+h/3.4); x.closePath(); x.fill(); }
+      x.fillStyle='#4a3a2a'; x.fillRect(px-3,base-6,6,20);
+    }
+  }
+  const day=new THREE.Mesh(new THREE.PlaneGeometry(22,22),
+    new THREE.MeshBasicMaterial({map:tex(dc)}));
+  day.position.set(0,11.5,48); day.rotation.y=Math.PI; cor.add(day);
+  RES.mouth=day;
+  /* the light pours in and falls down the slope */
+  const sunIn=new THREE.PointLight(0xfff0d0,2.2,46); sunIn.position.set(0,11,40); cor.add(sunIn);
+  const shaft=new THREE.Mesh(new THREE.ConeGeometry(5.2,26,18,1,true),
+    new THREE.MeshBasicMaterial({color:0xfff2d6,transparent:true,opacity:.07,depthWrite:false,
+                                 blending:THREE.AdditiveBlending,side:THREE.DoubleSide}));
+  shaft.rotation.x=-Math.PI/2+0.25; shaft.position.set(0,8.5,32); cor.add(shaft);
+
+  /* how the floor rises, for movement - the shelf is 4 m of climbing */
+  RES.CAVE={z0:L/2, len:44, half:5.4};
+  RES.caveFloor=floorLocal;
+  RES.L=L;
+  /* the exit is at the mouth, up past the shelf */
+  for(const it of interactables) if(it.kind==='resExit'){ it.x=RES.rx; it.z=RES.rz+L/2+41; it.y=6; it.r=5; }
 
   console.log('Shrine of Resurrection rebuilt from reference: tan stone, '
     +COLS*2+' carved columns, a '+ARMS+'-armed ceiling with its pod, 44 motes');
@@ -18003,12 +18190,134 @@ function toggleInventory(){ INV.open?closeInventory():openInventory(); }
     if(INV.open){ e.preventDefault(); e.stopImmediatePropagation(); closeInventory(); return; }
     if(!P.playing||paused||mapOpen) return;
     if(typeof nearest!=='undefined'&&nearest) return;   /* let interact() have it */
+    if(typeof korokInReach==='function'&&korokInReach()) return;   /* a Korok puzzle wants E too */
     e.preventDefault(); e.stopImmediatePropagation();
     openInventory();
   };
   addEventListener('keydown',h,true);                    /* capture, so it runs first */
 })();
 console.log('inventory: '+INV_TABS.length+' tabs, click to equip; number keys no longer switch gear');
+</script>
+<script>
+/* ================= BATCH 92 — the way out of the Shrine of Resurrection =====
+   There is no door and no pedestal.  The chamber's far wall opens into a cave:
+   you climb a rock shelf, walk up into the daylight, and come out of a rough
+   mouth in the cliff - where the first Korok is waiting under a rock. */
+
+/* ---- the cave floor: flat, a 4 m shelf you climb, then a slope ---- */
+function resFloorRaw(x,z){
+  const C=RES.CAVE, lz=z-RES.rz;
+  if(!C||lz<=C.z0) return RES.floorY;
+  return RES.floorY+RES.caveFloor(Math.min(lz-C.z0,C.len));
+}
+function resFloorAt(x,z,y){
+  const raw=resFloorRaw(x,z);
+  /* higher than a step: that is the shelf's face, and you are still below it */
+  return (y!==undefined&&raw>y+STEP_UP+.05)?RES.floorY:raw;
+}
+function resBounds(pos){
+  const C=RES.CAVE, lz=pos.z-RES.rz;
+  if(!C||lz<=C.z0){
+    pos.x=clamp(pos.x,RES.rx-RES.W/2+1.2,RES.rx+RES.W/2-1.2);
+    if(pos.z<RES.rz-RES.L/2+1.2) pos.z=RES.rz-RES.L/2+1.2;
+    /* the far wall is solid either side of the cave opening */
+    if(C&&lz>C.z0-1.2&&Math.abs(pos.x-RES.rx)>C.half) pos.z=RES.rz+C.z0-1.2;
+    return;
+  }
+  pos.x=clamp(pos.x,RES.rx-C.half,RES.rx+C.half);
+  const cz=lz-C.z0;
+  if(cz>C.len-1.6) pos.z=RES.rz+C.z0+C.len-1.6;
+  /* you cannot walk into the shelf, only climb it */
+  if(cz>17.95&&cz<30&&pos.y<RES.floorY+4-STEP_UP) pos.z=RES.rz+C.z0+17.95;
+}
+
+/* ---- the camera stays in the rock with you ---- */
+const _updateCameraRes=updateCamera;
+updateCamera=function(dt){
+  _updateCameraRes(dt);
+  if(!P.inRes||!RES.CAVE) return;
+  const c=camera.position, C=RES.CAVE, lz=c.z-RES.rz;
+  if(lz<=C.z0-1){
+    c.x=clamp(c.x,RES.rx-RES.W/2+1,RES.rx+RES.W/2-1);
+    c.z=Math.max(c.z,RES.rz-RES.L/2+1);
+    c.y=clamp(c.y,RES.floorY+.8,RES.floorY+16.5);
+  } else {
+    c.x=clamp(c.x,RES.rx-6,RES.rx+6);
+    c.z=Math.min(c.z,RES.rz+C.z0+C.len-1);
+    const f=resFloorRaw(c.x,c.z);
+    c.y=clamp(c.y,f+.8,f+10.5);
+  }
+  camera.lookAt(P.pos.x,P.pos.y+1.8,P.pos.z);
+};
+
+/* ---- amber haze inside, as in every shot of the real room ---- */
+const _updateSkyRes=updateSky;
+updateSky=function(dt){
+  _updateSkyRes(dt);
+  if(!P.inRes) return;
+  const lz=P.pos.z-RES.rz, inCave=RES.CAVE&&lz>RES.CAVE.z0;
+  scene.fog.color.setHex(inCave?0x2c2720:0x4d4632);
+  scene.fog.density=inCave?0.02:0.016;
+  renderer.setClearColor(scene.fog.color);
+};
+if(RES.mouth&&RES.mouth.material){ RES.mouth.material.fog=false; RES.mouth.material.needsUpdate=true; }
+
+/* ---- the Korok outside the mouth ----
+   One of the 900 is moved here rather than a 901st added: the nearest
+   lift-a-rock Korok, put on the rocky shelf beside the cave. */
+(function resKorok(){
+  if(typeof koroks==='undefined'||!window.__korokMeshes) return;
+  const a=.4, lx=-10, lzl=-11, cx=LM.resurrection.x, cz=LM.resurrection.z;
+  const wx=cx+Math.cos(a)*lx+Math.sin(a)*lzl, wz=cz-Math.sin(a)*lx+Math.cos(a)*lzl;
+  const wy=Math.max(groundAt(wx,wz), groundAt(cx,cz)+1.2);
+  let K=null, bd=1e12;
+  for(const k of koroks){
+    if(k.type!=='rock'||k.found) continue;
+    const d=(k.x-cx)*(k.x-cx)+(k.z-cz)*(k.z-cz);
+    if(d<bd){ bd=d; K=k; }
+  }
+  if(!K||!K.parts.length) return;
+  for(const [,b] of kBuckets){ const i=b.indexOf(K); if(i>=0) b.splice(i,1); }
+  K.x=wx; K.z=wz; K.y=wy; K.resurrection=true; K.hint='Lift the rock';
+  const [mesh,idx]=K.parts[0];
+  const d=new THREE.Object3D(); d.position.set(wx,wy+.8,wz); d.rotation.y=1.1; d.scale.setScalar(.85);
+  d.updateMatrix(); mesh.setMatrixAt(idx,d.matrix); mesh.instanceMatrix.needsUpdate=true;
+  kAdd(K);
+  RES.korok=K;
+  console.log('Korok by the Shrine of Resurrection at',wx.toFixed(1),wz.toFixed(1),'(moved from '+Math.sqrt(bd).toFixed(0)+' m away)');
+})();
+
+/* ---- E for Korok puzzles ----
+   The inventory took E whenever nothing was "nearest", and a Korok rock never
+   is, so the key never reached the Korok code and no rock could be lifted. */
+function korokInReach(){
+  if(P.inShrine||P.inRes||P.inBeast||P.inCastle||typeof kNear!=='function') return null;
+  for(const K of kNear(P.pos.x,P.pos.z)){
+    if(K.found) continue;
+    const d=Math.hypot(K.x-P.pos.x,K.z-P.pos.z);
+    switch(K.type){
+      case 'rock':           if(d<3.2) return K; break;
+      case 'hiddenRock':     if(K.wall&&K.wall.broken&&d<3.4) return K; break;
+      case 'peakSparkles':   if(d<3.0&&Math.abs(P.pos.y-K.y)<4) return K; break;
+      case 'iceSparkles':    if(K.melted&&d<3.2) return K; break;
+      case 'timedRing':      if(!K.racing&&d<2.4) return K; break;
+      case 'movingSparkles': if(Math.hypot(K.mx-P.pos.x,K.mz-P.pos.z)<2.2) return K; break;
+      case 'fruitOffering':  if(d<3.0) return K; break;
+      case 'pair':           if(d<2.6) return K; break;
+    }
+  }
+  return null;
+}
+const _promptForKorok=promptFor;
+promptFor=function(it){
+  if(it) return _promptForKorok(it);
+  const K=korokInReach(); if(!K) return '';
+  const say={rock:'Lift the rock',hiddenRock:'Lift the rock',peakSparkles:'Examine the sparkles',
+    iceSparkles:'Examine the sparkles',timedRing:'Step on the stump',movingSparkles:'Catch the sparkle',
+    fruitOffering:'Offer an apple',pair:'Place the rock'}[K.type];
+  return '<b>E</b> '+(say||K.hint||'Search');
+};
+console.log('Shrine of Resurrection: cave exit with a climbable shelf, no door; Korok E-puzzles reachable again');
 </script>
 
 
