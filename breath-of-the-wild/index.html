@@ -20946,6 +20946,469 @@ console.log('rock: '+FORMATIONS.boulders+' boulder fields, '+FORMATIONS.spires+'
 }
 console.log('Shrine of Resurrection: chests rebuilt from the reference image; the great door and its pedestal are back');
 </script>
+<script>
+/* ================= BATCH 100 — Group 6: the Sheikah Slate ====================
+   6. Full map features.  The map was one fixed picture at 25 m a pixel with
+      markers on it.  Now: the wheel zooms toward the cursor up to 8x, drag
+      pans, and a 6 m-a-pixel map is drawn in the background so zooming in
+      shows detail instead of blur.  Right-click drops a pin (up to 100, click
+      one to lift it); a row of filters hides whole kinds of marker; the
+      readout under the map gives the region, the Sheikah Slate coordinates
+      and the elevation under the cursor; you are an arrow pointing the way
+      you face; and pins are saved with the game. */
+const MAPV={z:1,cx:.5,cy:.5,drag:null,filters:{shrine:true,tower:true,town:true,camp:true,chest:true,memory:true,pin:true}};
+P.pins=P.pins||[];
+(function mapUI(){
+  const st=document.createElement('style');
+  st.textContent=`
+  #mapwrap{overflow:hidden;cursor:grab}
+  #mapwrap.dragging{cursor:grabbing}
+  #mapinner{position:absolute;inset:0;transform-origin:0 0}
+  #mapinner #bigmap{position:absolute;inset:0}
+  #mapinner .mk{transform:translate(-50%,-50%) scale(calc(1 / var(--mz,1)))}
+  .mk.pin .dot{width:12px;height:12px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:#e2504c;border-color:#3a0e0c;cursor:pointer}
+  .mk.you .dot{width:0;height:0;border-radius:0;background:none;box-shadow:none;border:none;
+    border-left:7px solid transparent;border-right:7px solid transparent;border-bottom:16px solid var(--cyan);filter:drop-shadow(0 0 6px var(--cyan))}
+  #mapfilters{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 0}
+  #mapfilters button{font-family:var(--ui);font-size:11px;letter-spacing:.14em;text-transform:uppercase;padding:4px 10px;
+    background:transparent;color:var(--parchment);border:1px solid var(--faint);border-radius:2px;cursor:pointer}
+  #mapfilters button.off{opacity:.38;text-decoration:line-through}
+  #mapinfo{font-family:var(--ui);font-size:12.5px;letter-spacing:.1em;color:var(--muted);margin-top:8px;min-height:18px}
+  #mapinfo b{color:var(--parchment);font-weight:500}`;
+  document.head.appendChild(st);
+  const wrap=$('#mapwrap'), canvas=$('#bigmap'), markers=$('#markers');
+  const inner=document.createElement('div'); inner.id='mapinner';
+  wrap.insertBefore(inner,canvas); inner.appendChild(canvas); inner.appendChild(markers);
+  canvas.width=canvas.height=BIGMAP*3;
+  const f=document.createElement('div'); f.id='mapfilters';
+  for(const [k,label] of [['shrine','Shrines'],['tower','Towers'],['town','Villages · stables'],['camp','Camps'],['chest','Chests'],['memory','Memories · caves'],['pin','Pins · stamps']]){
+    const b=document.createElement('button'); b.textContent=label; b.dataset.k=k;
+    b.onclick=e=>{ e.stopPropagation(); MAPV.filters[k]=!MAPV.filters[k]; b.classList.toggle('off',!MAPV.filters[k]); applyMapView(); };
+    f.appendChild(b);
+  }
+  const info=document.createElement('div'); info.id='mapinfo'; info.textContent='Wheel to zoom · drag to pan · right-click to drop a pin';
+  wrap.parentNode.insertBefore(f,wrap.nextSibling); f.parentNode.insertBefore(info,f.nextSibling);
+})();
+/* the higher-detail map, baked a slice at a time in the background */
+const MAP_HI=1600, mapHi=document.createElement('canvas'); mapHi.width=mapHi.height=MAP_HI;
+let mapHiRow=0, mapHiReady=false;
+(function bakeHi(){
+  const c=mapHi.getContext('2d'), img=c.createImageData(MAP_HI,MAP_HI);
+  const G=(typeof groundCoarse==='function')?groundCoarse:groundAt;
+  function slice(){
+    const end=Math.min(MAP_HI,mapHiRow+36);
+    for(let y=mapHiRow;y<end;y++) for(let x=0;x<MAP_HI;x++){
+      const wx=-WORLD_HALF+(x/MAP_HI)*WORLD_SPAN, wz=-WORLD_HALF+(y/MAP_HI)*WORLD_SPAN;
+      const h=G(wx,wz), e=6, sl=Math.hypot(G(wx+e,wz)-G(wx-e,wz),G(wx,wz+e)-G(wx,wz-e))/(2*e), t=tempAt(wx,wz,h), wl=waterAt(wx,wz);
+      let r,g,b;
+      if(h<-30){r=24;g=22;b=20;}
+      else if(h<wl){ const dep=clamp((wl-h)/40,0,1); r=lerp(52,28,dep);g=lerp(104,62,dep);b=lerp(128,92,dep);}
+      else if(h<wl+1.8){r=196;g=178;b=134;}
+      else if(t<0.5){r=232;g=238;b=244;}
+      else if(sl>.82){r=126;g=116;b=100;}
+      else {const k=clamp((h-40)/380,0,1); r=lerp(84,132,k);g=lerp(122,146,k);b=lerp(64,84,k);}
+      /* hill shading from the north-west, so relief reads when zoomed */
+      const lit=clamp(1+((G(wx-e,wz-e)-G(wx+e,wz+e))/(2*e))*.55,.55,1.45);
+      const i=(y*MAP_HI+x)*4; img.data[i]=r*lit; img.data[i+1]=g*lit; img.data[i+2]=b*lit; img.data[i+3]=255;
+    }
+    mapHiRow=end;
+    if(mapHiRow<MAP_HI) setTimeout(slice,mapOpen?0:30);
+    else { c.putImageData(img,0,0); mapHiReady=true; if(mapOpen) drawBigMap(); }
+  }
+  setTimeout(slice,8000);
+})();
+/* every draw into the big map goes through here: the 3x canvas gets a 3x
+   transform, and the low map is swapped for the detailed one once it exists */
+(function patchMapContext(){
+  const ctx=$('#bigmap').getContext('2d');
+  const _di=ctx.drawImage.bind(ctx);
+  ctx.drawImage=function(img,...a){
+    if(img===mapCanvas&&mapHiReady&&a.length===8){
+      const k=MAP_HI/MAPS; return _di(mapHi,a[0]*k,a[1]*k,a[2]*k,a[3]*k,a[4],a[5],a[6],a[7]);
+    }
+    return _di(img,...a);
+  };
+  const _dm=drawBigMap;
+  drawBigMap=function(){
+    ctx.setTransform(3,0,0,3,0,0);
+    ctx.imageSmoothingEnabled=MAPV.z<2.5;
+    const r=_dm.apply(this,arguments);
+    /* pins */
+    const M=$('#markers');
+    P.pins.forEach((pin,i)=>{
+      const [mx,my]=w2m(pin.x,pin.z), d=document.createElement('div');
+      d.className='mk pin'; d.style.left=(mx/MAPS*100)+'%'; d.style.top=(my/MAPS*100)+'%';
+      d.innerHTML='<div class="dot"></div><div class="tip">Pin · click to remove</div>';
+      d.onclick=e=>{ e.stopPropagation(); P.pins.splice(i,1); drawBigMap(); };
+      M.appendChild(d);
+    });
+    /* you face the way you are looking */
+    const you=[...M.querySelectorAll('.mk.you')].pop();
+    if(you){ const dot=you.querySelector('.dot'); if(dot) dot.style.transform='rotate('+(-P.look.yaw)+'rad)'; }
+    applyMapView();
+    return r;
+  };
+})();
+function markerKind(el){
+  if(el.classList.contains('pin')) return 'pin';
+  if(el.classList.contains('you')) return 'you';
+  if(el.classList.contains('tower')) return 'tower';
+  if(el.classList.contains('chest')) return 'chest';
+  const t=(el.querySelector('.tip')||{}).textContent||'';
+  if(/stamp/i.test(t)) return 'pin';
+  if(/shrine/i.test(t)) return 'shrine';
+  if(/tower/i.test(t)) return 'tower';
+  if(/camp/i.test(t)) return 'camp';
+  if(/chest/i.test(t)) return 'chest';
+  if(/memory|cave/i.test(t)) return 'memory';
+  if(/stable|village|town|domain|city|inn|castle|abbey|lab/i.test(t)) return 'town';
+  return 'town';
+}
+function applyMapView(){
+  const inner=$('#mapinner'); if(!inner) return;
+  MAPV.z=clamp(MAPV.z,1,8);
+  const half=.5/MAPV.z;
+  MAPV.cx=clamp(MAPV.cx,half,1-half); MAPV.cy=clamp(MAPV.cy,half,1-half);
+  inner.style.setProperty('--mz',MAPV.z);
+  inner.style.transform='translate('+((.5-MAPV.cx*MAPV.z)*100)+'%,'+((.5-MAPV.cy*MAPV.z)*100)+'%) scale('+MAPV.z+')';
+  for(const el of $('#markers').children){
+    const k=markerKind(el);
+    el.style.display=(k==='you'||MAPV.filters[k]!==false)?'':'none';
+  }
+}
+(function mapInput(){
+  const wrap=$('#mapwrap');
+  const norm=e=>{ const r=wrap.getBoundingClientRect(); const u=(e.clientX-r.left)/r.width, v=(e.clientY-r.top)/r.height;
+    return [MAPV.cx+(u-.5)/MAPV.z, MAPV.cy+(v-.5)/MAPV.z, u, v]; };
+  wrap.addEventListener('wheel',e=>{
+    if(!mapOpen) return; e.preventDefault();
+    const [nx,ny,u,v]=norm(e), z0=MAPV.z;
+    MAPV.z=clamp(MAPV.z*(e.deltaY<0?1.25:0.8),1,8);
+    /* keep the point under the cursor where it is */
+    MAPV.cx=nx-(u-.5)/MAPV.z; MAPV.cy=ny-(v-.5)/MAPV.z;
+    const ctx=$('#bigmap').getContext('2d'); if((z0<2.5)!==(MAPV.z<2.5)) drawBigMap(); else applyMapView();
+  },{passive:false});
+  wrap.addEventListener('mousedown',e=>{ if(e.button!==0) return; MAPV.drag={x:e.clientX,y:e.clientY,cx:MAPV.cx,cy:MAPV.cy,moved:false}; });
+  addEventListener('mousemove',e=>{
+    if(mapOpen){
+      const r=wrap.getBoundingClientRect();
+      if(e.clientX>=r.left&&e.clientX<=r.right&&e.clientY>=r.top&&e.clientY<=r.bottom){
+        const [nx,ny]=norm(e), wx=-WORLD_HALF+nx*WORLD_SPAN, wz=-WORLD_HALF+ny*WORLD_SPAN;
+        let best='',bd=1e9; for(const k in REGIONS){ const d=Math.hypot(REGIONS[k].x-wx,REGIONS[k].z-wz); if(d<bd){bd=d;best=REGIONS[k].n;} }
+        $('#mapinfo').innerHTML='<b>'+best+'</b> &nbsp;·&nbsp; X '+Math.round(wx)+' &nbsp; Y '+Math.round(-wz)+' &nbsp;·&nbsp; '+Math.round(groundAt(wx,wz))+' m';
+      }
+    }
+    const D=MAPV.drag; if(!D) return;
+    const r=wrap.getBoundingClientRect();
+    const dx=(e.clientX-D.x)/r.width, dy=(e.clientY-D.y)/r.height;
+    if(Math.abs(dx)+Math.abs(dy)>.004){ D.moved=true; wrap.classList.add('dragging'); }
+    MAPV.cx=D.cx-dx/MAPV.z; MAPV.cy=D.cy-dy/MAPV.z; applyMapView();
+  });
+  addEventListener('mouseup',()=>{ if(MAPV.drag){ const moved=MAPV.drag.moved; MAPV.drag=null; wrap.classList.remove('dragging');
+    if(moved){ const stop=e=>{ e.stopPropagation(); e.preventDefault(); }; wrap.addEventListener('click',stop,{capture:true,once:true}); } } });
+  wrap.addEventListener('contextmenu',e=>{
+    if(!mapOpen) return; e.preventDefault();
+    if(P.pins.length>=100){ toast('A hundred pins is the most the Slate holds','bad'); return; }
+    const [nx,ny]=norm(e);
+    P.pins.push({x:-WORLD_HALF+nx*WORLD_SPAN,z:-WORLD_HALF+ny*WORLD_SPAN}); sfx('click'); drawBigMap();
+  });
+})();
+/* open centred on you, a little way in */
+{ const _toggleMapView=toggleMap;
+  toggleMap=function(){
+    if(!mapOpen){ const [mx,my]=w2m(P.pos.x,P.pos.z); MAPV.cx=mx/MAPS; MAPV.cy=my/MAPS; MAPV.z=Math.max(MAPV.z,2); }
+    return _toggleMapView.apply(this,arguments);
+  };
+}
+(function persistPins(){
+  const _s=save; save=function(){ const r=_s.apply(this,arguments);
+    try{ const d=JSON.parse(localStorage.getItem(KEY)||'{}'); d.pins=P.pins; const str=JSON.stringify(d); localStorage.setItem(KEY,str);
+      if(typeof slotKey==='function') localStorage.setItem(slotKey(SLOT),str); }catch(e){} return r; };
+  const _l=load; load=function(){ const r=_l.apply(this,arguments);
+    try{ const d=JSON.parse(localStorage.getItem(KEY)||'{}'); P.pins=d.pins||[]; }catch(e){} return r; };
+})();
+</script>
+<script>
+/* 5. The Sheikah Slate rune interface.
+   - Hold R and the rune wheel opens with time slowed right down: every rune
+     you have (the Remote Bomb as both its round and cube forms) around a
+     ring, the one you point at lit and described in the centre; let go of R
+     to pick it.  A tap of R still steps to the next rune.
+   - O opens the Slate itself: a page for each rune with what it does, its
+     controls and its recharge; an adventure log of the main quest, memories,
+     Champions, shrines, caves and seeds; and a record of your journey. */
+const RUNE_ICON={
+  magnesis:'<path d="M8 4v8a4 4 0 0 0 8 0V4h-3v8a1 1 0 0 1-2 0V4z" fill="currentColor"/><rect x="8" y="3" width="3" height="2" fill="#fff"/><rect x="13" y="3" width="3" height="2" fill="#fff"/>',
+  bomb:'<circle cx="12" cy="13" r="7" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="13" r="3" fill="currentColor"/><path d="M12 6V3" stroke="currentColor" stroke-width="2"/>',
+  bombCube:'<rect x="5" y="6" width="14" height="14" rx="1" fill="none" stroke="currentColor" stroke-width="2"/><rect x="10" y="11" width="4" height="4" fill="currentColor"/>',
+  stasis:'<circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 7v5l3 3" stroke="currentColor" stroke-width="2" fill="none"/><path d="M4 4l3 3M20 4l-3 3" stroke="currentColor" stroke-width="2"/>',
+  cryonis:'<path d="M7 20V9l5-5 5 5v11z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 8v12M9 12h6" stroke="currentColor" stroke-width="1.6"/>',
+  camera:'<rect x="3" y="7" width="18" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="13" r="3.5" fill="none" stroke="currentColor" stroke-width="2"/><rect x="8" y="4" width="8" height="3" fill="currentColor"/>'
+};
+const RUNE_TEXT={
+  magnesis:['Magnesis','Grab anything made of metal — boxes, weapons on the ground, treasure chests — and move it through the air. What you swing with it hits.','F grab or drop · mouse wheel pull and push · Q rotate'],
+  bomb:['Remote Bomb','A round bomb that rolls. Detonate it when you like; it throws anything light and feeds Stasis.','F place · F again detonate'],
+  bombCube:['Remote Bomb — cube','The same bomb as a cube: it stays where you drop it, even on a slope.','F place · F again detonate'],
+  stasis:['Stasis','Freeze any object in time. Strike it while it is frozen and every blow is stored; when time starts again it flies along the last one.','F freeze · strike to charge'],
+  cryonis:['Cryonis','Raise a pillar of ice from any water — a lake, a river, the sea. It lifts whatever is on the surface. Aim at a pillar to shatter it.','F raise or shatter · Q shatter the last'],
+  camera:['Camera','Photograph whatever is in front of you and add it to the Hyrule Compendium.','F take a picture']
+};
+(function slateCSS(){
+  const st=document.createElement('style');
+  st.textContent=`
+  #runeWheel{position:fixed;inset:0;z-index:16;display:none;place-items:center;pointer-events:none;
+    background:radial-gradient(circle,rgba(4,16,24,.25),rgba(2,8,14,.72))}
+  #runeWheel.on{display:grid}
+  #runeWheel svg{width:min(62vh,520px);height:min(62vh,520px);overflow:visible}
+  #runeWheel .seg{fill:rgba(8,26,36,.78);stroke:rgba(99,214,226,.35);stroke-width:1.2}
+  #runeWheel .seg.hot{fill:rgba(30,90,110,.9);stroke:#63d6e2;stroke-width:2.4}
+  #runeWheel .ico{color:#9fe6f0} #runeWheel .ico.hot{color:#ffb050}
+  #runeWheel .centre{font-family:var(--ui);fill:#e8f6f8;text-anchor:middle}
+  #slate{position:fixed;inset:0;z-index:21;display:none;place-items:center;background:rgba(2,8,12,.78)}
+  #slate.on{display:grid}
+  #slate .glass{width:min(94vw,980px);height:min(86vh,680px);display:grid;grid-template-rows:auto 1fr;
+    background:linear-gradient(160deg,rgba(10,28,38,.96),rgba(4,12,18,.97));border:1px solid rgba(99,214,226,.45);
+    box-shadow:0 0 0 6px rgba(8,20,28,.9),0 0 0 7px rgba(232,144,46,.35),0 30px 90px rgba(0,0,0,.7);border-radius:14px;overflow:hidden;position:relative}
+  #slate .glass:before{content:"";position:absolute;inset:10px;border:1px dashed rgba(99,214,226,.14);border-radius:10px;pointer-events:none}
+  #slate .tabs{display:flex;gap:2px;padding:14px 22px 0;border-bottom:1px solid rgba(99,214,226,.25)}
+  #slate .tab{font-family:var(--ui);font-size:13px;letter-spacing:.24em;text-transform:uppercase;color:#7fb8c2;padding:9px 18px;
+    border:1px solid transparent;border-bottom:none;cursor:pointer;background:none}
+  #slate .tab.on{color:#e8f6f8;border-color:rgba(99,214,226,.45);background:rgba(99,214,226,.08);border-radius:6px 6px 0 0}
+  #slate .body{overflow:auto;padding:22px 28px;color:#d6ecef;font-family:var(--body)}
+  #slate h3{font-family:var(--display);font-weight:400;letter-spacing:.06em;margin:0 0 4px;color:#e8f6f8}
+  #slate .eyeb{font-family:var(--ui);font-size:11px;letter-spacing:.3em;text-transform:uppercase;color:#e8902e}
+  #slate .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:12px;margin-top:14px}
+  #slate .card{border:1px solid rgba(99,214,226,.28);border-radius:8px;padding:14px 16px;background:rgba(99,214,226,.04);display:grid;grid-template-columns:52px 1fr;gap:12px}
+  #slate .card.locked{opacity:.4}
+  #slate .card svg{width:48px;height:48px;color:#9fe6f0}
+  #slate .card p{margin:4px 0;font-size:14px;line-height:1.45;color:#bcd6da}
+  #slate .card small{font-family:var(--ui);letter-spacing:.08em;color:#e8902e}
+  #slate .row{display:flex;justify-content:space-between;border-bottom:1px solid rgba(99,214,226,.12);padding:8px 2px;font-family:var(--ui);letter-spacing:.06em}
+  #slate .row b{color:#e8f6f8;font-weight:500}
+  #slate .close{position:absolute;right:22px;top:14px;font-family:var(--ui);color:#7fb8c2;letter-spacing:.2em;font-size:12px}`;
+  document.head.appendChild(st);
+  document.body.insertAdjacentHTML('beforeend','<div id="runeWheel"><svg viewBox="-260 -260 520 520"></svg></div>'+
+    '<div id="slate"><div class="glass"><div class="tabs"></div><div class="body"></div><div class="close">O or Esc to close</div></div></div>');
+})();
+
+/* ---- the wheel ---- */
+const WHEEL={open:false,hold:null,hot:0,ax:0,ay:0,items:[]};
+function wheelItems(){
+  const out=[];
+  for(const r of P.runes){ out.push(r); if(r==='bomb') out.push('bombCube'); }
+  if(RUNES.camera&&!out.includes('camera')&&P.hasSlate) out.push('camera');
+  return out;
+}
+function drawWheel(){
+  const items=WHEEL.items, n=items.length, svg=$('#runeWheel svg'); if(!n) return;
+  let h='';
+  const R0=110, R1=235;
+  for(let i=0;i<n;i++){
+    const a0=(i-.5)/n*Math.PI*2-Math.PI/2, a1=(i+.5)/n*Math.PI*2-Math.PI/2;
+    const p=(r,a)=>(r*Math.cos(a)).toFixed(1)+' '+(r*Math.sin(a)).toFixed(1);
+    const hot=i===WHEEL.hot;
+    h+=`<path class="seg${hot?' hot':''}" d="M ${p(R0,a0)} L ${p(R1,a0)} A ${R1} ${R1} 0 0 1 ${p(R1,a1)} L ${p(R0,a1)} A ${R0} ${R0} 0 0 0 ${p(R0,a0)} Z"/>`;
+    const am=(a0+a1)/2, cx=Math.cos(am)*172, cy=Math.sin(am)*172;
+    h+=`<g class="ico${hot?' hot':''}" transform="translate(${(cx-24).toFixed(1)} ${(cy-24).toFixed(1)}) scale(2)">${RUNE_ICON[items[i]]||''}</g>`;
+  }
+  const t=RUNE_TEXT[items[WHEEL.hot]]||['',''];
+  h+=`<circle r="100" fill="rgba(4,14,20,.85)" stroke="rgba(232,144,46,.5)"/>`;
+  h+=`<text class="centre" y="-6" font-size="22" letter-spacing="3">${t[0].toUpperCase()}</text>`;
+  h+=`<text class="centre" y="22" font-size="12" fill="#9fc8ce">${t[2]||''}</text>`;
+  svg.innerHTML=h;
+}
+function openWheel(){
+  WHEEL.items=wheelItems(); if(WHEEL.items.length<2) return;
+  const cur=P.runes[Math.max(0,P.rune)]==='bomb'&&P.preferCube?'bombCube':P.runes[Math.max(0,P.rune)];
+  WHEEL.hot=Math.max(0,WHEEL.items.indexOf(cur)); WHEEL.ax=0; WHEEL.ay=0;
+  WHEEL.open=true; $('#runeWheel').classList.add('on'); drawWheel(); sfx('click');
+}
+function closeWheel(pick){
+  if(!WHEEL.open) return;
+  WHEEL.open=false; $('#runeWheel').classList.remove('on');
+  if(!pick) return;
+  const it=WHEEL.items[WHEEL.hot];
+  if(it==='bombCube'){ P.preferCube=true; P.rune=P.runes.indexOf('bomb'); }
+  else if(it==='camera'&&!P.runes.includes('camera')){ P.runes.push('camera'); P.rune=P.runes.length-1; }
+  else { if(it==='bomb') P.preferCube=false; P.rune=P.runes.indexOf(it); }
+  const r=RUNES[P.runes[P.rune]]; if(r) toast(r.name+(it==='bombCube'?' (cube)':''));
+  updateGear(); sfx('rune');
+}
+addEventListener('keydown',e=>{
+  if(e.code!=='KeyR'||!P.playing||paused||mapOpen) return;
+  e.stopImmediatePropagation(); e.preventDefault();
+  if(e.repeat||WHEEL.hold||WHEEL.open) return;
+  WHEEL.hold=setTimeout(()=>{ WHEEL.hold=null; openWheel(); },220);
+},true);
+addEventListener('keyup',e=>{
+  if(e.code!=='KeyR') return;
+  if(WHEEL.hold){ clearTimeout(WHEEL.hold); WHEEL.hold=null; if(P.playing) cycleRune(); return; }
+  closeWheel(true);
+},true);
+addEventListener('mousemove',e=>{
+  if(!WHEEL.open) return;
+  WHEEL.ax+=e.movementX||0; WHEEL.ay+=e.movementY||0;
+  const len=Math.hypot(WHEEL.ax,WHEEL.ay);
+  if(len>60){ WHEEL.ax*=60/len; WHEEL.ay*=60/len; }
+  if(len>14){
+    const n=WHEEL.items.length, a=Math.atan2(WHEEL.ay,WHEEL.ax)+Math.PI/2;
+    const i=((Math.round(a/(Math.PI*2)*n)%n)+n)%n;
+    if(i!==WHEEL.hot){ WHEEL.hot=i; drawWheel(); }
+  }
+},true);
+/* the camera looks away while you choose, and time all but stops */
+{ const _ubt=updateBulletTime;
+  updateBulletTime=function(dt){ _ubt(dt); if(WHEEL.open) bulletTime=Math.min(bulletTime,.08); };
+  const _upWheel=updatePlayer;
+  updatePlayer=function(dt){ if(WHEEL.open){ const lk=P.look.yaw, lp=P.look.pitch; _upWheel(dt); P.look.yaw=lk; P.look.pitch=lp; } else _upWheel(dt); };
+}
+/* the cube bomb when you chose the cube */
+{ const _useRuneCube=useRune;
+  useRune=function(alt){
+    const r=P.runes[P.rune];
+    if(r==='camera'){ if(typeof takePhoto==='function') takePhoto(); return; }
+    if(r==='bomb'&&P.preferCube&&!liveBomb) return _useRuneCube(true);
+    return _useRuneCube(alt);
+  };
+}
+
+/* ---- the Slate ---- */
+const SLATE={open:false,tab:'runes'};
+function slateOpen(tab){
+  SLATE.open=true; SLATE.tab=tab||SLATE.tab; P.playing=false; document.exitPointerLock&&document.exitPointerLock();
+  renderSlate(); $('#slate').classList.add('on'); sfx('slate');
+}
+function slateClose(){ SLATE.open=false; $('#slate').classList.remove('on'); startPlay(); }
+function renderSlate(){
+  const tabs=[['runes','Runes'],['log','Adventure Log'],['records','Records']];
+  $('#slate .tabs').innerHTML=tabs.map(([k,n])=>`<button class="tab${SLATE.tab===k?' on':''}" data-t="${k}">${n}</button>`).join('');
+  for(const b of $('#slate .tabs').children) b.onclick=()=>{ SLATE.tab=b.dataset.t; renderSlate(); };
+  const body=$('#slate .body');
+  if(SLATE.tab==='runes'){
+    const all=['magnesis','bomb','bombCube','stasis','cryonis','camera'];
+    body.innerHTML='<div class="eyeb">Sheikah Slate</div><h3>Runes</h3><div class="cards">'+all.map(k=>{
+      const base=k==='bombCube'?'bomb':k, have=k==='camera'?!!P.hasSlate:P.runes.includes(base);
+      const t=RUNE_TEXT[k], cd=(P.runeCd&&P.runeCd[base])||0, R=RUNES[base];
+      return `<div class="card${have?'':' locked'}"><svg viewBox="0 0 24 24">${RUNE_ICON[k]}</svg><div>
+        <h3 style="font-size:19px">${t[0]}</h3><p>${have?t[1]:'Not yet found. A shrine on the Great Plateau holds it.'}</p>
+        <small>${have?t[2]+(R&&R.cd?' · recharge '+R.cd+'s'+(cd>0?' ('+cd.toFixed(0)+' left)':''):''):''}</small></div></div>`;
+    }).join('')+'</div>';
+  } else if(SLATE.tab==='log'){
+    const q=QUESTS[P.quest]||{h:'Main Quest',t:'—'};
+    const mem=Object.keys(P.memories||{}).length, champs=Object.keys(P.champions||{}).map(k=>CHAMPIONS[k]&&CHAMPIONS[k].n).filter(Boolean);
+    const shrinesDone=Object.keys(P.shrines||{}).length+(P.genDone?Object.keys(P.genDone).length:0);
+    const caves=(typeof CAVES!=='undefined')?CAVES.filter(c=>c.found).map(c=>c.name):[];
+    const rows=[['Main quest',q.t],['Memories recovered',mem+' of '+(typeof memorySites!=='undefined'?memorySites.length:18)],
+      ['Champions',champs.length?champs.join(', '):'None yet'],['Shrines cleared',shrinesDone],
+      ['Side quests completed',Object.keys(P.questDone||{}).length],['Korok seeds',(P.koroks||0)+' of 900'],
+      ['Caves found',caves.length?caves.join(', '):'None yet'],['Travel Medallion',P.medallionOwned?(P.medallion?'Set':'Not set'):'Not found'],
+      ['Pins on the map',(P.pins||[]).length]];
+    body.innerHTML='<div class="eyeb">Adventure Log</div><h3>'+q.h+'</h3>'+rows.map(([a,b])=>`<div class="row"><span>${a}</span><b>${b}</b></div>`).join('');
+  } else {
+    const t=Math.floor((P.totalTime||0)/60);
+    const rows=[['Time on the journey',Math.floor(t/60)+' h '+(t%60)+' min'],['Enemies felled',P.killed||0],['Rupees',P.rupees||0],
+      ['Hearts · stamina',P.hearts+' · '+(maxStam()/1000).toFixed(1)+' wheels'],['Compendium entries',typeof compendiumCount==='function'?compendiumCount():0],
+      ['amiibo tapped',Object.keys(P.amiiboUsed||{}).length],['Horses registered',Object.keys(P.stable||{}).length],['Master Mode',P.master?'On':'Off']];
+    body.innerHTML='<div class="eyeb">Records</div><h3>Your journey</h3>'+rows.map(([a,b])=>`<div class="row"><span>${a}</span><b>${b}</b></div>`).join('');
+  }
+}
+addEventListener('keydown',e=>{
+  if(e.code==='KeyO'){
+    if(SLATE.open){ e.preventDefault(); slateClose(); return; }
+    if(P.playing&&!paused&&!mapOpen&&P.hasSlate){ e.preventDefault(); slateOpen(); }
+  } else if(e.code==='Escape'&&SLATE.open){ e.preventDefault(); e.stopImmediatePropagation(); slateClose(); }
+},true);
+(function(){ const k=$('#keys'); if(k) k.insertAdjacentHTML('beforeend','<div><span>rune wheel (hold)</span><k>R</k></div><div><span>Sheikah Slate</span><k>O</k></div>'); })();
+</script>
+<script>
+/* 7. Real amiibo.  A browser cannot read an amiibo figure: the NTAG215 in it
+   is not NDEF-formatted, and Web NFC only exposes NDEF.  What a real amiibo
+   does leave behind is its data - the 540-byte dump that backup tools save.
+   Load one and the Slate reads the figure's own identity out of it (the
+   eight ID bytes at 0x54), looks that up on the public amiibo database, and
+   taps the matching amiibo in the game.  On a phone with Web NFC, touching a
+   figure is recognised too: the tag's serial number is remembered the first
+   time you say which amiibo it is. */
+(function amiiboReal(){
+  const panel=$('#amiibo .panel'); if(!panel) return;
+  const box=document.createElement('div');
+  box.style.cssText='border:1px solid var(--faint);padding:12px 14px;margin:0 0 14px;border-radius:2px;font-family:var(--ui);letter-spacing:.05em';
+  box.innerHTML='<div class="eyebrow" style="margin-bottom:6px">A real amiibo</div>'+
+    '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">'+
+    '<label class="act" style="cursor:pointer">Load amiibo data (.bin)<input id="amiiboFile" type="file" accept=".bin,.nfc,application/octet-stream" style="display:none"></label>'+
+    ('NDEFReader' in window?'<button class="act" id="amiiboNfc">Touch a figure (NFC)</button>':'')+
+    '<span id="amiiboReadout" style="color:var(--muted);font-size:13px">A dump saved from your own figure — nothing is uploaded but its ID.</span></div>';
+  panel.insertBefore(box,$('#amiiboGrid'));
+  const say=t=>{ $('#amiiboReadout').textContent=t; };
+  const norm=s=>String(s||'').toLowerCase().replace(/[‘’']/g,'').replace(/[^a-z0-9]+/g,' ').trim();
+  function matchAmiibo(api){
+    const name=norm(api.name), series=norm(api.amiiboSeries), game=norm(api.gameSeries), ch=norm(api.character);
+    let best=null,score=-1;
+    for(const a of AMIIBOS){
+      const n=norm(a.n); let s=0;
+      if(n===name) s+=10;
+      for(const w of n.split(' ')) if(w.length>2&&(name.includes(w)||ch.includes(w))) s+=2;
+      if(/smash/.test(series)&&/smash/.test(n)) s+=3;
+      if(/breath of the wild/.test(series)&&/archer|rider|guardian|bokoblin|zelda/.test(n)) s+=1;
+      if(/archer/.test(name)&&/archer/.test(n)) s+=5; if(/rider/.test(name)&&/rider/.test(n)) s+=5;
+      if(/8 bit/.test(name)&&/8 bit/.test(n)) s+=6; if(/wind waker/.test(name+series)&&/wind waker/.test(n)) s+=4;
+      if(/majora/.test(name+series)&&/majora/.test(n)) s+=4; if(/twilight/.test(name+series)&&/twilight/.test(n)) s+=3;
+      if(/ocarina/.test(name+series)&&/ocarina/.test(n)) s+=4; if(/skyward/.test(name+series)&&/skyward/.test(n)) s+=4;
+      if(s>score){ score=s; best=a; }
+    }
+    if(score>=4) return best;
+    /* not a Zelda figure: it is one of the "other amiibo" that give food and materials */
+    if(!/zelda/.test(game)){ const others=AMIIBOS.filter(a=>/other/i.test(a.s)); return others.find(a=>norm(a.n)===ch)||others[Math.abs(hash32(name))%others.length]; }
+    return null;
+  }
+  const hash32=s=>{ let h=0; for(let i=0;i<s.length;i++) h=(h*31+s.charCodeAt(i))|0; return h; };
+  function ask(idKey,label){
+    say(label+' — which amiibo is it? Pick it in the list below; it will be remembered.');
+    const pickOnce=a=>{ try{ localStorage.setItem('amiibo:'+idKey,a.n); }catch(e){} };
+    window.__amiiboPick=pickOnce;
+    amiiboShowAll=true; renderAmiibo();
+  }
+  { const _tap=tapAmiibo;
+    tapAmiibo=function(a){ if(window.__amiiboPick){ window.__amiiboPick(a); window.__amiiboPick=null; } return _tap.apply(this,arguments); };
+  }
+  async function identify(idHex){
+    const head=idHex.slice(0,8), tail=idHex.slice(8,16);
+    const cached=(()=>{ try{ return localStorage.getItem('amiibo:'+idHex); }catch(e){ return null; } })();
+    if(cached){ const a=AMIIBOS.find(x=>x.n===cached); if(a){ say('Recognised '+a.n+' ('+head+' '+tail+')'); tapAmiibo(a); return; } }
+    say('Reading figure '+head+' '+tail+'…');
+    try{
+      const res=await fetch('https://www.amiiboapi.org/api/amiibo/?head='+head+'&tail='+tail);
+      const js=await res.json(); const api=js&&js.amiibo&&(Array.isArray(js.amiibo)?js.amiibo[0]:js.amiibo);
+      if(!api) throw new Error('unknown');
+      const a=matchAmiibo(api);
+      if(!a){ ask(idHex,api.name+' ('+api.amiiboSeries+')'); return; }
+      try{ localStorage.setItem('amiibo:'+idHex,a.n); }catch(e){}
+      say(api.name+' · '+api.amiiboSeries+' → '+a.n); tapAmiibo(a);
+    }catch(e){ ask(idHex,'Figure '+head+' '+tail+' (offline or not listed)'); }
+  }
+  $('#amiiboFile').addEventListener('change',async ev=>{
+    const f=ev.target.files&&ev.target.files[0]; ev.target.value=''; if(!f) return;
+    const buf=new Uint8Array(await f.arrayBuffer());
+    if(buf.length<0x5C||![532,540,572].includes(buf.length)&&buf.length<540){ say('That is not an amiibo dump ('+buf.length+' bytes; an NTAG215 dump is 540)'); return; }
+    let id=''; for(let i=0x54;i<0x5C;i++) id+=buf[i].toString(16).padStart(2,'0');
+    if(/^0+$/.test(id)||/^f+$/.test(id)){ say('That dump has no figure ID in it'); return; }
+    identify(id);
+  });
+  const nfcBtn=$('#amiiboNfc');
+  if(nfcBtn) nfcBtn.onclick=async()=>{
+    try{
+      const reader=new NDEFReader(); await reader.scan(); say('Hold a figure to the back of the phone…');
+      const got=serial=>{ const key='nfc:'+serial;
+        const known=(()=>{ try{ return localStorage.getItem('amiibo:'+key); }catch(e){ return null; } })();
+        const a=known&&AMIIBOS.find(x=>x.n===known);
+        if(a){ say('Recognised '+a.n); tapAmiibo(a); } else ask(key,'A new figure'); };
+      reader.onreading=e=>got(e.serialNumber);
+      reader.onreadingerror=e=>{ if(e&&e.serialNumber) got(e.serialNumber); else say('Tag seen but not readable — load its dump instead'); };
+    }catch(e){ say('NFC is not available here: '+e.message); }
+  };
+})();
+console.log('Sheikah Slate: map zoom/pan/pins/filters/readout, rune wheel (hold R), Slate screen (O), amiibo from dumps and NFC');
+</script>
 
 
 
