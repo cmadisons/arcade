@@ -11350,14 +11350,14 @@ const QUESTLIST=[
  ["The Secret Club's Secret",'Greta','Gerudo Town',{t:'gems',n:3},{item:'Gerudo Top'}],
  ['The Thunder Helm','Riju','Gerudo Town',{t:'kill',enemy:'yigaBlade',n:1},{item:'Thunder Helm'}],
  ['Tools of the Trade','Isha','Gerudo Town',{t:'fetch',item:'Flint',n:5},{r:180}],
- ['EX Strange Mask Rumors','Traysi','Outskirt Stable',{t:'gems',n:2},{item:"Majora's Mask"}],
- ['EX Teleportation Rumors!','Traysi','Riverside Stable',{t:'shrine',n:12},{item:'Korok Mask'}],
- ['EX Treasure: Ancient Mask','Notes','Hateno Village',{t:'shrine',n:10},{item:'Ancient Helm'}],
+ ['EX Strange Mask Rumors','Traysi','Outskirt Stable',{t:'gems',n:2},{item:'Korok Mask'}],
+ ['EX Teleportation Rumors!','Traysi','Riverside Stable',{t:'shrine',n:12},{item:'Travel Medallion'}],
+ ['EX Treasure: Ancient Mask','Notes','Hateno Village',{t:'shrine',n:10},{item:"Majora's Mask"}],
  ['EX Treasure: Fairy Clothes','Notes','Kakariko Village',{t:'korok',n:12},{item:"Tingle's Hood"}],
  ['EX Treasure: Twilight Relic','Notes','Rito Village',{t:'shrine',n:14},{item:"Midna's Helmet"}],
  ['EX Treasure: Phantasma','Notes','Gerudo Town',{t:'kill',enemy:'blackBoko',n:3},{item:'Phantom Helmet'}],
  ['EX Treasure: Usurper King','Notes',"Zora's Domain",{t:'kill',enemy:'blueLiz',n:5},{item:"Zant's Helmet"}],
- ['EX Treasure: Merchant Hood','Notes','Tarrey Town',{t:'gems',n:8},{item:'Salvager Headwear'}],
+ ['EX Treasure: Merchant Hood','Notes','Tarrey Town',{t:'gems',n:8},{item:"Ravio's Hood"}],
  ['EX Ancient Horse Rumors','Toffa','Outskirt Stable',{t:'horse'},{r:400}],
  ['EX Royal Guard Rumors','Parcy','Riverside Stable',{t:'visit',place:'Hyrule Castle'},{item:'Royal Guard Uniform'}],
  ['EX Treasure: Dark Armor','Notes','Woodland Stable',{t:'korok',n:25},{item:'Dark Hood'}],
@@ -19151,6 +19151,931 @@ function cryonisAny(alt){
 console.log('rigid bodies: '+RB.list.length+' bodies in one solver ('
   +RB.list.filter(b=>b.kind==='metal').length+' metal, '+RB.list.filter(b=>b.kind==='boulder').length+' boulders, '
   +RB.list.filter(b=>b.kind==='crate').length+' crates); runes work on anything they should');
+</script>
+<script>
+/* ================= BATCH 94 — faces, and memories you watch instead of read ====
+   Group 3, items 6, 7 and 8.
+
+   The eighteen memories were a ring on the ground and one line of subtitle.
+   The Champions handed over their abilities in a single sentence.  Nobody's
+   face ever moved.
+
+   - Faces: eyelids that blink, a mouth that moves while someone is speaking,
+     and brows that set with the mood of the line - on Link, on every villager
+     and on everyone in a cutscene.
+   - A director: actors built on the same skeleton as everyone else, staged
+     at the memory site, and a sequence of authored shots - establishing
+     wides, cranes, two-shots, close-ups that push in, over-the-shoulders,
+     orbits - each with its own camera move, poses, line and effect, framed in
+     letterbox, and tinted like a remembered thing.
+   - All eighteen memories and all four Champion scenes are written as shots. */
+
+/* ---- poses the story needs ---- */
+defClip('kneel',{d:3.4,k:[
+  {t:0,  p:{hips:[0,0,0,0,-.52,0],spine:[.08,0,0],chest:[.04,0,0],head:[.16,0,0],
+            thighL:[-1.45,0,.05],shinL:[1.45,0,0],thighR:[.08,0,-.05],shinR:[1.55,0,0],footR:[.5,0,0],
+            armL:[-.25,0,.12],forearmL:[-.7,0,0],armR:[.08,0,-.1],forearmR:[-.3,0,0]}},
+  {t:1.7,p:{hips:[0,0,0,0,-.53,0],spine:[.10,0,0],chest:[.05,0,0],head:[.20,0,0],
+            thighL:[-1.45,0,.05],shinL:[1.45,0,0],thighR:[.08,0,-.05],shinR:[1.55,0,0],footR:[.5,0,0],
+            armL:[-.25,0,.12],forearmL:[-.74,0,0],armR:[.08,0,-.1],forearmR:[-.32,0,0]}},
+  {t:3.4,p:{hips:[0,0,0,0,-.52,0],spine:[.08,0,0],chest:[.04,0,0],head:[.16,0,0],
+            thighL:[-1.45,0,.05],shinL:[1.45,0,0],thighR:[.08,0,-.05],shinR:[1.55,0,0],footR:[.5,0,0],
+            armL:[-.25,0,.12],forearmL:[-.7,0,0],armR:[.08,0,-.1],forearmR:[-.3,0,0]}}]});
+defClip('pray',{d:4,k:[
+  {t:0,p:{spine:[.05,0,0],neck:[.15,0,0],head:[.34,0,0],armL:[-.95,0,-.36],forearmL:[-1.22,0,0],armR:[-.95,0,.36],forearmR:[-1.22,0,0]}},
+  {t:2,p:{spine:[.07,0,0],neck:[.17,0,0],head:[.38,0,0],armL:[-.97,0,-.36],forearmL:[-1.24,0,0],armR:[-.97,0,.36],forearmR:[-1.24,0,0]}},
+  {t:4,p:{spine:[.05,0,0],neck:[.15,0,0],head:[.34,0,0],armL:[-.95,0,-.36],forearmL:[-1.22,0,0],armR:[-.95,0,.36],forearmR:[-1.22,0,0]}}]});
+defClip('armsOut',{d:2,k:[
+  {t:0,p:{chest:[-.10,0,0],head:[-.12,0,0],armL:[-1.35,0,.55],forearmL:[-.1,0,0],armR:[-1.35,0,-.55],forearmR:[-.1,0,0],thighL:[-.25,0,.08],shinL:[.2,0,0]}},
+  {t:1,p:{chest:[-.14,0,0],head:[-.16,0,0],armL:[-1.40,0,.62],forearmL:[-.05,0,0],armR:[-1.40,0,-.62],forearmR:[-.05,0,0],thighL:[-.25,0,.08],shinL:[.2,0,0]}},
+  {t:2,p:{chest:[-.10,0,0],head:[-.12,0,0],armL:[-1.35,0,.55],forearmL:[-.1,0,0],armR:[-1.35,0,-.55],forearmR:[-.1,0,0],thighL:[-.25,0,.08],shinL:[.2,0,0]}}]});
+defClip('crouch',{d:4,k:[
+  {t:0,p:{hips:[.35,0,0,0,-.55,0],spine:[.25,0,0],chest:[.15,0,0],head:[.25,0,0],thighL:[-1.9,0,.2],shinL:[2.1,0,0],thighR:[-1.9,0,-.2],shinR:[2.1,0,0],armL:[-.9,0,.1],forearmL:[-.6,0,0],armR:[-.7,0,-.1],forearmR:[-.5,0,0]}},
+  {t:2,p:{hips:[.35,0,0,0,-.56,0],spine:[.27,0,0],chest:[.16,0,0],head:[.30,.1,0],thighL:[-1.9,0,.2],shinL:[2.1,0,0],thighR:[-1.9,0,-.2],shinR:[2.1,0,0],armL:[-1.0,0,.1],forearmL:[-.5,0,0],armR:[-.7,0,-.1],forearmR:[-.5,0,0]}},
+  {t:4,p:{hips:[.35,0,0,0,-.55,0],spine:[.25,0,0],chest:[.15,0,0],head:[.25,0,0],thighL:[-1.9,0,.2],shinL:[2.1,0,0],thighR:[-1.9,0,-.2],shinR:[2.1,0,0],armL:[-.9,0,.1],forearmL:[-.6,0,0],armR:[-.7,0,-.1],forearmR:[-.5,0,0]}}]});
+defClip('grieve',{d:2.4,k:[
+  {t:0,p:{hips:[.2,0,0,0,-.58,0],thighL:[-.3,0,.1],shinL:[1.9,0,0],thighR:[-.3,0,-.1],shinR:[1.9,0,0],spine:[.35,0,0],chest:[.2,0,0],head:[.4,0,0],armL:[-1.1,0,-.25],forearmL:[-1.6,0,0],armR:[-1.1,0,.25],forearmR:[-1.6,0,0]}},
+  {t:1.2,p:{hips:[.2,0,0,0,-.60,0],thighL:[-.3,0,.1],shinL:[1.9,0,0],thighR:[-.3,0,-.1],shinR:[1.9,0,0],spine:[.42,0,0],chest:[.26,0,0],head:[.46,0,0],armL:[-1.1,0,-.25],forearmL:[-1.66,0,0],armR:[-1.1,0,.25],forearmR:[-1.66,0,0]}},
+  {t:2.4,p:{hips:[.2,0,0,0,-.58,0],thighL:[-.3,0,.1],shinL:[1.9,0,0],thighR:[-.3,0,-.1],shinR:[1.9,0,0],spine:[.35,0,0],chest:[.2,0,0],head:[.4,0,0],armL:[-1.1,0,-.25],forearmL:[-1.6,0,0],armR:[-1.1,0,.25],forearmR:[-1.6,0,0]}}]});
+defClip('proud',{d:3.6,k:[
+  {t:0,p:{chest:[-.08,0,0],head:[-.12,0,0],armL:[-.55,0,-.55],forearmL:[-1.7,0,0],armR:[-.5,0,.55],forearmR:[-1.7,0,0]}},
+  {t:1.8,p:{chest:[-.10,0,0],head:[-.14,.08,0],armL:[-.55,0,-.55],forearmL:[-1.72,0,0],armR:[-.5,0,.55],forearmR:[-1.72,0,0]}},
+  {t:3.6,p:{chest:[-.08,0,0],head:[-.12,0,0],armL:[-.55,0,-.55],forearmL:[-1.7,0,0],armR:[-.5,0,.55],forearmR:[-1.7,0,0]}}]});
+defClip('point',{d:2,k:[
+  {t:0,p:{armR:[-1.5,0,-.15],forearmR:[-.05,0,0],chest:[0,-.12,0],head:[0,-.18,0]}},
+  {t:2,p:{armR:[-1.52,0,-.15],forearmR:[-.05,0,0],chest:[0,-.14,0],head:[0,-.2,0]}}]});
+defClip('bowHead',{d:3,k:[
+  {t:0,p:{head:[.42,0,0],neck:[.2,0,0],spine:[.1,0,0],armL:[.05,0,.08],armR:[.05,0,-.08]}},
+  {t:1.5,p:{head:[.46,0,0],neck:[.22,0,0],spine:[.12,0,0],armL:[.05,0,.08],armR:[.05,0,-.08]}},
+  {t:3,p:{head:[.42,0,0],neck:[.2,0,0],spine:[.1,0,0],armL:[.05,0,.08],armR:[.05,0,-.08]}}]});
+defClip('lookUp',{d:3,k:[
+  {t:0,p:{head:[-.55,0,0],neck:[-.25,0,0],chest:[-.12,0,0],armL:[.1,0,.2],armR:[.1,0,-.2]}},
+  {t:3,p:{head:[-.60,.06,0],neck:[-.28,0,0],chest:[-.14,0,0],armL:[.1,0,.2],armR:[.1,0,-.2]}}]});
+
+/* ---- faces ---- */
+const FACE_MOUTH=new THREE.MeshBasicMaterial({color:0x3a1e1a});
+function addFace(rig){
+  if(!rig||rig.face||!rig.bones||!rig.bones.head) return null;
+  const head=rig.bones.head, S=rig.scale||1;
+  const small=head.children.filter(m=>m.isMesh&&m.scale.x/S<.13&&m.scale.y/S<.13);
+  const eyes=small.filter(m=>m.position.z/S>.15&&m.position.y/S>.16&&m.position.y/S<.29&&m.scale.y/S>.05);
+  if(eyes.length<2) return null;
+  eyes.sort((a,b)=>a.position.x-b.position.x); eyes.length=2;
+  const brows=small.filter(m=>m.position.z/S>.15&&m.position.y/S>=.29&&m.scale.y/S<.05);
+  const skin=(rig.pal&&rig.pal.skin)!==undefined?rig.pal.skin:0xe9c39c;
+  const lidM=new THREE.MeshLambertMaterial({color:skin});
+  const lids=eyes.map(e=>{ const l=new THREE.Mesh(BOX,lidM); l.scale.set(e.scale.x*1.3,.001,e.scale.z*.7);
+    l.position.set(e.position.x,e.position.y,e.position.z+.012*S); l.visible=false; head.add(l); return l; });
+  const mouth=new THREE.Mesh(BOX,FACE_MOUTH);
+  mouth.position.set(0,eyes[0].position.y-.13*S,eyes[0].position.z+.004*S);
+  mouth.scale.set(.12*S,.018*S,.02*S); head.add(mouth);
+  rig.face={eyes,lids,mouth,brows,browY:brows.map(b=>b.position.y),S,t:Math.random()*9,blinkT:1+Math.random()*3,talk:0,mood:'neutral',sleep:false};
+  return rig.face;
+}
+function updateFace(rig,dt){
+  const F=rig&&rig.face; if(!F) return;
+  F.t+=dt; F.blinkT-=dt;
+  let closed=0;
+  if(F.blinkT<0){ closed=Math.max(0,1-Math.abs(F.blinkT+.07)/.07); if(F.blinkT<-.14) F.blinkT=1.8+Math.random()*3.8; }
+  if(F.sleep) closed=1;
+  for(let i=0;i<2;i++){
+    const e=F.eyes[i], l=F.lids[i], eh=e.scale.y;
+    l.visible=closed>.03;
+    l.scale.y=Math.max(.001,eh*1.2*closed);
+    l.position.y=e.position.y+eh*.6-l.scale.y/2;
+  }
+  const open=F.talk>0?(.3+.7*Math.abs(Math.sin(F.t*16))*Math.abs(Math.sin(F.t*4.7+1))):0;
+  const w=F.mood==='happy'?1.3:F.mood==='sad'?.8:F.mood==='angry'?1.05:1;
+  F.mouth.scale.x=F.S*.12*w;
+  F.mouth.scale.y=F.S*(.016+open*.05);
+  F.mouth.position.y=F.eyes[0].position.y-(F.mood==='sad'?.14:.13)*F.S;
+  F.brows.forEach((b,i)=>{
+    const side=b.position.x<0?1:-1;
+    const want=F.mood==='angry'?-.38*side:F.mood==='sad'?.3*side:0;
+    b.rotation.z+=(want-b.rotation.z)*Math.min(1,dt*8);
+    const dy=F.mood==='sad'?.012:F.mood==='happy'?.01:F.mood==='angry'?-.008:0;
+    b.position.y+=((F.browY[i]+dy*F.S)-b.position.y)*Math.min(1,dt*8);
+  });
+}
+/* Link, and everyone in the villages */
+addFace(linkRig);
+for(const N of npcs) if(N.rig) addFace(N.rig);
+let talkingNPC=null, talkUntil=0;
+{ const _talkFace=talkTo;
+  talkTo=function(N){ talkingNPC=N; const r=_talkFace.apply(this,arguments);
+    const txt=($('#talkText')&&$('#talkText').textContent)||''; talkUntil=performance.now()+txt.length*55+500;
+    if(N.rig&&N.rig.face){ const tr=(N.trait&&N.trait.t)||'';
+      N.rig.face.mood=/grieving|frightened|homesick|weary/.test(tr)?'sad':/greedy|proud|boastful/.test(tr)?'angry':/kind|hopeful/.test(tr)?'happy':'neutral'; }
+    return r; };
+}
+/* faces tick from the draw, so they keep moving while you talk and in cutscenes,
+   when the gameplay update is paused */
+let faceLast=performance.now();
+{ const _renderFace=renderer.render.bind(renderer);
+  renderer.render=function(sc,cam){
+    const now=performance.now(), dt=Math.min(.05,(now-faceLast)/1000); faceLast=now;
+    try{
+      updateFace(linkRig,dt);
+      const talking=$('#talk')&&$('#talk').classList.contains('on');
+      if(!talking) talkingNPC=null;
+      for(const N of npcs){
+        if(!N.rig||!N.rig.face||!N.rig.root.visible) continue;
+        if(Math.abs(N.pos.x-camera.position.x)>45||Math.abs(N.pos.z-camera.position.z)>45) continue;
+        N.rig.face.sleep=!!N.sleeping;
+        N.rig.face.talk=(N===talkingNPC&&now<talkUntil)?1:0;
+        updateFace(N.rig,dt);
+      }
+      if(typeof DIR!=='undefined'&&DIR.on) for(const k in DIR.actors){ const A=DIR.actors[k]; if(A.rig) updateFace(A.rig,dt); }
+    }catch(e){}
+    return _renderFace(sc,cam);
+  };
+}
+
+/* ---- the director ---- */
+(function dirCSS(){
+  const st=document.createElement('style');
+  st.textContent=`
+  #dirBars:before,#dirBars:after{content:"";position:fixed;left:0;right:0;height:0;background:#000;z-index:18;transition:height .6s ease}
+  #dirBars:before{top:0} #dirBars:after{bottom:0}
+  #dirBars.on:before,#dirBars.on:after{height:11vh}
+  #dirFade{position:fixed;inset:0;background:#000;opacity:0;pointer-events:none;z-index:19;transition:opacity .45s}
+  #dirFade.on{opacity:1}
+  #dirFx{position:fixed;inset:0;pointer-events:none;z-index:17;opacity:0;transition:opacity .25s}
+  #dirTitle{position:fixed;left:0;right:0;top:34%;text-align:center;z-index:19;pointer-events:none;opacity:0;transition:opacity .9s;
+    font-family:var(--display);color:var(--parchment);text-shadow:0 3px 18px rgba(0,0,0,.9)}
+  #dirTitle.on{opacity:1} #dirTitle small{display:block;font-family:var(--ui);letter-spacing:.35em;font-size:13px;color:var(--amber);margin-bottom:10px}
+  #dirTitle b{font-weight:400;font-size:clamp(28px,4.4vw,48px);letter-spacing:.06em}
+  canvas#gl.memory{filter:sepia(.28) saturate(.9) contrast(1.12) brightness(.9)}
+  #dirSkip{position:fixed;right:22px;bottom:calc(11vh + 10px);z-index:19;font-family:var(--ui);font-size:12px;letter-spacing:.2em;
+    text-transform:uppercase;color:var(--muted);opacity:0;transition:opacity .4s;pointer-events:none}
+  #dirSkip.on{opacity:.8}
+  body.dir #subtitle{bottom:calc(11vh + 18px);z-index:20}`;
+  document.head.appendChild(st);
+  document.body.insertAdjacentHTML('beforeend',
+    '<div id="dirBars"></div><div id="dirFade"></div><div id="dirFx"></div><div id="dirTitle"></div>'+
+    '<div id="dirSkip">Space · next shot &nbsp;&nbsp; Esc · skip</div>');
+})();
+
+const DIR={on:false,sc:null,i:-1,t:0,d:0,actors:{},fx:[],queue:[],ending:0};
+const DIR_SPIRIT=new THREE.MeshBasicMaterial({color:0x7fe0ff,transparent:true,opacity:.55,depthWrite:false,blending:THREE.AdditiveBlending});
+Object.assign(VOICE,{
+  'Zelda':{pitch:1.15,rate:.9,want:['female','samantha','victoria','karen','zira']},
+  'Impa':{pitch:1.0,rate:.88,want:['female','moira','karen','tessa']},
+  'Mipha':{pitch:1.3,rate:.84,want:['female','tessa','samantha']},
+  'Urbosa':{pitch:.85,rate:.86,want:['female','karen','moira','victoria']},
+  'Daruk':{pitch:.4,rate:.92,want:['male','fred','daniel','alex']},
+  'Revali':{pitch:1.05,rate:1.04,want:['male','daniel','alex']},
+  'Link':{pitch:1,rate:1,want:['male']}
+});
+
+/* the cast, on the same skeleton as everyone else */
+function hylian(pal,scale){
+  if(!NPCSPEC.hylian) NPCSPEC.hylian=npcSpec('hylian');
+  const base=npcPal('hylian',{}); return buildRig(NPCSPEC.hylian,Object.assign(base,pal),scale||1);
+}
+function raced(race,cfg,scale){
+  if(!NPCSPEC[race]) NPCSPEC[race]=npcSpec(race);
+  return buildRig(NPCSPEC[race],npcPal(race,cfg),(scale||1)*(NPCK[race]||1));
+}
+function makeActor(kind){
+  let rig=null, extra=null, h=1.55;
+  switch(kind){
+    case 'link':  rig=buildRig(linkSpec(),Object.assign({},LINK_PAL,{tunic:0x2f6ab0,sleeve:0x2f6ab0,trouser:0x3d3a33}),1); break;
+    case 'zelda': rig=hylian({skin:0xeccaa4,hair:0xd9b86a,cloth:0x2c4a8a,cloth2:0xe8e0d0,trouser:0x2c4a8a,boot:0x4a3020,belt:0xc8a040,eye:0x3a6a4a}); break;
+    case 'zeldaWhite': rig=hylian({skin:0xeccaa4,hair:0xd9b86a,cloth:0xf2efe6,cloth2:0xf2efe6,trouser:0xf2efe6,boot:0xd8d0c0,belt:0xc8a040,eye:0x3a6a4a}); break;
+    case 'rhoam': rig=hylian({skin:0xe0b890,hair:0xe8e4dc,cloth:0x8a2a2a,cloth2:0xd8c8a0,trouser:0x5a1a1a,boot:0x3a2418,belt:0xc8a040},1.25); h=1.95; break;
+    case 'impa':  rig=hylian({skin:0xeccaa4,hair:0xe8e4dc,cloth:0x3a4a6a,cloth2:0xc8403a,trouser:0x2a3444,boot:0x2a2018},.96); break;
+    case 'mipha': rig=raced('zora',{skin:0xd8584a,cloth:0xe8e0c8,hair:0xd8584a}); break;
+    case 'daruk': rig=raced('goron',{skin:0xb06a4a,cloth:0x3a5a9a,hair:0xe8e4dc},2.3); h=2.6; break;
+    case 'revali':rig=raced('rito',{skin:0x3a5a9a,cloth:0x2f6ab0,hair:0x1a2a4a},1.05); break;
+    case 'urbosa':rig=raced('gerudo',{skin:0xc89060,hair:0xb03a2a,cloth:0xd8c8a0},1.22); h=1.9; break;
+    case 'yiga': { const c=buildCreature('yigaFoot',ETYPE.yigaFoot); rig=c.rig; break; }
+    case 'guardian': { const c=buildCreature('stalker',ETYPE.stalker); rig=c.rig; h=4; break; }
+  }
+  const g=new THREE.Group(); if(rig) g.add(rig.root);
+  const A={kind,g,rig,anim:rig?makeAnim(rig,'idle'):null,h,float:0,walk:null,clip:'idle'};
+  if(rig) addFace(rig);
+  return A;
+}
+function spiritify(A){
+  A.g.traverse(o=>{ if(o.isMesh) o.material=DIR_SPIRIT; });
+  const li=new THREE.PointLight(0x7fe0ff,1.4,14); li.position.y=1.4; A.g.add(li);
+  A.float=1.1;
+}
+
+/* ---- local stage space: +z points from the stage toward where you stood ---- */
+function dirW(lx,ly,lz){
+  const S=DIR.sc, c=Math.cos(S.yaw), s=Math.sin(S.yaw);
+  const x=S.ox+lx*c+lz*s, z=S.oz-lx*s+lz*c;
+  return new THREE.Vector3(x,(ly||0)+S.gy,z);
+}
+function actorLocal(id){ const d=DIR.sc.actors[id]; return d?d.at:[0,0]; }
+function actorFace(id){ const A=DIR.actors[id], d=DIR.sc.actors[id]; return A?(A.faceLocal!==undefined?A.faceLocal:(d.face||0)):0; }
+function headOf(id){
+  const A=DIR.actors[id]; if(!A) return dirW(0,1.5,0);
+  const p=A.g.position.clone(); p.y+=A.h+(A.float?A.floatY||0:0); return p;
+}
+/* camera templates: each returns from, to, look, lookTo in world space */
+/* is anyone standing in the way of a camera looking at an actor? (stage space) */
+function stageBlocked(cam,target,...ignore){
+  for(const id in DIR.sc.actors){
+    if(ignore.includes(id)) continue;
+    const q=DIR.sc.actors[id].at, A=DIR.actors[id], r=A&&A.h>2?1.3:.7;
+    const sx=target[0]-cam[0], sz=target[1]-cam[1], L2=sx*sx+sz*sz||1;
+    let t=((q[0]-cam[0])*sx+(q[1]-cam[1])*sz)/L2; t=Math.max(0,Math.min(1,t));
+    const ex=cam[0]+sx*t-q[0], ez=cam[1]+sz*t-q[1];
+    if(ex*ex+ez*ez<r*r) return true;
+  }
+  return false;
+}
+function resolveShot(b){
+  const L=(x,y,z)=>dirW(x,y,z);
+  if(b.cam) return {from:L(...b.cam),to:L(...(b.to||b.cam)),look:L(...(b.look||[0,1.4,0])),lookTo:L(...(b.lookTo||b.look||[0,1.4,0]))};
+  const at=id=>actorLocal(id), f=id=>actorFace(id);
+  switch(b.tpl){
+    case 'establish': return {from:L(-15,11,17),to:L(9,8,15),look:L(0,1,0),lookTo:L(0,1.2,0)};
+    case 'wide':      return {from:L(0,6,12),to:L(0,4.5,9),look:L(0,1.3,0),lookTo:L(0,1.3,0)};
+    case 'crane':     return {from:L(0,1.6,6),to:L(0,9,13),look:L(0,1.4,0),lookTo:L(0,1.1,0)};
+    case 'pullback':  return {from:L(0,2.2,5),to:L(0,14,26),look:L(0,1.3,0),lookTo:L(0,1,0)};
+    case 'two':       return {from:L(-.9,1.7,5.4),to:L(.9,1.75,4.6),look:L(0,1.35,0),lookTo:L(0,1.35,0)};
+    case 'low':       return {from:L(0,.5,4.5),to:L(0,.8,3.6),look:L(0,2.6,-2),lookTo:L(0,3.2,-2)};
+    case 'sky':       return {from:L(0,1.8,6),to:L(0,1.6,7),look:L(0,6,-10),lookTo:L(0,26,-40)};
+    case 'orbit': {
+      const a0=b.a0||-.5, a1=b.a1!==undefined?b.a1:.6, r=b.r||8, y=b.y||3;
+      return {orbit:{a0,a1,r,y},look:L(0,1.3,0),lookTo:L(0,1.3,0)};
+    }
+    case 'close': {
+      const p=at(b.a), fa=f(b.a), dx=Math.sin(fa), dz=Math.cos(fa), A=DIR.actors[b.a], hh=A?A.h:1.55;
+      /* try the authored side first, then others, until nobody else is between
+         the lens and the face */
+      let pick=null;
+      for(const [side,dist,swing] of [[b.side||.35,2.3,0],[-(b.side||.35),2.3,0],[.9,2.6,.5],[-.9,2.6,-.5],[.35,3.4,0],[1.6,2.8,.9],[-1.6,2.8,-.9]]){
+        const ca=fa+swing, cx=Math.sin(ca), cz=Math.cos(ca);
+        const cam=[p[0]+cx*dist+cz*side, p[1]+cz*dist-cx*side];
+        if(!stageBlocked(cam,p,b.a)){ pick={cx,cz,side,dist}; break; }
+      }
+      if(!pick) pick={cx:dx,cz:dz,side:b.side||.35,dist:2.3};
+      const {cx,cz,side,dist}=pick, near=dist-.7;
+      return {from:L(p[0]+cx*dist+cz*side, hh-.02, p[1]+cz*dist-cx*side), to:L(p[0]+cx*near+cz*side*.7, hh-.02, p[1]+cz*near-cx*side*.7),
+              look:L(p[0],hh-.08,p[1]), lookTo:L(p[0],hh-.06,p[1]), actorLook:b.a};
+    }
+    case 'ots': {
+      const pa=at(b.a), pb=at(b.b), dx=pa[0]-pb[0], dz=pa[1]-pb[1], d=Math.hypot(dx,dz)||1, ux=dx/d, uz=dz/d;
+      if(stageBlocked([pb[0]-ux*1.9+uz*1.05, pb[1]-uz*1.9-ux*1.05],pa,b.a,b.b)) return resolveShot(Object.assign({},b,{tpl:'close'}));
+      const B=DIR.actors[b.b], hb=B?B.h:1.55, A=DIR.actors[b.a], ha=A?A.h:1.55;
+      return {from:L(pb[0]-ux*1.9+uz*1.05, hb+.3, pb[1]-uz*1.9-ux*1.05), to:L(pb[0]-ux*1.6+uz*.95, hb+.25, pb[1]-uz*1.6-ux*.95),
+              look:L(pa[0],ha-.1,pa[1]), lookTo:L(pa[0],ha-.08,pa[1]), actorLook:b.a};
+    }
+  }
+  return {from:L(0,6,12),to:L(0,5,10),look:L(0,1.3,0),lookTo:L(0,1.3,0)};
+}
+
+function dirPlay(sc){
+  if(DIR.on||inCut){ DIR.queue.push(sc); return; }
+  DIR.on=true; DIR.sc=sc; DIR.i=-1; DIR.ending=0;
+  sc.gy=groundAt(sc.ox,sc.oz);
+  P.playing=false; document.exitPointerLock&&document.exitPointerLock();
+  inCut=true; cutCam=DIR;
+  $('#hud').classList.remove('on'); document.body.classList.add('dir');
+  $('#dirBars').classList.add('on'); $('#dirSkip').classList.add('on');
+  if(sc.sepia) $('#gl').classList.add('memory');
+  DIR.actors={};
+  for(const id in sc.actors){
+    const d=sc.actors[id], A=makeActor(d.kind);
+    const w=dirW(d.at[0],0,d.at[1]); w.y=groundAt(w.x,w.z)+(d.y||0);
+    A.g.position.copy(w); A.g.rotation.y=sc.yaw+(d.face||0);
+    if(d.scale) A.g.scale.setScalar(d.scale);
+    if(d.spirit) spiritify(A);
+    if(A.anim) playClip(A.anim,d.clip||'idle',0);
+    A.clip=d.clip||'idle';
+    scene.add(A.g); DIR.actors[id]=A;
+  }
+  $('#dirFade').classList.add('on');
+  setTimeout(()=>$('#dirFade').classList.remove('on'),450);
+  dirNext();
+}
+function dirClearFx(){
+  for(const o of DIR.fx){ if(o.parent) o.parent.remove(o); }
+  DIR.fx.length=0;
+  $('#dirFx').style.opacity=0;
+  if(typeof rainMesh!=='undefined'&&rainMesh) rainMesh.visible=false;
+}
+function dirNext(){
+  const sc=DIR.sc; dirClearFx();
+  DIR.i++;
+  if(DIR.i>=sc.shots.length){ dirEnd(); return; }
+  const b=sc.shots[DIR.i];
+  DIR.b=b; DIR.t=0; DIR.cam=resolveShot(b);
+  const voiced=b.line&&b.line!=='…'&&typeof voiceOn!=='undefined'&&voiceOn&&window.speechSynthesis;
+  DIR.d=b.d||Math.max(3.2,b.line?(b.line==='…'?2.4:b.line.length*.062+1.4):3.2);
+  if(voiced) DIR.d=Math.max(DIR.d,b.line.length*.066+1.2);
+  DIR.talkFor=b.line&&b.line!=='…'?b.line.length*.058+.3:0;
+  /* poses, facing and walks for this shot */
+  if(b.clips) for(const id in b.clips){ const A=DIR.actors[id]; if(A&&A.anim){ playClip(A.anim,b.clips[id],.35); A.clip=b.clips[id]; } }
+  if(b.face) for(const id in b.face){ const A=DIR.actors[id]; if(A){ A.faceLocal=b.face[id]; A.turnTo=sc.yaw+b.face[id]; } }
+  if(b.walk) for(const id in b.walk){ const A=DIR.actors[id]; if(A){ const w=dirW(b.walk[id][0],0,b.walk[id][1]); A.walk=w; if(A.anim) playClip(A.anim,'walk',.25); } }
+  for(const id in DIR.actors){ const A=DIR.actors[id]; if(A.rig&&A.rig.face){ A.rig.face.talk=0; A.rig.face.mood='neutral'; } }
+  if(b.who&&b.line){
+    $('#subtitle .who').textContent=b.who; $('#subtitle .txt').textContent=b.line;
+    $('#subtitle').classList.add('show');
+    if(b.line!=='…'&&typeof speak==='function') speak(b.who,b.line);
+    const spk=b.speaker||b.a;
+    const S=DIR.actors[spk]; if(S&&S.rig&&S.rig.face){ S.rig.face.mood=b.mood||'neutral'; }
+    DIR.speaker=spk;
+  } else { $('#subtitle').classList.remove('show'); DIR.speaker=null; }
+  if(b.moods) for(const id in b.moods){ const A=DIR.actors[id]; if(A&&A.rig&&A.rig.face) A.rig.face.mood=b.moods[id]; }
+  if(b.title){ $('#dirTitle').innerHTML='<small>'+b.title[0]+'</small><b>'+b.title[1]+'</b>'; $('#dirTitle').classList.add('on');
+    setTimeout(()=>$('#dirTitle').classList.remove('on'),Math.min(DIR.d*1000-500,2600)); }
+  if(b.fx) dirFx(b.fx,b);
+}
+function dirEnd(){
+  if(DIR.ending) return;
+  DIR.ending=1;
+  $('#dirFade').classList.add('on');
+  setTimeout(()=>{
+    const sc=DIR.sc;
+    dirClearFx();
+    for(const id in DIR.actors) scene.remove(DIR.actors[id].g);
+    DIR.actors={};
+    $('#dirBars').classList.remove('on'); $('#dirSkip').classList.remove('on'); $('#dirTitle').classList.remove('on');
+    $('#gl').classList.remove('memory'); document.body.classList.remove('dir');
+    $('#subtitle').classList.remove('show'); try{ stopSpeaking(); }catch(e){}
+    DIR.on=false; inCut=false; cutCam=null; camera.fov=62; camera.updateProjectionMatrix();
+    $('#dirFade').classList.remove('on');
+    try{ if(sc&&sc.after) sc.after(); }catch(e){}
+    if(DIR.queue.length){ dirPlay(DIR.queue.shift()); return; }
+    if(cutQueue.length){ nextCut(); return; }
+    if(!P.dead&&!paused&&!mapOpen) startPlay();
+  },460);
+}
+
+/* ---- effects ---- */
+function dirFx(kind,b){
+  const add=o=>{ scene.add(o); DIR.fx.push(o); return o; };
+  const fxEl=$('#dirFx');
+  const flash=(col,peak,ms)=>{ fxEl.style.background=col; fxEl.style.transition='none'; fxEl.style.opacity=peak;
+    requestAnimationFrame(()=>{ fxEl.style.transition='opacity '+(ms||700)+'ms'; fxEl.style.opacity=0; }); };
+  const A=b.a&&DIR.actors[b.a], B=b.b&&DIR.actors[b.b];
+  for(const k of String(kind).split(' ')){
+    if(k==='flash') flash('#fff',.9,900);
+    if(k==='gold')  flash('radial-gradient(circle,#fff6c8,#f2c850 40%,rgba(242,200,80,0) 75%)',1,1600);
+    if(k==='redsky'){ fxEl.style.transition='opacity .8s'; fxEl.style.background='radial-gradient(ellipse at 50% 20%,rgba(150,20,40,.55),rgba(60,0,20,.65))'; fxEl.style.opacity=1; fxEl.style.mixBlendMode='multiply'; }
+    if(k==='rain'&&typeof rainMesh!=='undefined'&&rainMesh){ rainMesh.visible=true; DIR.rain=true; }
+    if(k==='barrier'&&A){ const m=add(new THREE.Mesh(new THREE.SphereGeometry(A.h*1.1,20,14),
+        new THREE.MeshBasicMaterial({color:0xff9a3a,transparent:true,opacity:.28,depthWrite:false,blending:THREE.AdditiveBlending})));
+      m.position.copy(A.g.position); m.position.y+=A.h*.55; m.userData.pulse=1; flash('rgba(255,160,60,.6)',.6,600); }
+    if(k==='heal'&&B){ const m=add(new THREE.Mesh(new THREE.SphereGeometry(.9,16,12),
+        new THREE.MeshBasicMaterial({color:0x8ff0c8,transparent:true,opacity:.35,depthWrite:false,blending:THREE.AdditiveBlending})));
+      m.position.copy(B.g.position); m.position.y+=1.1; m.userData.pulse=1; }
+    if(k==='gale'&&A){ const m=add(new THREE.Mesh(new THREE.CylinderGeometry(2.4,3.2,22,18,1,true),
+        new THREE.MeshBasicMaterial({color:0xcfeaff,transparent:true,opacity:.18,depthWrite:false,side:THREE.DoubleSide,blending:THREE.AdditiveBlending})));
+      m.position.copy(A.g.position); m.position.y+=11; m.userData.spin=1; A.rise=6; }
+    if(k==='lightning'&&A){ const top=A.g.position.clone(); top.y+=60;
+      const m=add(new THREE.Mesh(new THREE.CylinderGeometry(.18,.3,60,5),new THREE.MeshBasicMaterial({color:0xfff6a0})));
+      m.position.copy(A.g.position).add(new THREE.Vector3(3,30,-2)); m.userData.life=.35; flash('#fffbe0',.85,500); try{ sfx('thunder'); }catch(e){} }
+    if((k==='laser'||k==='laserOff')&&A&&B){
+      const from=A.g.position.clone(); from.y+=A.h*.8; const to=B.g.position.clone(); to.y+=.9;
+      const len=from.distanceTo(to);
+      const m=add(new THREE.Mesh(new THREE.CylinderGeometry(.05,.05,len,6),new THREE.MeshBasicMaterial({color:k==='laser'?0xff3040:0x444444,transparent:true,opacity:.9})));
+      m.position.copy(from).lerp(to,.5); m.lookAt(to); m.rotateX(Math.PI/2); if(k==='laser') m.userData.flicker=1;
+    }
+    if(k==='awaken'&&A){ const m=add(new THREE.Mesh(new THREE.SphereGeometry(1,24,16),
+        new THREE.MeshBasicMaterial({color:0xffe38a,transparent:true,opacity:.6,depthWrite:false,blending:THREE.AdditiveBlending})));
+      m.position.copy(A.g.position); m.position.y+=1.3; m.userData.grow=18; flash('radial-gradient(circle,#fffbe8,#ffd860 45%,rgba(255,216,96,0) 80%)',1,1800); }
+    if(k==='orb'&&A&&B){ const m=add(new THREE.Mesh(new THREE.SphereGeometry(.35,14,10),
+        new THREE.MeshBasicMaterial({color:0xaef6ff,transparent:true,opacity:.95,blending:THREE.AdditiveBlending})));
+      m.userData.from=A.g.position.clone().add(new THREE.Vector3(0,A.h,0)); m.userData.to=B.g.position.clone().add(new THREE.Vector3(0,1.1,0));
+      m.position.copy(m.userData.from); m.userData.travel=1; const li=new THREE.PointLight(0xaef6ff,2,12); m.add(li); }
+    if(k==='beam'){
+      const castle=REGIONS.castle, from=dirW(0,40,-30), to=new THREE.Vector3(castle.x,groundAt(castle.x,castle.z)+120,castle.z);
+      const len=from.distanceTo(to);
+      const m=add(new THREE.Mesh(new THREE.CylinderGeometry(.9,.9,len,8,1,true),
+        new THREE.MeshBasicMaterial({color:0xff5a6a,transparent:true,opacity:.75,depthWrite:false,blending:THREE.AdditiveBlending})));
+      m.position.copy(from).lerp(to,.5); m.lookAt(to); m.rotateX(Math.PI/2); m.userData.beam=1;
+    }
+    if(k==='malice'){ const m=add(new THREE.Mesh(new THREE.TorusGeometry(26,5,10,40),
+        new THREE.MeshBasicMaterial({color:0x6a0a1e,transparent:true,opacity:.7,depthWrite:false})));
+      m.position.copy(dirW(0,70,-120)); m.rotation.x=Math.PI/2.3; m.userData.spin=1;
+      const eye=new THREE.Mesh(new THREE.SphereGeometry(8,16,12),new THREE.MeshBasicMaterial({color:0xd01a3a}));
+      m.add(eye); }
+    if(k==='flowers'&&A){ const fm=new THREE.MeshBasicMaterial({color:0xdfe8ff}), cm=new THREE.MeshBasicMaterial({color:0x6a8ad8});
+      for(let i=0;i<7;i++){ const g=new THREE.Group(); const a=i*.9;
+        const p=A.g.position.clone().add(new THREE.Vector3(Math.cos(a)*(.7+i*.08),0,Math.sin(a)*(.7+i*.08)).applyAxisAngle(new THREE.Vector3(0,1,0),A.g.rotation.y));
+        p.y=groundAt(p.x,p.z);
+        const stem=new THREE.Mesh(new THREE.CylinderGeometry(.015,.015,.4,4),new THREE.MeshBasicMaterial({color:0x3f7a3a})); stem.position.y=.2; g.add(stem);
+        for(let k2=0;k2<5;k2++){ const pe=new THREE.Mesh(new THREE.SphereGeometry(.07,6,4),fm); pe.scale.set(1,.4,1.8);
+          pe.position.set(Math.cos(k2*1.256)*.08,.42,Math.sin(k2*1.256)*.08); g.add(pe); }
+        const c=new THREE.Mesh(new THREE.SphereGeometry(.04,6,4),cm); c.position.y=.43; g.add(c);
+        g.position.copy(p); add(g); } }
+  }
+}
+function dirUpdate(dt){
+  if(!DIR.on||DIR.ending) return;
+  const b=DIR.b, C=DIR.cam;
+  DIR.t+=dt;
+  const u0=Math.min(1,DIR.t/DIR.d), u=u0*u0*(3-2*u0);
+  if(C.orbit){
+    const a=C.orbit.a0+(C.orbit.a1-C.orbit.a0)*u;
+    camera.position.copy(dirW(Math.sin(a)*C.orbit.r,C.orbit.y,Math.cos(a)*C.orbit.r));
+  } else camera.position.copy(C.from).lerp(C.to,u);
+  const look=C.look.clone().lerp(C.lookTo,u);
+  if(C.actorLook){ const h=headOf(C.actorLook); look.lerp(h,.6); }
+  /* never below the ground */
+  const gy=groundAt(camera.position.x,camera.position.z)+.35;
+  if(camera.position.y<gy) camera.position.y=gy;
+  camera.lookAt(look);
+  const fov=b.fov||(b.tpl==='close'||b.tpl==='ots'?40:55);
+  camera.fov+=(fov-camera.fov)*Math.min(1,dt*6); camera.updateProjectionMatrix();
+  for(const id in DIR.actors){
+    const A=DIR.actors[id];
+    if(A.anim) stepAnim(A.anim,dt);
+    if(A.turnTo!==undefined){ let d=A.turnTo-A.g.rotation.y; d=Math.atan2(Math.sin(d),Math.cos(d)); A.g.rotation.y+=d*Math.min(1,dt*4); }
+    if(A.walk){
+      const d=A.walk.clone().sub(A.g.position); d.y=0; const len=d.length();
+      if(len<.1){ A.walk=null; if(A.anim) playClip(A.anim,A.clip||'idle',.3); }
+      else { A.g.position.addScaledVector(d.normalize(),Math.min(len,dt*1.4)); A.g.rotation.y=Math.atan2(d.x,d.z);
+        A.g.position.y=groundAt(A.g.position.x,A.g.position.z); }
+    }
+    if(A.float){ A.floatY=Math.sin(performance.now()/700)*.18; A.g.position.y=groundAt(A.g.position.x,A.g.position.z)+A.float+A.floatY; }
+    if(A.rise){ const r=Math.min(A.rise,dt*5); A.rise-=r; A.g.position.y+=r; A.float=(A.float||0)+r; }
+    if(A.rig&&A.rig.face) A.rig.face.talk=(id===DIR.speaker&&DIR.t<DIR.talkFor)?1:0;
+  }
+  const now=performance.now()/1000;
+  for(const o of DIR.fx){
+    const U=o.userData;
+    if(U.pulse&&o.material) o.material.opacity=.18+.12*Math.sin(now*6);
+    if(U.spin) o.rotation.y+=dt*1.2;
+    if(U.flicker) o.material.opacity=.6+.4*Math.sin(now*40);
+    if(U.grow){ const s=o.scale.x+dt*U.grow; o.scale.setScalar(s); o.material.opacity=Math.max(0,.6-s/30); }
+    if(U.life!==undefined){ U.life-=dt; o.visible=U.life>0; }
+    if(U.travel){ const k=Math.min(1,DIR.t/Math.max(.5,DIR.d*.7)); o.position.copy(U.from).lerp(U.to,k); o.position.y+=Math.sin(k*Math.PI)*1.2; }
+    if(U.beam) o.material.opacity=.55+.25*Math.sin(now*3);
+  }
+  if(DIR.rain&&typeof rainMesh!=='undefined'&&rainMesh&&rainMesh.visible){
+    rainMesh.position.copy(camera.position); rainMesh.position.y-=25;
+    const p=rainMesh.geometry.attributes.position.array;
+    for(let i=1;i<p.length;i+=3){ p[i]-=dt*46; if(p[i]<0) p[i]=50; }
+    rainMesh.geometry.attributes.position.needsUpdate=true;
+  }
+  if(DIR.t>=DIR.d) dirNext();
+}
+{ const _updateCutDir=updateCut;
+  updateCut=function(dt){
+    if(DIR.on){ inCut=true; cutCam=DIR; dirUpdate(dt); return; }
+    if(DIR.queue.length&&!inCut){ dirPlay(DIR.queue.shift()); return; }
+    _updateCutDir(dt);
+  };
+}
+addEventListener('keydown',e=>{
+  if(!DIR.on) return;
+  if(e.code==='Space'){ e.preventDefault(); e.stopImmediatePropagation(); try{ stopSpeaking(); }catch(_){} dirNext(); }
+  else if(e.code==='Escape'){ e.preventDefault(); e.stopImmediatePropagation(); DIR.i=DIR.sc.shots.length; dirEnd(); }
+},true);
+
+/* ---- the eighteen memories, shot by shot ----
+   Stage space: actors near the origin, +z toward where you were standing.
+   face is a turn in radians: 0 faces you, PI faces away, PI/2 faces +x. */
+const QTR=Math.PI/2, HALF_TURN=Math.PI;
+const MEMORY_SCENES={
+ 1:{actors:{zelda:{kind:'zelda',at:[0,1.1],face:HALF_TURN},link:{kind:'link',at:[0,-.6],face:0,clip:'kneel'},
+           rhoam:{kind:'rhoam',at:[0,-5],face:0,clip:'proud'},mipha:{kind:'mipha',at:[-3.2,-3],face:.5},
+           daruk:{kind:'daruk',at:[3.8,-3.2],face:-.5,clip:'proud'},revali:{kind:'revali',at:[2,-4],face:-.3,clip:'proud'},
+           urbosa:{kind:'urbosa',at:[-4.6,-4],face:.6}},
+    shots:[{tpl:'establish',d:4.2,title:['Memory 1','Subdued Ceremony']},
+      {tpl:'crane',who:'King Rhoam',a:'rhoam',line:'Before the Champions of Hyrule, the princess names her knight.',mood:'neutral'},
+      {tpl:'close',a:'zelda',who:'Zelda',line:'Link. The sword that seals the darkness chose you. Rise, and stand beside me as my knight.',mood:'neutral',clips:{zelda:'point'}},
+      {tpl:'close',a:'link',who:'Link',line:'…',clips:{link:'kneel',zelda:'idle'}},
+      {tpl:'ots',a:'zelda',b:'link',who:'Zelda',line:'Father… I have done everything asked of me. It has changed nothing.',mood:'sad',clips:{zelda:'bowHead'}},
+      {tpl:'pullback',d:4.5}]},
+ 2:{actors:{zelda:{kind:'zelda',at:[-.9,0],face:QTR},mipha:{kind:'mipha',at:[.9,0],face:-QTR},link:{kind:'link',at:[-3,-2],face:.7}},
+    shots:[{tpl:'wide',d:4,title:['Memory 2','Resolve and Grief']},
+      {tpl:'close',a:'mipha',who:'Mipha',line:'You carry so much, Princess. Let me carry a little of it for a while.',mood:'happy'},
+      {tpl:'close',a:'zelda',who:'Zelda',line:'Mipha. You always could put me back together, and never yourself.',mood:'sad',clips:{zelda:'bowHead'}},
+      {tpl:'two',who:'Mipha',a:'mipha',line:'Then I will keep trying. For as long as it takes.',mood:'happy'},
+      {tpl:'pullback',d:4}]},
+ 3:{actors:{zelda:{kind:'zelda',at:[0,-2],face:HALF_TURN},link:{kind:'link',at:[0,1.5],face:HALF_TURN}},
+    shots:[{tpl:'wide',d:4.2,title:['Memory 3','Zelda’s Resentment'],walk:{zelda:[0,-4],link:[0,-.4]}},
+      {tpl:'close',a:'zelda',face:{zelda:0},who:'Zelda',line:'You follow me everywhere. Do you never tire of it? Say something.',mood:'angry'},
+      {tpl:'close',a:'link',who:'Link',line:'…'},
+      {tpl:'ots',a:'zelda',b:'link',who:'Zelda',line:'No. Of course not. The sword speaks for you, and nothing speaks for me.',mood:'angry',clips:{zelda:'proud'}},
+      {tpl:'crane',d:4,face:{zelda:HALF_TURN},walk:{zelda:[0,-9]}}]},
+ 4:{actors:{zelda:{kind:'zelda',at:[0,1.4],face:0,clip:'lookUp'},link:{kind:'link',at:[0,0],face:HALF_TURN,clip:'alert'},
+           y1:{kind:'yiga',at:[-2.6,-5],face:.3,clip:'alert'},y2:{kind:'yiga',at:[0,-6],face:0,clip:'alert'},y3:{kind:'yiga',at:[2.6,-5],face:-.3,clip:'alert'}},
+    shots:[{tpl:'orbit',a0:-.9,a1:.4,r:9,y:3,d:4,title:['Memory 4','Blades of the Yiga']},
+      {tpl:'close',a:'y2',who:'Yiga',line:'The princess dies here, and her shadow with her.',mood:'angry'},
+      {tpl:'two',d:2.2,fx:'flash',clips:{y1:'attack1',y2:'attack2',y3:'attack1',link:'spin'}},
+      {tpl:'wide',d:2.6,clips:{y1:'die',y2:'die',y3:'die',link:'alert'}},
+      {tpl:'close',a:'link',who:'Link',line:'…',face:{link:0}},
+      {tpl:'ots',a:'zelda',b:'link',who:'Zelda',line:'You… you saved me. And I have been so unkind to you.',mood:'sad',clips:{zelda:'bowHead'}}]},
+ 5:{actors:{impa:{kind:'impa',at:[1.2,0],face:-QTR},zelda:{kind:'zelda',at:[-1.2,0],face:QTR,clip:'pray'},link:{kind:'link',at:[0,-3],face:0}},
+    shots:[{tpl:'wide',d:4,title:['Memory 5','A Premonition']},
+      {tpl:'close',a:'impa',who:'Impa',line:'She has seen it. The castle falling. She has seen all of it.',mood:'sad'},
+      {tpl:'close',a:'zelda',who:'Zelda',line:'Every night the same dream. Fire over the castle, and a light I cannot hold on to.',mood:'sad'},
+      {tpl:'two',a:'impa',who:'Impa',line:'Then we prepare. All of us, starting tonight.',mood:'angry',clips:{impa:'point'}},
+      {tpl:'pullback',d:4}]},
+ 6:{actors:{zelda:{kind:'zelda',at:[0,0],face:HALF_TURN,clip:'crouch'},link:{kind:'link',at:[1.8,1.6],face:-2.4}},
+    shots:[{tpl:'low',d:4,title:['Memory 6','Silent Princess'],fx:'flowers',a:'zelda'},
+      {tpl:'close',a:'zelda',face:{zelda:.6},who:'Zelda',line:'A silent princess. They will not grow in captivity, no matter how carefully you tend them.',mood:'sad',fx:'flowers'},
+      {tpl:'ots',a:'zelda',b:'link',who:'Zelda',line:'People say they are rare now. I like to think they are only waiting.',mood:'happy',fx:'flowers'},
+      {tpl:'crane',d:4,fx:'flowers'}]},
+ 7:{actors:{zelda:{kind:'zelda',at:[-.8,0],face:.5,clip:'sit'},link:{kind:'link',at:[.9,.2],face:-.4,clip:'sit'}},
+    shots:[{tpl:'wide',d:4,title:['Memory 7','Shelter from the Storm'],fx:'rain'},
+      {tpl:'close',a:'zelda',who:'Zelda',line:'You never say anything. Is it duty? Or do you simply have nothing to say to me?',mood:'angry',fx:'rain'},
+      {tpl:'close',a:'link',who:'Link',line:'…',fx:'rain'},
+      {tpl:'two',a:'zelda',who:'Zelda',line:'…I am sorry. None of this was ever your fault.',mood:'sad',fx:'rain',clips:{zelda:'bowHead'}},
+      {tpl:'pullback',d:4,fx:'rain'}]},
+ 8:{actors:{rhoam:{kind:'rhoam',at:[1.4,0],face:-QTR,clip:'proud'},zelda:{kind:'zelda',at:[-1.4,0],face:QTR},link:{kind:'link',at:[-4,-2],face:.8}},
+    shots:[{tpl:'wide',d:4,title:['Memory 8','Father and Daughter']},
+      {tpl:'close',a:'rhoam',who:'King Rhoam',line:'You will go to the spring and you will pray. That is all that is asked of you.',mood:'angry',clips:{rhoam:'point'}},
+      {tpl:'close',a:'zelda',who:'Zelda',line:'The Guardians answer me when I study them, Father. The goddess never has.',mood:'angry'},
+      {tpl:'ots',a:'rhoam',b:'zelda',who:'King Rhoam',line:'Enough. You are the princess of Hyrule. Act like it.',mood:'angry',clips:{rhoam:'proud'}},
+      {tpl:'close',a:'zelda',d:3,clips:{zelda:'bowHead'},moods:{zelda:'sad'}}]},
+ 9:{actors:{zelda:{kind:'zeldaWhite',at:[0,-1],face:HALF_TURN,clip:'pray'},link:{kind:'link',at:[0,4],face:HALF_TURN}},
+    shots:[{tpl:'crane',d:4.5,title:['Memory 9','Slumbering Power']},
+      {tpl:'close',a:'zelda',face:{zelda:0},who:'Zelda',line:'Nothing. Seventeen years, and still nothing wakes in me.',mood:'sad'},
+      {tpl:'ots',a:'zelda',b:'link',who:'Zelda',line:'My grandmother heard her voice. My mother heard it. Why does she leave me in silence?',mood:'sad',clips:{zelda:'bowHead'}},
+      {tpl:'pullback',d:4}]},
+ 10:{actors:{zelda:{kind:'zeldaWhite',at:[.8,0],face:-.6},link:{kind:'link',at:[-.8,.3],face:.6}},
+    shots:[{tpl:'establish',d:4,title:['Memory 10','To Mount Lanayru']},
+      {tpl:'close',a:'zelda',who:'Zelda',line:'If the power does not come today, it never will.',mood:'neutral'},
+      {tpl:'two',a:'zelda',who:'Zelda',line:'It is my birthday. Whatever happens at the spring, stay close to me.',mood:'happy'},
+      {tpl:'sky',d:4}]},
+ 11:{actors:{rhoam:{kind:'rhoam',at:[0,0],face:HALF_TURN,clip:'lookUp'},link:{kind:'link',at:[-2,1.5],face:HALF_TURN,clip:'alert'}},
+    shots:[{tpl:'wide',d:3.6,title:['Memory 11','Return of Calamity Ganon'],fx:'redsky malice'},
+      {tpl:'sky',d:4,fx:'redsky malice'},
+      {tpl:'close',a:'rhoam',face:{rhoam:0},who:'King Rhoam',line:'It has begun. Ganon has returned, and we were not ready.',mood:'angry',fx:'redsky malice'},
+      {tpl:'pullback',d:4,fx:'redsky malice'}]},
+ 12:{actors:{zelda:{kind:'zeldaWhite',at:[0,0],face:0,clip:'grieve'},link:{kind:'link',at:[.6,-1.6],face:0},
+            g1:{kind:'guardian',at:[-9,-14],face:.4},g2:{kind:'guardian',at:[8,-16],face:-.3}},
+    shots:[{tpl:'wide',d:4,title:['Memory 12','Despair'],fx:'rain'},
+      {tpl:'close',a:'zelda',who:'Zelda',line:'The Guardians have turned. They are ours no longer.',mood:'sad',fx:'rain'},
+      {tpl:'ots',a:'zelda',b:'link',who:'Zelda',line:'Everyone is dying because of me. Because I could not do the one thing I was born to do.',mood:'sad',fx:'rain'},
+      {tpl:'crane',d:4,fx:'rain'}]},
+ 13:{actors:{guardian:{kind:'guardian',at:[0,-9],face:0},link:{kind:'link',at:[0,-1.5],face:HALF_TURN,clip:'kneel'},zelda:{kind:'zeldaWhite',at:[0,1],face:HALF_TURN}},
+    shots:[{tpl:'wide',d:3.4,title:['Memory 13','Zelda’s Awakening'],fx:'rain'},
+      {tpl:'ots',a:'guardian',b:'zelda',d:2.6,fx:'rain laser',walk:{zelda:[0,-3]}},
+      {tpl:'close',a:'zelda',face:{zelda:HALF_TURN},who:'Zelda',line:'Do not touch him! Do not you dare touch him!',mood:'angry',clips:{zelda:'armsOut'},fx:'rain awaken'},
+      {tpl:'wide',d:3,fx:'gold laserOff',a:'guardian',b:'zelda',clips:{guardian:'idle'}},
+      {tpl:'close',a:'zelda',face:{zelda:0},who:'Zelda',line:'It was in me all along. Link — Link, stay with me.',mood:'sad',clips:{zelda:'kneel'},fx:'rain'}]},
+ 14:{actors:{daruk:{kind:'daruk',at:[1.8,0],face:-QTR,clip:'proud'},link:{kind:'link',at:[-1.4,0],face:QTR}},
+    shots:[{tpl:'wide',d:3.6,title:['Memory 14','Daruk’s Mettle']},
+      {tpl:'close',a:'daruk',who:'Daruk',line:'Leave it to me! Nothing gets past Daruk’s Protection!',mood:'happy',clips:{daruk:'armsOut'},fx:'barrier'},
+      {tpl:'two',a:'daruk',who:'Daruk',line:'Next time a boulder comes down the mountain, you just stand behind me, little guy.',mood:'happy',clips:{daruk:'proud'}},
+      {tpl:'pullback',d:4}]},
+ 15:{actors:{mipha:{kind:'mipha',at:[.8,0],face:-QTR,clip:'kneel'},link:{kind:'link',at:[-.8,0],face:QTR,clip:'sit'}},
+    shots:[{tpl:'wide',d:3.6,title:['Memory 15','Mipha’s Touch']},
+      {tpl:'close',a:'mipha',b:'link',who:'Mipha',line:'Hold still. I will not have you carry a scar you did not earn.',mood:'happy',fx:'heal'},
+      {tpl:'two',a:'mipha',b:'link',who:'Mipha',line:'I have done this since we were children. I would do it every day, if you let me.',mood:'happy',fx:'heal'},
+      {tpl:'crane',d:4}]},
+ 16:{actors:{revali:{kind:'revali',at:[0,-2],face:0,clip:'proud'},link:{kind:'link',at:[0,3],face:HALF_TURN}},
+    shots:[{tpl:'wide',d:3.6,title:['Memory 16','Revali’s Flap']},
+      {tpl:'low',a:'revali',d:3.2,fx:'gale',clips:{revali:'armsOut'}},
+      {tpl:'close',a:'revali',who:'Revali',line:'Watch closely. This is what a real warrior looks like.',mood:'angry',clips:{revali:'proud'}},
+      {tpl:'ots',a:'revali',b:'link',who:'Revali',line:'The princess may have chosen you. I have not.',mood:'angry'},
+      {tpl:'pullback',d:3.6}]},
+ 17:{actors:{urbosa:{kind:'urbosa',at:[1.3,0],face:-QTR},link:{kind:'link',at:[-1.3,0],face:QTR}},
+    shots:[{tpl:'establish',d:3.6,title:['Memory 17','Urbosa’s Hand']},
+      {tpl:'wide',a:'urbosa',d:2.2,fx:'lightning',clips:{urbosa:'point'}},
+      {tpl:'close',a:'urbosa',who:'Urbosa',line:'Little bird. You do not have to carry it all alone.',mood:'happy',clips:{urbosa:'idle'}},
+      {tpl:'two',a:'urbosa',who:'Urbosa',line:'Her mother was my dearest friend. Watch over that girl for the both of us.',mood:'sad'},
+      {tpl:'pullback',d:4}]},
+ 18:{actors:{rhoam:{kind:'rhoam',at:[0,0],face:0,clip:'sit'}},
+    shots:[{tpl:'wide',d:4,title:['Memory 18','Rhoam’s Confession']},
+      {tpl:'close',a:'rhoam',who:'King Rhoam',line:'I was a poor father and a worse king. I told her to pray when she needed a father.',mood:'sad',clips:{rhoam:'bowHead'}},
+      {tpl:'close',a:'rhoam',side:-.4,who:'King Rhoam',line:'If you find her, tell her that her father is sorry. Tell her that first.',mood:'sad'},
+      {tpl:'pullback',d:4.5}]}
+};
+function memoryScene(M){
+  const def=MEMORY_SCENES[M.n]; if(!def) return null;
+  let yaw=Math.atan2(P.pos.x-M.x,P.pos.z-M.z); if(!isFinite(yaw)) yaw=0;
+  return Object.assign({ox:M.x,oz:M.z,yaw,sepia:true},def);
+}
+recallMemory=function(n){
+  const M=memorySites.find(m=>m.n===n);
+  if(!M||P.memories[n]){ toast('Already recalled'); return; }
+  P.memories[n]=1; M.g.visible=false; sfx('orb');
+  const count=Object.keys(P.memories).length;
+  const sc=memoryScene(M);
+  const done=()=>{
+    toast('Memory recovered — '+count+'/'+memorySites.length,'good');
+    if(count>=memorySites.length&&!P.storyDone){
+      P.storyDone=true;
+      setTimeout(()=>{
+        cut('Zelda','You remember. All of it. Every last thing they asked of you, and everything you gave.');
+        cut('Zelda','I am still here, Link. I have been holding him a hundred years. Come to the castle. Come and finish it.');
+      },1200);
+    }
+  };
+  if(sc){ sc.after=done; dirPlay(sc); }
+  else { cut('Memory '+M.n,M.name,{t:2.6}); cut(M.who,M.line); done(); }
+};
+
+/* ---- the Champions, each handing over their ability ---- */
+const CHAMP_SCENES={
+  mipha: {kind:'mipha', who:'Mipha', l1:'Link… you came for me. After a hundred years, you still came.', m1:'happy',
+          l2:'Let my Grace be yours. When your strength fails, I will be there to mend you.', m2:'happy'},
+  daruk: {kind:'daruk', who:'Daruk', l1:'Little guy! I knew it would be you. Nobody else is that stubborn.', m1:'happy',
+          l2:'Take my Protection. Nothing Ganon throws at you gets through — Daruk guarantees it.', m2:'happy', scale:.85},
+  revali:{kind:'revali',who:'Revali',l1:'Hmph. So you managed it. I suppose I should thank you, though it pains me.', m1:'angry',
+          l2:'Take my Gale. Try not to embarrass me with it.', m2:'neutral'},
+  urbosa:{kind:'urbosa',who:'Urbosa',l1:'You freed my Naboris. The Gerudo owe you, and so do I.', m1:'happy',
+          l2:'My Fury is yours. Use it the way I would — without mercy, and for her sake.', m2:'neutral'}
+};
+{ const _grantDir=grantChampion;
+  grantChampion=function(key){
+    if(P.champions[key]) return;
+    const S=CHAMP_SCENES[key], C=CHAMPIONS[key];
+    if(!S||!C) return _grantDir(key);
+    P.champions[key]=1;
+    if(key==='daruk'||key==='revali'||key==='urbosa') P.charges[key]=3;
+    sfx('orb'); updateGear();
+    const yaw=P.look.yaw+Math.PI;
+    const ox=P.pos.x-Math.sin(yaw)*1.5, oz=P.pos.z-Math.cos(yaw)*1.5;
+    dirPlay({ox,oz,yaw,sepia:false,
+      actors:{champ:{kind:S.kind,at:[0,-2.4],face:0,spirit:true},link:{kind:'link',at:[0,.6],face:HALF_TURN}},
+      shots:[
+        {tpl:'wide',d:3.2,fx:'flash',title:['Champion',C.n]},
+        {tpl:'close',a:'champ',who:S.who,line:S.l1,mood:S.m1},
+        {tpl:'ots',a:'champ',b:'link',who:S.who,line:S.l2,mood:S.m2},
+        {tpl:'two',a:'champ',b:'link',d:2.6,fx:'orb'},
+        {tpl:'sky',d:3.6,fx:'beam'},
+        {tpl:'pullback',d:3.4,who:'Sheikah Slate',line:C.n+' — '+C.desc+'.'}
+      ]});
+  };
+}
+console.log('director: '+Object.keys(MEMORY_SCENES).length+' memories and '+Object.keys(CHAMP_SCENES).length+' Champion scenes, '
+  +Object.values(MEMORY_SCENES).reduce((a,s)=>a+s.shots.length,0)+' authored memory shots; faces on Link and '
+  +npcs.filter(N=>N.rig&&N.rig.face).length+' people');
+</script>
+<script>
+/* ---- a clear stage for every scene ----
+   The memory markers sit where the memories happened, and several of those
+   places are inside buildings - the first is in Hyrule Castle - so a camera
+   staged on the marker spent the scene inside a wall.  Before a scene plays,
+   nearby ground is searched for somewhere flat and dry where every camera in
+   the scene has a clear line to the actors, over both the terrain and
+   anything built. */
+const STAGE_CAMS=[[0,1.5,0,-15,11,17],[0,1.5,0,9,8,15],[0,1.5,0,0,6,12],[0,1.5,0,0,9,13],[0,1.5,0,0,14,26],
+                  [0,1.5,0,-.9,1.7,5.4],[0,1.5,0,3,2,3],[0,1.5,0,-3,2,3],[0,1.5,0,0,1.8,6],[0,1.5,0,6,3,6],[0,1.5,0,-6,3,6]];
+function findStage(x,z,preferYaw){
+  const indoorsNow=!!(P.inShrine||P.inRes||P.inBeast||P.inCastle);
+  if(indoorsNow) return {ox:x,oz:z,yaw:preferYaw||0};
+  /* what is built or grown nearby, once: meshes for the ray, and every
+     instanced tree, rock and bush as a sphere */
+  const blockers=[], spheres=[], tmpS=new THREE.Sphere(), m4=new THREE.Matrix4(), pv=new THREE.Vector3(), qv=new THREE.Quaternion(), sv=new THREE.Vector3();
+  const skip=new Set([sky,terrain,water]);
+  try{ if(typeof hyruleMesh!=='undefined') skip.add(hyruleMesh); if(typeof hWater!=='undefined') skip.add(hWater); }catch(e){}
+  try{
+    scene.updateMatrixWorld(true);
+    scene.traverse(o=>{
+      if(!o.visible||skip.has(o)) return;
+      if(o.isInstancedMesh){
+        const g=o.geometry; if(!g.boundingSphere) g.computeBoundingSphere();
+        const br=g.boundingSphere.radius;
+        for(let i=0;i<o.count;i++){
+          o.getMatrixAt(i,m4); m4.decompose(pv,qv,sv);
+          if(sv.x<.01) continue;
+          if(Math.abs(pv.x-x)>130||Math.abs(pv.z-z)>130) continue;
+          spheres.push([pv.x,pv.y+g.boundingSphere.center.y*sv.y,pv.z,br*Math.max(sv.x,sv.y,sv.z)*.8]);
+        }
+        return;
+      }
+      if(!o.isMesh||!o.geometry) return;
+      if(o.material&&o.material.transparent&&o.material.opacity<.5) return;
+      const g=o.geometry; if(!g.boundingSphere) g.computeBoundingSphere();
+      tmpS.copy(g.boundingSphere).applyMatrix4(o.matrixWorld);
+      if(tmpS.radius>400) return;
+      if(Math.hypot(tmpS.center.x-x,tmpS.center.z-z)<tmpS.radius+130) blockers.push(o);
+    });
+  }catch(e){}
+  const segHitsSphere=(A,B,S)=>{
+    const dx=B.x-A.x, dy=B.y-A.y, dz=B.z-A.z, L2=dx*dx+dy*dy+dz*dz;
+    let t=((S[0]-A.x)*dx+(S[1]-A.y)*dy+(S[2]-A.z)*dz)/L2; t=Math.max(0,Math.min(1,t));
+    const cx=A.x+dx*t-S[0], cy=A.y+dy*t-S[1], cz=A.z+dz*t-S[2];
+    return cx*cx+cy*cy+cz*cz<S[3]*S[3];
+  };
+  const ray=new THREE.Raycaster();
+  const clear=(ox,oz,yaw)=>{
+    const c=Math.cos(yaw), s=Math.sin(yaw), gy=groundAt(ox,oz);
+    const W=(lx,ly,lz)=>new THREE.Vector3(ox+lx*c+lz*s,gy+ly,oz-lx*s+lz*c);
+    let bad=0;
+    /* the actors need room to stand, too */
+    for(const S of spheres) if(Math.hypot(S[0]-ox,S[2]-oz)<S[3]+4.5&&S[1]-S[3]<gy+3){ bad++; break; }
+    const pairs=[];
+    for(const [ax,ay,az,bx,by,bz] of STAGE_CAMS){
+      /* the line to the camera, and a small cone around it - a wall beside
+         the lens fills the frame just as well as one in front of it */
+      const A=W(ax,ay,az);
+      const along=Math.hypot(bx-ax,bz-az)||1, px=-(bz-az)/along, pz=(bx-ax)/along;
+      for(const [sx,sy] of [[0,0],[1.6,0],[-1.6,0],[0,1.3]]) pairs.push([A,W(bx+px*sx,by+sy,bz+pz*sx)]);
+    }
+    for(const [A,B] of pairs){
+      if(B.y<groundAt(B.x,B.z)+.3) B.y=groundAt(B.x,B.z)+.3;
+      let hit=false;
+      for(let k=1;k<8&&!hit;k++){ const p=A.clone().lerp(B,k/8); if(groundAt(p.x,p.z)>p.y+.2) hit=true; }
+      if(!hit) for(const S of spheres){ if(segHitsSphere(A,B,S)){ hit=true; break; } }
+      if(!hit&&blockers.length){
+        const dir=B.clone().sub(A), len=dir.length(); dir.normalize();
+        ray.set(A,dir); ray.far=len+.8;
+        if(ray.intersectObjects(blockers,false).length) hit=true;
+      }
+      if(hit) bad++;
+    }
+    return bad;
+  };
+  const flatDry=(ox,oz,loose)=>{
+    const g=groundAt(ox,oz);
+    if(g<waterAt(ox,oz)+(loose?-.2:.4)) return false;
+    for(const [dx,dz] of [[0,0],[4,0],[-4,0],[0,4],[0,-4]]) if(slopeAt(ox+dx,oz+dz)>(loose?.9:.45)) return false;
+    return true;
+  };
+  let best=null;
+  for(const loose of [false,true])
+  for(const r of (loose?[0,20,45,80,130,200]:[0,12,24,38,55,80])){
+    for(let i=0;i<(r?10:1);i++){
+      const a=i/10*Math.PI*2, ox=x+Math.cos(a)*r, oz=z+Math.sin(a)*r;
+      if(!flatDry(ox,oz,loose)) continue;
+      for(let j=0;j<8;j++){
+        const yaw=(preferYaw||0)+j/8*Math.PI*2;
+        const bad=clear(ox,oz,yaw);
+        const score=bad*100+r+(loose?150:0);
+        if(!best||score<best.score) best={ox,oz,yaw,score};
+        if(bad===0) return best;
+      }
+    }
+  }
+  return best||{ox:x,oz:z,yaw:preferYaw||0};
+}
+{ const _memoryScene=memoryScene;
+  memoryScene=function(M){
+    const sc=_memoryScene(M); if(!sc) return sc;
+    const st=findStage(M.x,M.z,sc.yaw);
+    sc.ox=st.ox; sc.oz=st.oz; sc.yaw=st.yaw;
+    return sc;
+  };
+}
+/* the player's own Link steps out of frame while someone else's story plays */
+{ const _dirPlayHide=dirPlay;
+  dirPlay=function(sc){
+    const was=DIR.on||inCut;
+    _dirPlayHide(sc);
+    if(!was&&DIR.on){ DIR.playerWasVisible=player.visible; player.visible=false; }
+  };
+  const _dirEndShow=dirEnd;
+  dirEnd=function(){
+    const sc=DIR.sc;
+    const prevAfter=sc&&sc.after;
+    if(sc) sc.after=function(){ player.visible=DIR.playerWasVisible!==false; if(prevAfter) prevAfter(); };
+    _dirEndShow();
+  };
+}
+/* a Champion's scene waits until you are back under the sky */
+let pendingChamp=null;
+{ const _grantStage=grantChampion;
+  grantChampion=function(key){
+    if(P.champions[key]) return;
+    const indoors=!!(P.inShrine||P.inRes||P.inBeast||P.inCastle);
+    if(indoors){
+      pendingChamp=key;
+      P.champions[key]=1;
+      if(key==='daruk'||key==='revali'||key==='urbosa') P.charges[key]=3;
+      sfx('orb'); updateGear();
+      toast(CHAMPIONS[key].n+' — '+CHAMPIONS[key].desc,'good');
+      return;
+    }
+    /* stage it on clear ground near you, facing the way you look */
+    const yaw=P.look.yaw+Math.PI;
+    const st=findStage(P.pos.x,P.pos.z,yaw);
+    const _pos=P.pos.clone();
+    P.pos.set(st.ox+Math.sin(st.yaw)*1.5,P.pos.y,st.oz+Math.cos(st.yaw)*1.5);
+    P.look.yaw=st.yaw-Math.PI;
+    _grantStage(key);
+    P.pos.copy(_pos);
+  };
+  const _updateCutChamp=updateCut;
+  updateCut=function(dt){
+    if(pendingChamp&&!DIR.on&&!inCut&&P.playing&&!(P.inShrine||P.inRes||P.inBeast||P.inCastle)){
+      const key=pendingChamp; pendingChamp=null;
+      delete P.champions[key];
+      grantChampion(key);
+    }
+    _updateCutChamp(dt);
+  };
+}
+</script>
+<script>
+/* ================= BATCH 95 — people get out of the rain; the Master Trials finished ====
+   Group 4.
+
+   Items 2 to 7 were already in the game when this group was checked: branching
+   dialogue with traits and faces, all twenty-one Korok puzzle kinds, every
+   shrine with its real trial and rewards, multi-floor Divine Beasts whose
+   rotation moves the rooms, and a Trial of the Sword at the real 51 floors.
+   What was missing:
+
+   1. Nobody sheltered from the rain.  Now anyone awake heads for the nearest
+      roof - a building if there is one near home, a tree if not - and stays
+      under it until the rain stops, with something to say about the weather.
+   6. The Master Trials were missing the Travel Medallion, and four of the
+      EX quests handed out the wrong reward (the Teleportation Rumors gave a
+      Korok Mask; the Ancient Mask gave an Ancient Helm).  The rewards are the
+      real ones now, and the Medallion works: set it anywhere from the map,
+      and travel back to it from the map. */
+
+/* ---- 1. shelter ---- */
+function shelterFor(N){
+  if(N.shelter) return N.shelter;
+  const hx=N.home.x, hz=N.home.z;
+  let best=null, bd=90*90;
+  for(const o of STRUCTS){
+    const dx=o.x-hx, dz=o.z-hz, d=dx*dx+dz*dz;
+    if(d<bd&&o.top-o.base>2.5){ bd=d; best=o; }
+  }
+  if(best){
+    /* stand close in to the wall on the side facing home - under the eaves */
+    const r=(best.r!==undefined?best.r:Math.max(best.hx,best.hz))+.9;
+    const a=Math.atan2(hz-best.z,hx-best.x);
+    N.shelter=[best.x+Math.cos(a)*r, best.z+Math.sin(a)*r];
+  } else if(typeof trees!=='undefined'&&trees.length){
+    let tb=null, td=60*60;
+    for(const T of trees){ if(T.burnt) continue; const d=(T.x-hx)*(T.x-hx)+(T.z-hz)*(T.z-hz); if(d<td){ td=d; tb=T; } }
+    N.shelter=tb?[tb.x+1.2,tb.z+.6]:[hx,hz];
+  } else N.shelter=[hx,hz];
+  return N.shelter;
+}
+{ const _schedRain=npcSchedule;
+  npcSchedule=function(N,hour){
+    const s=_schedRain(N,hour);
+    if(s.sleeping||typeof raining==='undefined'||!raining){ N.sheltering=false; return s; }
+    N.sheltering=true;
+    return {at:shelterFor(N),sleeping:false};
+  };
+}
+const RAIN_LINES=['Wait it out with me. It never lasts, not this time of year.',
+  'Soaked right through. I should have stayed home.',
+  'Rain like this, even the Bokoblins stay in their camps.',
+  'Mind the lightning if you are carrying anything metal.',
+  'My mother always said the rain washes the road clean. I just think it makes mud.'];
+{ const _talkRain=talkTo;
+  talkTo=function(N){
+    if(N.sheltering&&!N.shop){
+      const keep=N.lines;
+      N.lines=[RAIN_LINES[(N.li||0)%RAIN_LINES.length]].concat(keep);
+      const r=_talkRain.apply(this,arguments);
+      N.lines=keep; return r;
+    }
+    return _talkRain.apply(this,arguments);
+  };
+}
+
+/* ---- 6. the Travel Medallion ---- */
+{ const _giveMed=give;
+  give=function(n,count){
+    if(n==='Travel Medallion'){
+      P.medallionOwned=true; toast('Got the Travel Medallion — set it from the map','good'); sfx('orb'); return;
+    }
+    return _giveMed.apply(this,arguments);
+  };
+}
+(function medallionButton(){
+  const ms=$('#mapscreen'); if(!ms) return;
+  const b=document.createElement('button');
+  b.id='btnMedallion'; b.className='act'; b.textContent='Set the Travel Medallion here';
+  b.style.cssText='position:absolute;left:50%;bottom:22px;transform:translateX(-50%);z-index:3;display:none';
+  b.onclick=e=>{ e.stopPropagation();
+    if(P.inShrine||P.inRes||P.inBeast||P.inCastle){ toast('The Medallion needs open sky','bad'); return; }
+    P.medallion={x:P.pos.x,z:P.pos.z}; sfx('rune'); toast('Travel Medallion set','good'); drawBigMap(); };
+  ms.appendChild(b);
+})();
+{ const _toggleMapMed=toggleMap;
+  toggleMap=function(){ const r=_toggleMapMed.apply(this,arguments);
+    const b=$('#btnMedallion'); if(b) b.style.display=(mapOpen&&P.medallionOwned)?'block':'none'; return r; };
+  const _drawMed=drawBigMap;
+  drawBigMap=function(){
+    const r=_drawMed.apply(this,arguments);
+    if(P.medallion){
+      const [mx,my]=w2m(P.medallion.x,P.medallion.z), d=document.createElement('div');
+      d.className='mk on'; d.style.left=(mx/MAPS*100)+'%'; d.style.top=(my/MAPS*100)+'%';
+      d.innerHTML='<div class="dot" style="background:#f2c23a;box-shadow:0 0 10px #f2c23a"></div><div class="tip">Travel Medallion</div>';
+      d.onclick=()=>travelTo(P.medallion.x,P.medallion.z-8);
+      $('#markers').appendChild(d);
+    }
+    return r;
+  };
+}
+(function persistMedallion(){
+  const _s=save;
+  save=function(){ const r=_s.apply(this,arguments);
+    try{ const d=JSON.parse(localStorage.getItem(KEY)||'{}'); d.medallionOwned=!!P.medallionOwned; d.medallion=P.medallion||null;
+      const str=JSON.stringify(d); localStorage.setItem(KEY,str);
+      if(typeof slotKey==='function') localStorage.setItem(slotKey(SLOT),str); }catch(e){}
+    return r; };
+  const _l=load;
+  load=function(){ const r=_l.apply(this,arguments);
+    try{ const d=JSON.parse(localStorage.getItem(KEY)||'{}'); P.medallionOwned=!!d.medallionOwned; P.medallion=d.medallion||null; }catch(e){}
+    return r; };
+})();
+console.log('group 4: rain shelter for '+npcs.length+' people; Travel Medallion; EX rewards corrected');
 </script>
 
 
