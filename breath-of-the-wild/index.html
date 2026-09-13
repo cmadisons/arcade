@@ -4150,7 +4150,7 @@ const RES={rx:-188, ry:0, rz:-516, floorY:0, entry:null};
     const a=Math.PI*(-0.12+i/8*1.24);                  /* an arch - nothing along the bottom */
     roughRock(g,2.6+(i%3)*.7,2.4+(i%2)*.8,2.4,Math.cos(a)*6.9,6.2+Math.sin(a)*6.9,-3.1,RKD,i*13+5);
   }
-  box(g,26,1.2,12,0,.6,-9,RKD);                          /* the rocky shelf in front of it */
+  box(g,26,14,12,0,-6.2,-9,RKD);                         /* the rocky shelf in front of it, down to the slope */
   for(let i=0;i<3;i++){                                   /* embers drifting in the dark */
     const e=new THREE.Mesh(new THREE.SphereGeometry(.14,5,4),new THREE.MeshBasicMaterial({color:0xe08a2a}));
     e.position.set(-2+i*2,4.5+i*1.3,-1.5); g.add(e);
@@ -16785,7 +16785,8 @@ console.log('animation: attack wind-ups + recovery counters, ragdolls, dying col
    MeshLambertMaterial shades per vertex in three r128, so the fragment
    shader has no normal to work with. Both varyings are injected here. */
 const CEL={bands:4.0, rim:0.55, rimPow:0.62, on:true};
-const CEL_UNIFORMS={ uTime:{value:0}, uWind:{value:new THREE.Vector2(1,0)}, uWindStr:{value:1} };
+const CEL_UNIFORMS={ uTime:{value:0}, uWind:{value:new THREE.Vector2(1,0)}, uWindStr:{value:1},
+  uCelRim:{value:CEL.rim}, uRimCol:{value:new THREE.Vector3(0.34,0.42,0.52)} };
 
 const CEL_VERT_HEAD=`
 varying vec3 vCelN; varying vec3 vCelV;`;
@@ -16794,7 +16795,7 @@ const CEL_VERT_BODY=`
   vCelV = -(modelViewMatrix * vec4(transformed,1.0)).xyz;`;
 const CEL_FRAG_HEAD=`
 varying vec3 vCelN; varying vec3 vCelV;
-uniform float uCelBands; uniform float uCelRim; uniform float uCelRimPow;`;
+uniform float uCelBands; uniform float uCelRim; uniform float uCelRimPow; uniform vec3 uRimCol;`;
 const CEL_FRAG_BODY=`
   {
     /* quantise the brightness into flat bands, keeping the hue */
@@ -16806,7 +16807,7 @@ const CEL_FRAG_BODY=`
     /* and a cool rim where the surface turns away from the eye */
     float rim = 1.0 - max(dot(normalize(vCelN), normalize(vCelV)), 0.0);
     rim = smoothstep(uCelRimPow, 1.0, rim);
-    gl_FragColor.rgb += vec3(0.34,0.42,0.52) * rim * uCelRim;
+    gl_FragColor.rgb += uRimCol * rim * uCelRim;
   }`;
 
 /* grass, bushes and leaves lean on the wind; the sway is by world position so
@@ -16831,7 +16832,8 @@ function shade(mat,opts){
     try{
       if(prev) prev.call(this,shader);
       shader.uniforms.uCelBands={value:CEL.bands};
-      shader.uniforms.uCelRim={value:CEL.rim};
+      shader.uniforms.uCelRim=CEL_UNIFORMS.uCelRim;
+      shader.uniforms.uRimCol=CEL_UNIFORMS.uRimCol;
       shader.uniforms.uCelRimPow={value:CEL.rimPow};
       shader.uniforms.uTime=CEL_UNIFORMS.uTime;
       shader.uniforms.uWind=CEL_UNIFORMS.uWind;
@@ -17692,10 +17694,10 @@ console.log('phase 4: '+TEMPER.length+' horse temperaments, '+Object.keys(HORSE_
 (function rebuildRes(){
   if(typeof RES==='undefined'||!RES.g) return;
   const r=RES.g, W=RES.W, L=RES.L;
-  const TAN   =new THREE.MeshLambertMaterial({color:0xb5a888,flatShading:true});
-  const TAN_D =new THREE.MeshLambertMaterial({color:0x8f8368,flatShading:true});
+  const TAN   =new THREE.MeshLambertMaterial({color:0x8c7b5a,flatShading:true});
+  const TAN_D =new THREE.MeshLambertMaterial({color:0x6e6148,flatShading:true});
   const BAND  =new THREE.MeshLambertMaterial({color:0x35322c,flatShading:true});
-  const FLOOR =new THREE.MeshLambertMaterial({color:0x9a8f70});
+  const FLOOR =new THREE.MeshLambertMaterial({color:0x7a6d50});
   const DARK  =new THREE.MeshLambertMaterial({color:0x3f3a33});
   const GLOW  =new THREE.MeshBasicMaterial({color:0x2fb8f0});
   const GLOW_D=new THREE.MeshBasicMaterial({color:0x1a6f9a});
@@ -17858,7 +17860,7 @@ console.log('phase 4: '+TEMPER.length+' horse temperaments, '+Object.keys(HORSE_
     horn.rotation.z=Math.cos(a)*0.35; horn.rotation.x=-Math.sin(a)*0.35; pod.add(horn);
   }
   RES.pod=pod; RES.sky=sky;
-  const podL=new THREE.PointLight(0x2fb8f0,2.6,70); podL.position.set(0,11,-20); r.add(podL);
+  const podL=new THREE.PointLight(0x2fb8f0,1.1,60); podL.position.set(0,11,-20); r.add(podL);
 
   /* --- motes of orange light hanging in the air --- */
   RES.motes=[];
@@ -17917,15 +17919,15 @@ console.log('phase 4: '+TEMPER.length+' horse temperaments, '+Object.keys(HORSE_
   const DIRT =new THREE.MeshLambertMaterial({color:0x4a4034,flatShading:true});
   const GRASS=new THREE.MeshLambertMaterial({color:0x56703a,flatShading:true});
   const Rc=rng(91);
-  box(cor,14,1,18,0,-0.5,9,DIRT);                               /* floor up to the shelf */
-  box(cor,14,4,12,0,2,24,ROCK2);                                /* the shelf */
+  box(cor,14,1,17,0,-0.5,8.5,DIRT);                             /* floor up to the shelf */
+  box(cor,14,4,13,0,2,23.5,ROCK2);                              /* the shelf */
   const ramp=box(cor,14,1,10.4,0,0,35,DIRT);                    /* slope up to the mouth */
   ramp.rotation.x=-Math.atan2(2,10); ramp.position.y=5-0.5/Math.cos(Math.atan2(2,10));
   box(cor,14,1,6,0,5.5,43,GRASS);
   /* the shelf's face is broken rock, handholds and all */
-  for(let i=0;i<6;i++) roughRock(cor,3+Rc()*1.6,3.4+Rc()*1.4,1.8,-5.5+i*2.2,1.6+Rc()*1.4,18.6,ROCK,40+i);
+  for(let i=0;i<6;i++) roughRock(cor,3+Rc()*1.6,3.2+Rc()*1.2,1.6,-5.5+i*2.2,1.7+Rc()*1.0,17.3,ROCK,40+i);
   /* walls and roof, boulder by boulder, following the floor up */
-  const floorLocal=cz=>cz<18?0:cz<30?4:cz<40?4+(cz-30)/5:6;
+  const floorLocal=cz=>cz<17?0:cz<30?4:cz<40?4+(cz-30)/5:6;
   for(let cz=1;cz<=44;cz+=2.6){
     const fy=floorLocal(cz);
     for(const sx of [-1,1]){
@@ -18230,7 +18232,7 @@ function resBounds(pos){
   const cz=lz-C.z0;
   if(cz>C.len-1.6) pos.z=RES.rz+C.z0+C.len-1.6;
   /* you cannot walk into the shelf, only climb it */
-  if(cz>17.95&&cz<30&&pos.y<RES.floorY+4-STEP_UP) pos.z=RES.rz+C.z0+17.95;
+  if(cz>16.4&&cz<30&&pos.y<RES.floorY+4-STEP_UP) pos.z=RES.rz+C.z0+16.4;
 }
 
 /* ---- the camera stays in the rock with you ---- */
@@ -18253,11 +18255,29 @@ updateCamera=function(dt){
 };
 
 /* ---- amber haze inside, as in every shot of the real room ---- */
+/* no daylight gets down here: the room is lit by its own warm lamps and the
+   blue of the ceiling, and the cave by the light coming in at the mouth */
+const RES_HEMI_GROUND=hemi.groundColor.clone();
+(function resLamps(){
+  if(!RES.g) return;
+  for(const [x,z] of [[-10,-16],[10,-16],[-10,10],[10,10]]){
+    const l=new THREE.PointLight(0xffa850,.7,34,1.6); l.position.set(x,7,z); RES.g.add(l);
+  }
+  /* the first build's cyan room light was meant for a dark blue room */
+  RES.g.traverse(o=>{ if(o.isPointLight&&o.color.getHex()===0x63d6e2&&o.parent===RES.g) o.intensity=.35; });
+})();
 const _updateSkyRes=updateSky;
 updateSky=function(dt){
   _updateSkyRes(dt);
-  if(!P.inRes) return;
+  if(typeof CEL_UNIFORMS!=='undefined'){
+    if(P.inRes){ CEL_UNIFORMS.uRimCol.value.set(0.30,0.20,0.08); CEL_UNIFORMS.uCelRim.value=0.22; }
+    else { CEL_UNIFORMS.uRimCol.value.set(0.34,0.42,0.52); CEL_UNIFORMS.uCelRim.value=CEL.rim; }
+  }
+  if(!P.inRes){ hemi.groundColor.copy(RES_HEMI_GROUND); return; }
   const lz=P.pos.z-RES.rz, inCave=RES.CAVE&&lz>RES.CAVE.z0;
+  sun.intensity=0.08; moon.intensity=0;
+  hemi.intensity=inCave?0.22:0.30;
+  hemi.color.setHex(0xc89a60); hemi.groundColor.setHex(0x3a2a18);
   scene.fog.color.setHex(inCave?0x2c2720:0x4d4632);
   scene.fog.density=inCave?0.02:0.016;
   renderer.setClearColor(scene.fog.color);
