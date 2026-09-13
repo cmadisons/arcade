@@ -20670,6 +20670,12 @@ function buildCave(C){
   for(let k=0;k<9;k++){ const t=k/8*Math.PI;
     put(m0.x+mnx*Math.cos(t)*(C.w+1.5),m0.fy+Math.sin(t)*(C.h+.5),m0.z+mnz*Math.cos(t)*(C.w+1.5),2.8,2.6,2.8,k); }
   walls.instanceMatrix.needsUpdate=true;
+  /* from outside, the mouth is a dark hollow, not the hillside showing through */
+  const hollow=new THREE.Mesh(new THREE.CircleGeometry(1,24,0,Math.PI),new THREE.MeshBasicMaterial({color:0x0c0b0a}));
+  hollow.scale.set(C.w+.6,C.h+.2,1);
+  const hp=C.pts[1];
+  hollow.position.set(hp.x,hp.fy,hp.z); hollow.rotation.y=Math.atan2(mdx,mdz)+Math.PI;
+  g.add(hollow); C.hollow=hollow;
   /* luminous stone in the walls, and the only light there is */
   for(let k=0;k<10;k++){
     const p=C.pts[(ROCKR()*C.pts.length)|0], sd=ROCKR()<.5?-1:1;
@@ -20694,6 +20700,7 @@ function updateCaves(){
   for(const C of CAVES){
     const near=Math.abs(C.mouth.x-P.pos.x)<260&&Math.abs(C.mouth.z-P.pos.z)<260;
     C.g.visible=near;
+    if(C.hollow) C.hollow.visible=P.inCave!==C;
     if(!near) continue;
     const n=caveNearest(C,P.pos.x,P.pos.z);
     /* where you are against the mouth: how far in (negative = still outside),
