@@ -22331,6 +22331,98 @@ for(const name of ['MeshLambertMaterial','MeshPhongMaterial']){
 }
 console.log('surfaces: '+surfCount+' materials draw stone, wood, metal or leaf detail');
 </script>
+<script>
+/* ================= BATCH 108 — Group 7 item 13: character models =============
+   Every person and monster was assembled from sharp unit boxes and eight-sided
+   cylinders - the same box the buildings use.  Their parts are now their own
+   shapes: boxes with rounded edges and corners, limbs turned with more sides,
+   heads and bodies that read as soft forms under the faceted light.  And the
+   details that were missing: a nose on every face, strands falling from
+   Link's fringe, a sheath across his back with the hilt showing when he has
+   a sword, and a pouch on his belt.  Buildings keep their square box. */
+function roundedUnitBox(r,seg){
+  const g=new THREE.BoxGeometry(1,1,1,seg,seg,seg), p=g.attributes.position.array, lim=.5-r;
+  const v=new THREE.Vector3(), c=new THREE.Vector3();
+  for(let i=0;i<p.length;i+=3){
+    v.set(p[i],p[i+1],p[i+2]);
+    c.set(clamp(v.x,-lim,lim),clamp(v.y,-lim,lim),clamp(v.z,-lim,lim));
+    const d=v.clone().sub(c); const L=d.length();
+    if(L>1e-6){ d.multiplyScalar(r/L); v.copy(c).add(d); }
+    p[i]=v.x; p[i+1]=v.y; p[i+2]=v.z;
+  }
+  g.computeVertexNormals(); return g;
+}
+const RIG_BOX=roundedUnitBox(.16,3);
+const RIG_GEO_SWAP=new Map([[BOX,RIG_BOX],[GEO.cyl,new THREE.CylinderGeometry(.5,.5,1,16)],[GEO.sph,new THREE.SphereGeometry(.5,14,11)]]);
+const RIG_TAPERS={};
+function smoothTaper(geo){
+  if(!geo||!geo.parameters||geo.type!=='CylinderGeometry') return null;
+  const {radiusTop:a,radiusBottom:b,radialSegments:s}=geo.parameters; if(s>=14) return null;
+  const k=a+':'+b;
+  if(!RIG_TAPERS[k]){
+    const g=new THREE.CylinderGeometry(a,b,1,14,3), p=g.attributes.position.array;
+    /* a slight swell through the middle, like a limb rather than a pipe */
+    for(let i=0;i<p.length;i+=3){ const t=1-Math.abs(p[i+1])*2, sw=1+t*.07; p[i]*=sw; p[i+2]*=sw; }
+    g.computeVertexNormals(); RIG_TAPERS[k]=g;
+  }
+  return RIG_TAPERS[k];
+}
+function smoothRig(rig){
+  if(!rig||!rig.root||rig.__smooth) return;
+  rig.__smooth=true;
+  rig.root.traverse(o=>{
+    if(!o.isMesh) return;
+    const sw=RIG_GEO_SWAP.get(o.geometry); if(sw){ o.geometry=sw; return; }
+    if(Object.values(TAPERS).includes(o.geometry)){ const t=smoothTaper(o.geometry); if(t) o.geometry=t; }
+  });
+  /* a nose, where there is a face to put it on */
+  if(rig.face&&!rig.nose){
+    const F=rig.face, e0=F.eyes[0], e1=F.eyes[1], S=F.S;
+    const skin=(rig.pal&&rig.pal.skin)!==undefined?rig.pal.skin:0xe9c39c;
+    const nose=new THREE.Mesh(RIG_BOX,rigMat({m:skin},rig.pal));
+    nose.scale.set(.07*S,.1*S,.07*S);
+    nose.position.set((e0.position.x+e1.position.x)/2,e0.position.y-.065*S,e0.position.z+.03*S);
+    e0.parent.add(nose); rig.nose=nose;
+  }
+}
+/* everyone who already exists */
+smoothRig(linkRig);
+for(const E of enemies) smoothRig(E.rig);
+for(const N of npcs) smoothRig(N.rig);
+for(const H of horses) smoothRig(H.rig);
+if(typeof critters!=='undefined') for(const C of critters) smoothRig(C.rig||(C.g&&C.g.userData&&C.g.userData.rig));
+/* and everyone built from now on - cutscene actors, spawned monsters */
+{ const _buildRigSmooth=buildRig;
+  buildRig=function(){ const R=_buildRigSmooth.apply(this,arguments); setTimeout(()=>smoothRig(R),0); return R; };
+}
+{ const _addFaceSmooth=addFace;
+  addFace=function(rig){ const f=_addFaceSmooth.apply(this,arguments); if(rig&&rig.__smooth&&!rig.nose){ rig.__smooth=false; smoothRig(rig); } return f; };
+}
+/* Link's own details */
+(function linkDetails(){
+  const R=linkRig, head=R.bones.head, chest=R.bones.chest, hips=R.bones.hips; if(!head||!chest) return;
+  const hairM=rigMat({m:'hair'},R.pal), leather=rigMat({m:0x6b4a2a},R.pal), metal=rigMat({m:0x9aa2ac},R.pal), dark=rigMat({m:0x3a2a1a},R.pal);
+  for(const [x,y,z,rz,rx,s] of [[-.12,.3,.215,.25,.35,1],[0,.31,.22,0,.4,1.1],[.12,.3,.215,-.25,.35,1],[-.2,.27,.12,.6,.1,.9],[.2,.27,.12,-.6,.1,.9]]){
+    const c=new THREE.Mesh(GEO.cone,hairM); c.scale.set(.07*s,.16*s,.05*s); c.position.set(x,y,z); c.rotation.set(Math.PI+rx,0,rz); head.add(c);
+    R.parts['strand'+x]=c;
+  }
+  const sheath=new THREE.Group(); sheath.position.set(.05,.02,-.22); sheath.rotation.z=.62; chest.add(sheath);
+  const sb=new THREE.Mesh(RIG_BOX,leather); sb.scale.set(.1,.95,.07); sheath.add(sb);
+  const tip=new THREE.Mesh(RIG_BOX,metal); tip.scale.set(.11,.08,.08); tip.position.y=-.5; sheath.add(tip);
+  const guard=new THREE.Mesh(RIG_BOX,metal); guard.scale.set(.24,.05,.08); guard.position.y=.52; sheath.add(guard);
+  const hilt=new THREE.Mesh(new THREE.CylinderGeometry(.035,.035,.24,8),dark); hilt.position.y=.66; sheath.add(hilt);
+  R.parts.sheath=sheath;
+  if(hips){ const pouch=new THREE.Mesh(RIG_BOX,leather); pouch.scale.set(.14,.13,.08); pouch.position.set(.2,.04,.16); hips.add(pouch); }
+})();
+/* the hilt shows only when there is a sword to be sheathed */
+{ const _refreshHeldSheath=refreshHeld;
+  refreshHeld=function(){ const r=_refreshHeldSheath.apply(this,arguments);
+    try{ const w=curW(); if(linkRig.parts.sheath) linkRig.parts.sheath.visible=!!(w&&WEAPONS[w.n]&&!/club|branch|torch|boomerang|rod|hammer|axe/i.test(w.n)); }catch(e){}
+    return r; };
+}
+try{ refreshHeld(); }catch(e){}
+console.log('characters: rounded, smoother parts for every rig; noses, Link\'s fringe strands, sheath and pouch');
+</script>
 
 
 
