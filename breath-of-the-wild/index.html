@@ -22058,6 +22058,183 @@ const _sunNDC=new THREE.Vector3(), _camDir=new THREE.Vector3(), _vp=new THREE.Ma
 }
 console.log('post effects: '+(POSTFX.ok?'god rays, depth of field, camera motion blur and FXAA':'unavailable on this device'));
 </script>
+<script>
+/* ================= BATCH 106 — Group 7 item 11: trees ========================
+   A tree was a cylinder with a cone on it, and outside the Plateau and the
+   Lost Woods there were none at all - Hyrule Field, Faron, Hateno and the
+   Great Hyrule Forest were bare grass.
+
+   Trees are now built properly, still instanced so thousands cost a handful
+   of draw calls:
+   - broadleaf: a flared trunk with branch stubs under a canopy of clustered,
+     lumpy leaf masses shaded lighter on top
+   - conifer: a stack of drooping skirts that narrow to a tip; the snowy kind
+     carries snow on every upward face
+   - palm: a curved, ringed trunk and a crown of arching fronds
+   Autumn broadleaf in Akkala, palms along the Faron coast and Lurelin, and
+   forests planted region by region across Hyrule - dense in the Great Hyrule
+   Forest and Faron, conifers on the ridges and in Hebra, stands through
+   Hateno, Lanayru and the Dueling Peaks - kept clear of villages, roads and
+   shrines.  Chopping or burning a tree now takes its canopy with it; it
+   used to leave the leaves hanging in the air. */
+function mergeParts(parts){
+  const pos=[],nor=[],col=[],v=new THREE.Vector3(),nm=new THREE.Matrix3();
+  for(const {geo,m,color,shade} of parts){
+    const g=geo.index?geo.toNonIndexed():geo; g.computeVertexNormals();
+    const P=g.attributes.position, N=g.attributes.normal; nm.getNormalMatrix(m);
+    for(let i=0;i<P.count;i++){
+      v.fromBufferAttribute(P,i).applyMatrix4(m); pos.push(v.x,v.y,v.z); const y=v.y;
+      v.fromBufferAttribute(N,i).applyMatrix3(nm).normalize(); nor.push(v.x,v.y,v.z);
+      const c=shade?shade(color,v,y):color; col.push(c.r,c.g,c.b);
+    }
+  }
+  const out=new THREE.BufferGeometry();
+  out.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+  out.setAttribute('normal',new THREE.Float32BufferAttribute(nor,3));
+  out.setAttribute('color',new THREE.Float32BufferAttribute(col,3));
+  out.computeBoundingSphere(); return out;
+}
+const TR=(()=>{ let s=4242; return ()=>((s=(s*1664525+1013904223)>>>0)/4294967296); })();
+const M4=(x,y,z,sx,sy,sz,rx,ry,rz)=>new THREE.Matrix4().compose(new THREE.Vector3(x,y,z),new THREE.Quaternion().setFromEuler(new THREE.Euler(rx||0,ry||0,rz||0)),new THREE.Vector3(sx,sy===undefined?sx:sy,sz===undefined?sx:sz));
+function lumpy(detail,seed){ const g=new THREE.IcosahedronGeometry(1,detail); const p=g.attributes.position.array;
+  for(let i=0;i<p.length;i+=3){ const h=Math.sin((Math.round(p[i]*50)*12.9+Math.round(p[i+1]*50)*78.2+Math.round(p[i+2]*50)*37.7+seed)*43758.5); const k=.82+(h-Math.floor(h))*.32; p[i]*=k;p[i+1]*=k;p[i+2]*=k; } return g; }
+/* canopy fits the old cone: y -3.1..3.1, radius 3 */
+function broadleafCanopy(base){
+  const parts=[], blobs=[[0,.4,0,2.3],[1.5,-.6,.4,1.6],[-1.4,-.4,.8,1.7],[.3,-.8,-1.5,1.6],[-.6,1.6,-.4,1.5],[.9,1.2,1.0,1.3],[-1.2,.9,-1.1,1.2],[1.2,.3,-1.2,1.3]];
+  blobs.forEach(([x,y,z,r],i)=>parts.push({geo:lumpy(1,i*7+3),m:M4(x,y,z,r,r*.85,r),color:base,
+    shade:(c,n,yy)=>new THREE.Color().copy(c).offsetHSL((TR()-.5)*.02,0,(n.y*.08)+(yy*.02)+(TR()-.5)*.04)}));
+  return mergeParts(parts);
+}
+function trunkWithBranches(){
+  const bark=new THREE.Color(0x5b4126), parts=[];
+  parts.push({geo:new THREE.CylinderGeometry(.3,.46,5.4,7,3),m:M4(0,0,0,1),color:bark,shade:(c,n,y)=>new THREE.Color().copy(c).offsetHSL(0,0,Math.sin(y*6)*.02)});
+  parts.push({geo:new THREE.CylinderGeometry(.46,.75,.8,7),m:M4(0,-2.4,0,1),color:bark});
+  for(let i=0;i<3;i++){ const a=i*2.1; parts.push({geo:new THREE.CylinderGeometry(.07,.16,1.8,5),m:M4(Math.cos(a)*.45,1.2+i*.5,Math.sin(a)*.45,1,1,1,Math.sin(a)*.9,0,-Math.cos(a)*.9),color:bark}); }
+  return mergeParts(parts);
+}
+/* conifer fits the old pine cone: y -4.2..4.2, radius 2.4 */
+function coniferTiers(snow){
+  const parts=[], N=6;
+  for(let i=0;i<N;i++){
+    const t=i/(N-1), r=2.5*(1-t*.78), h=2.3*(1-t*.35), y=-3.4+i*1.35;
+    const g=new THREE.ConeGeometry(r,h,9,1,true);
+    const p=g.attributes.position.array;
+    for(let k=0;k<p.length;k+=3){ if(p[k+1]<0){ const a=Math.atan2(p[k+2],p[k]); p[k+1]-=.25+Math.sin(a*5+i)*.12; } }
+    parts.push({geo:g,m:M4(0,y,0,1,1,1,0,i*.7,0),color:new THREE.Color(0x2f5f45),
+      shade:(c,n,yy)=>{ const o=new THREE.Color().copy(c).offsetHSL(0,0,(t*.05)+(TR()-.5)*.03); if(snow&&n.y>.35) o.lerp(new THREE.Color(0xeef3f6),clamp((n.y-.35)*2.2,0,.92)); return o; }});
+  }
+  parts.push({geo:new THREE.ConeGeometry(.35,1.2,6),m:M4(0,4.0,0,1),color:new THREE.Color(snow?0xe8eef2:0x3a6e4e)});
+  return mergeParts(parts);
+}
+function palmTrunk(){
+  const parts=[], bark=new THREE.Color(0x8a6a44);
+  for(let i=0;i<7;i++){ const t=i/7, x=Math.sin(t*1.6)*.9*t;
+    parts.push({geo:new THREE.CylinderGeometry(.22,.27,1.2,7),m:M4(x,-3.3+i*1.1,0,1,1,1,0,0,-.18*t),color:new THREE.Color().copy(bark).offsetHSL(0,0,i%2?.03:-.02)}); }
+  return mergeParts(parts);
+}
+function palmCrown(){
+  const parts=[], leaf=new THREE.Color(0x4f8a3a);
+  for(let i=0;i<9;i++){ const a=i/9*6.283;
+    const g=new THREE.PlaneGeometry(1.1,4.6,1,6); const p=g.attributes.position.array;
+    for(let k=0;k<p.length;k+=3){ const u=(p[k+1]+2.3)/4.6; p[k+2]=-u*u*1.8; p[k]*= (1-u*.7); }
+    parts.push({geo:g,m:M4(Math.cos(a)*2.1,.2,Math.sin(a)*2.1,1,1,1,-1.35,-a+Math.PI/2,0),color:new THREE.Color().copy(leaf).offsetHSL(0,0,(i%3-1)*.03)});
+  }
+  parts.push({geo:new THREE.SphereGeometry(.5,7,5),m:M4(0,0,0,1),color:new THREE.Color(0x6a4a2a)});
+  return mergeParts(parts);
+}
+/* ---- the Plateau's instanced trees get the new shapes ---- */
+(function reshapePlateauTrees(){
+  const set=(mesh,geo)=>{ if(!mesh) return; mesh.geometry.dispose(); mesh.geometry=geo;
+    mesh.material.vertexColors=true; mesh.material.color.set(0xffffff); mesh.material.side=THREE.DoubleSide; mesh.material.needsUpdate=true; };
+  set(VEG.trunk,trunkWithBranches());
+  set(VEG.leaf,broadleafCanopy(new THREE.Color(0x3f7a3a)));
+  set(VEG.pine,coniferTiers(false));
+  set(VEG.snowpine,coniferTiers(true));
+})();
+
+/* ---- forests across Hyrule ---- */
+const FOREST={};
+(function plantHyrule(){
+  const bank=(geo,n,side)=>{ const m=new THREE.InstancedMesh(geo,new THREE.MeshLambertMaterial({vertexColors:true,flatShading:true,side:side||THREE.FrontSide}),n);
+    m.count=0; m.castShadow=true; m.receiveShadow=true; m.frustumCulled=false; scene.add(m); return m; };
+  const N=16000;
+  FOREST.trunk=bank(trunkWithBranches(),N);
+  FOREST.leaf=bank(broadleafCanopy(new THREE.Color(0x3f7a3a)),N,THREE.DoubleSide);
+  FOREST.autumn=bank(broadleafCanopy(new THREE.Color(0xb8602a)),3000,THREE.DoubleSide);
+  FOREST.pine=bank(coniferTiers(false),N,THREE.DoubleSide);
+  FOREST.snow=bank(coniferTiers(true),4000,THREE.DoubleSide);
+  FOREST.palmT=bank(palmTrunk(),2000);
+  FOREST.palmC=bank(palmCrown(),2000,THREE.DoubleSide);
+  const d=new THREE.Object3D();
+  const put=(m,x,y,z,s,ry,sy)=>{ if(m.count>=m.instanceMatrix.count) return -1; d.position.set(x,y,z); d.rotation.set(0,ry,0); d.scale.set(s,sy||s,s); d.updateMatrix(); m.setMatrixAt(m.count,d.matrix); return m.count++; };
+  /* how thick the woods are, region by region */
+  const WOODS=[['woodland',.75,'mixed'],['faron',.7,'jungle'],['lurelin',.35,'palm'],['hateno',.28,'broad'],['lanayru',.22,'mixed'],
+    ['duel',.3,'broad'],['ridge',.3,'pine'],['hebra',.32,'snow'],['tabantha',.2,'pine'],['akkala',.3,'autumn'],['central',.08,'broad'],
+    ['kakariko',.25,'broad'],['castle',.05,'broad'],['gerudo',.03,'palm'],['rito',.18,'snow']];
+  let planted=0;
+  /* every region gets its share of the budget, so the first forests do not eat it all */
+  const totalTries=WOODS.reduce((a,[k,dn])=>a+(REGIONS[k]?REGIONS[k].r*REGIONS[k].r*dn:0),0);
+  for(const [key,dens,kind] of WOODS){
+    const R=REGIONS[key]; if(!R) continue;
+    const tries=Math.round(R.r*R.r*dens*.016), cap=Math.floor(N*.97*R.r*R.r*dens/totalTries);
+    let here=0;
+    for(let i=0;i<tries&&here<cap;i++){
+      const a=TR()*6.283, rr=Math.sqrt(TR())*R.r*1.05, x=R.x+Math.cos(a)*rr, z=R.z+Math.sin(a)*rr;
+      if(Math.abs(x)>4900||Math.abs(z)>4900||onPlateau(x,z)) continue;
+      /* clumps and clearings, not an even carpet */
+      if(fbm(x*.0035+11,z*.0035+7,3)<.38+(1-dens)*.1) continue;
+      const g=groundCoarse(x,z); if(g<waterAt(x,z)+1.2) continue;
+      if(slopeAt(x,z)>.75||dmAt(x,z)<.9) continue;
+      const temp=tempAt(x,z,g), s=.85+TR()*.8, ry=TR()*6.283, y=groundAt(x,z);
+      let type=kind;
+      if(kind==='mixed') type=temp<8||TR()<.35?'pine':'broad';
+      if(kind==='jungle') type=TR()<.22?'palm':'broad';
+      if(kind==='pine'&&temp<2) type='snow';
+      if(kind==='snow'&&temp>6) type='pine';
+      let ti=-1, parts=[];
+      if(type==='palm'){ ti=put(FOREST.palmT,x,y+3.3*s,z,s,ry); if(ti<0) continue; parts.push([FOREST.palmT,ti],[FOREST.palmC,put(FOREST.palmC,x+.8*s*Math.cos(-ry),y+7.2*s,z+.8*s*Math.sin(-ry),s,ry)]); }
+      else {
+        ti=put(FOREST.trunk,x,y+2.7*s,z,s,ry); if(ti<0) continue; parts.push([FOREST.trunk,ti]);
+        if(type==='broad'||type==='autumn'){ const m=type==='autumn'?FOREST.autumn:FOREST.leaf; parts.push([m,put(m,x,y+6.2*s,z,s*1.05,ry)]); }
+        else { const m=type==='snow'?FOREST.snow:FOREST.pine; parts.push([m,put(m,x,y+6.6*s,z,s,ry)]); }
+      }
+      trees.push({x,y,z,s,burning:0,burnt:false,idx:ti,parts,pine:type==='pine'||type==='snow',snow:type==='snow',fruit:type==='palm'?'Palm Fruit':TR()<.25?'Apple':null});
+      planted++; here++;
+    }
+  }
+  for(const k in FOREST) FOREST[k].instanceMatrix.needsUpdate=true;
+  FOREST.planted=planted;
+})();
+/* a felled or burnt tree loses its canopy too */
+function hideTreeParts(T){
+  if(T.parts){ for(const [m,i] of T.parts) if(i>=0) hideInstance(m,i); return true; }
+  /* the Plateau's own trees: find the canopy instance above the trunk once */
+  if(!T.canopy){
+    const mm=new THREE.Matrix4(), p=new THREE.Vector3(), q=new THREE.Quaternion(), sc=new THREE.Vector3();
+    for(const mesh of [VEG.leaf,VEG.pine,VEG.snowpine]){ if(!mesh) continue;
+      for(let i=0;i<mesh.count;i++){ mesh.getMatrixAt(i,mm); mm.decompose(p,q,sc);
+        if(Math.abs(p.x-T.x)<.2&&Math.abs(p.z-T.z)<.2){ (T.canopy=T.canopy||[]).push([mesh,i]); } } }
+  }
+  if(T.canopy) for(const [m,i] of T.canopy) hideInstance(m,i);
+  return false;
+}
+{ const _burnTree=burnTree;
+  burnTree=function(T){
+    if(T.burnt) return;
+    if(T.parts){ T.burnt=true; hideTreeParts(T); addFireCell(T.x,T.z,T.y); spawnPickup(T.x+1,T.z,{m:'Wood'}); updrafts.push({x:T.x,z:T.z,y:T.y,life:16}); return; }
+    _burnTree(T); hideTreeParts(T);
+  };
+  const _chopTree=chopTree;
+  chopTree=function(T){
+    if(T.burnt) return;
+    if(T.parts){ T.burnt=true; hideTreeParts(T); sfx('chop');
+      for(let i=0;i<3;i++) spawnPickup(T.x+(rnd()-.5)*3,T.z+(rnd()-.5)*3,{m:'Wood'});
+      if(T.fruit&&MATS[T.fruit]) spawnPickup(T.x,T.z,{m:T.fruit}); return; }
+    _chopTree(T); hideTreeParts(T);
+  };
+}
+console.log('trees: new broadleaf, conifer, snowy conifer and palm models; '+FOREST.planted+' trees planted across Hyrule');
+</script>
 
 
 
