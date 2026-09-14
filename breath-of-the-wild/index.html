@@ -1913,7 +1913,7 @@ for(const [fx,fz] of [[-640,-470],[126,640],[640,150],[-700,160],[400,620]]){
     fragmentShader:`uniform float t;varying vec2 vU;
       float h(vec2 p){return fract(sin(dot(p,vec2(12.9,78.2)))*43758.5);}
       void main(){float s=h(vec2(floor(vU.x*14.),floor(vU.y*60.-t*7.)));
-        float a=(.45+s*.5)*smoothstep(1.,.75,vU.y);
+        float a=(.45+s*.5)*(1.-smoothstep(.75,1.,vU.y));
         gl_FragColor=vec4(mix(vec3(.62,.79,.88),vec3(1.),s),a*.8);}`});
   const f=new THREE.Mesh(g,m);
   const a=Math.atan2(fz,fx);
@@ -20208,15 +20208,18 @@ biomeAt=function(x,z){
       is lowered out of the way under the fine one, so they never fight. */
 
 const TERR_U={uPatch:{value:new THREE.Vector4(0,0,110,0)}, uPatchSink:{value:6}};
+/* Lambert materials are never sent cameraPosition, so the camera goes in by hand */
+const CAMPOS_U={value:new THREE.Vector3()};
+{ const _rCam=renderer.render.bind(renderer); renderer.render=function(sc,cam){ if(cam&&cam.isPerspectiveCamera) CAMPOS_U.value.setFromMatrixPosition(cam.matrixWorld); return _rCam(sc,cam); }; }
 const TERR_FRAG_FN=`
 float thash(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
 float tnoise(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.0-2.0*f);
   return mix(mix(thash(i),thash(i+vec2(1,0)),f.x),mix(thash(i+vec2(0,1)),thash(i+vec2(1,1)),f.x),f.y); }
-varying vec3 vTW; varying vec3 vTN;`;
+varying vec3 vTW; varying vec3 vTN; uniform vec3 uCamPos;`;
 const TERR_FRAG_BODY=`
   {
     vec3 w=vTW; float sl=1.0-clamp(normalize(vTN).y,0.0,1.0);
-    float near=1.0/(1.0+length(cameraPosition-vTW)*.006);
+    float near=1.0/(1.0+length(uCamPos-vTW)*.006);
     vec3 c=diffuseColor.rgb;
     float lum=dot(c,vec3(.299,.587,.114));
     float grassy=smoothstep(.015,.09,c.g-max(c.r,c.b)*.92);
@@ -20242,7 +20245,7 @@ function terrainShader(mat,tag){
   const prev=mat.onBeforeCompile;
   mat.onBeforeCompile=function(sh){
     if(prev) prev.call(this,sh);
-    sh.uniforms.uPatch=TERR_U.uPatch; sh.uniforms.uPatchSink=TERR_U.uPatchSink;
+    sh.uniforms.uPatch=TERR_U.uPatch; sh.uniforms.uPatchSink=TERR_U.uPatchSink; sh.uniforms.uCamPos=CAMPOS_U;
     sh.vertexShader='uniform vec4 uPatch; uniform float uPatchSink; varying vec3 vTW; varying vec3 vTN;\n'+
       sh.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\n'+
       (tag==='patch'?`vec4 twp=modelMatrix*vec4(transformed,1.0);`:
@@ -22234,6 +22237,99 @@ function hideTreeParts(T){
   };
 }
 console.log('trees: new broadleaf, conifer, snowy conifer and palm models; '+FOREST.planted+' trees planted across Hyrule');
+</script>
+<script>
+/* ================= BATCH 107 — Group 7 item 12: textures everywhere ===========
+   Apart from the terrain, the Resurrection chamber and the chests, every
+   surface was one flat colour: walls, roofs, rock, crates, bark, leaves.
+
+   Every lit material now reads its own colour and draws a surface to suit,
+   per pixel, from world position - so it needs no texture coordinates and
+   holds across instanced rocks and trees and the merged stand-ins too:
+   - stone and plaster (grey, tan, pale): courses of blocks with mortar lines,
+     each block its own tint, and pitting
+   - wood (warm browns): planks with seams and running grain
+   - metal (dark, cold, unsaturated): a brushed finish
+   - leaves and grass (greens): broken, mottled clusters
+   - anything else: two scales of weathering
+   It is projected onto whichever plane the surface faces, fades out with
+   distance so nothing shimmers, and skips character skin and faces. */
+const SURF_HEAD=`varying vec3 vSurfW; varying vec3 vSurfN; float surfK=1.0; uniform vec3 uCamPos;
+float shash(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
+float snoise(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.0-2.0*f);
+  return mix(mix(shash(i),shash(i+vec2(1,0)),f.x),mix(shash(i+vec2(0,1)),shash(i+vec2(1,1)),f.x),f.y); }`;
+const SURF_BODY=`
+  {
+    vec3 an=abs(normalize(vSurfN));
+    vec2 uv= an.y>max(an.x,an.z) ? vSurfW.xz : (an.x>an.z ? vSurfW.zy : vSurfW.xy);
+    uv=mod(uv,256.0);                 /* keep the hash inside float precision */
+    vec3 c=diffuseColor.rgb;
+    float mx=max(c.r,max(c.g,c.b)), mn=min(c.r,min(c.g,c.b)), sat=mx>0.001?(mx-mn)/mx:0.0, lum=dot(c,vec3(.299,.587,.114));
+    float warm=c.r-c.b;
+    float fade=1.0/(1.0+length(uCamPos-vSurfW)*.018);
+    float green=smoothstep(.02,.09,c.g-max(c.r,c.b));
+    float wood=smoothstep(.05,.14,warm)*smoothstep(.25,.45,sat)*(1.0-green)*step(lum,.62);
+    float metal=(1.0-smoothstep(.08,.2,sat))*(1.0-smoothstep(.18,.34,lum))*(1.0-wood);
+    float stone=(1.0-green)*(1.0-wood)*(1.0-metal)*(1.0-smoothstep(.25,.5,sat));
+    float k=1.0;
+    /* stone: offset courses of blocks */
+    vec2 b=uv*vec2(.85,1.6); float row=floor(b.y); b.x+=mod(row,2.0)*.5;
+    vec2 cell=fract(b), id=floor(b);
+    float mortar=smoothstep(.0,.06,cell.x)*(1.0-smoothstep(.94,1.0,cell.x))*smoothstep(.0,.09,cell.y)*(1.0-smoothstep(.91,1.0,cell.y));
+    float st=mix(.78,1.0,mortar)*(.92+.16*shash(id))*(.94+.12*snoise(uv*3.1));
+    k=mix(k,st,stone*.9);
+    /* wood: planks and grain */
+    float plank=fract(uv.y*2.8);
+    float seam=smoothstep(.0,.05,plank)*(1.0-smoothstep(.95,1.0,plank));
+    float grain=.9+.1*sin(uv.x*28.0+snoise(uv*vec2(1.5,9.0))*6.0);
+    k=mix(k,mix(.72,1.0,seam)*grain*(.94+.1*shash(vec2(floor(uv.y*2.8),3.0))),wood);
+    /* metal: brushed */
+    k=mix(k,.9+.1*snoise(vec2(uv.x*40.0,uv.y*1.5)),metal*.8);
+    /* leaves */
+    k=mix(k,.82+.3*snoise(uv*2.3)*snoise(uv*5.7+7.0),green*.85);
+    /* everything: weathering */
+    k*=.95+.1*snoise(uv*.35);
+    surfK=mix(1.0,k,fade);
+  }`;
+function surfaceShader(mat){
+  if(!mat||mat.__surf||mat.__terr||mat.__rig||mat.isMeshBasicMaterial||mat.isShaderMaterial||mat.isPointsMaterial||mat.isSpriteMaterial||mat.isLineBasicMaterial) return;
+  if(!(mat.isMeshLambertMaterial||mat.isMeshPhongMaterial||mat.isMeshStandardMaterial)) return;
+  if(mat.map&&mat.map.isCanvasTexture) return;
+  mat.__surf=true;
+  const prev=mat.onBeforeCompile;
+  mat.onBeforeCompile=function(sh){
+    if(prev) prev.call(this,sh);
+    sh.uniforms.uCamPos=CAMPOS_U;
+    sh.vertexShader='varying vec3 vSurfW; varying vec3 vSurfN;\n'+sh.vertexShader.replace('#include <begin_vertex>',
+      `#include <begin_vertex>
+       { vec4 sp=vec4(transformed,1.0); vec3 sn=objectNormal;
+         #ifdef USE_INSTANCING
+           sp=instanceMatrix*sp; sn=mat3(instanceMatrix)*sn;
+         #endif
+         vSurfW=(modelMatrix*sp).xyz; vSurfN=normalize(mat3(modelMatrix)*sn); }`);
+    /* worked out with the colour, applied after the cel bands so they do not flatten it */
+    sh.fragmentShader=(SURF_HEAD+'\n'+sh.fragmentShader.replace('#include <color_fragment>','#include <color_fragment>\n'+SURF_BODY)).replace(/\}\s*$/,'  gl_FragColor.rgb*=surfK;\n}');
+  };
+  const key=mat.customProgramCacheKey?mat.customProgramCacheKey.bind(mat):null;
+  mat.customProgramCacheKey=()=> (key?key():'')+'-surf';
+  mat.needsUpdate=true;
+}
+if(typeof LOD_MAT!=='undefined') setTimeout(()=>surfaceShader(LOD_MAT),0);
+/* character materials stay clean */
+for(const k in RIGMATS) if(RIGMATS[k]) RIGMATS[k].__rig=true;
+{ const _rigMatS=rigMat; rigMat=function(){ const m=_rigMatS.apply(this,arguments); if(m&&m.isMaterial) m.__rig=true; return m; }; }
+if(typeof FACE_MOUTH!=='undefined') FACE_MOUTH.__rig=true;
+if(typeof DIR_SPIRIT!=='undefined') DIR_SPIRIT.__rig=true;
+let surfCount=0;
+scene.traverse(o=>{ const ms=o.material?(Array.isArray(o.material)?o.material:[o.material]):[]; for(const m of ms){ if(m&&!m.__surf){ const before=m.__surf; surfaceShader(m); if(m.__surf&&!before) surfCount++; } } });
+/* and every material made from now on */
+for(const name of ['MeshLambertMaterial','MeshPhongMaterial']){
+  const Cur=THREE[name];
+  const Wrapped=function(p){ const m=new Cur(p); setTimeout(()=>surfaceShader(m),0); return m; };
+  Wrapped.prototype=Cur.prototype; if(Cur.__orig) Wrapped.__orig=Cur.__orig;
+  THREE[name]=Wrapped;
+}
+console.log('surfaces: '+surfCount+' materials draw stone, wood, metal or leaf detail');
 </script>
 
 
