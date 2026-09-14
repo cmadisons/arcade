@@ -21722,6 +21722,83 @@ const WATER2={};
 }
 console.log('water: depth-aware surface with reflection, refraction, glints and shore foam');
 </script>
+<script>
+/* ================= BATCH 103 — Group 7 item 3: shadows across the world =======
+   The shadow map only covers 140 m around Link.  Past that nothing cast a
+   shadow on anything, so a mountain at dusk left the valley beneath it as
+   bright as noon.
+
+   Every 25 m of Hyrule now knows whether it can see the sun: a ray is marched
+   from the ground toward the sun over the height grid, stretching its step as
+   it goes and stopping once it clears the highest peak.  The answer - soft,
+   with a penumbra from how narrowly the ray was blocked - is a texture the
+   terrain shader reads, and it is re-marched a band of rows each frame as the
+   sun moves, so the shadows of the mountains sweep across the land through
+   the day. */
+const WSH={tex:null,data:null,row:0,dirty:true,dir:new THREE.Vector3(0,1,0),baked:new THREE.Vector3(0,-1,0),maxH:0,strength:{value:0}};
+(function initWorldShadow(){
+  WSH.data=new Uint8Array(HGRID*HGRID*4).fill(255);
+  WSH.tex=new THREE.DataTexture(WSH.data,HGRID,HGRID,THREE.RGBAFormat);
+  WSH.tex.magFilter=WSH.tex.minFilter=THREE.LinearFilter; WSH.tex.needsUpdate=true;
+  let m=-1e9; for(let i=0;i<HHM.length;i++) if(HHM[i]>m) m=HHM[i];
+  WSH.maxH=m;
+})();
+function shadowRow(j,dir){
+  const horiz=Math.hypot(dir.x,dir.z)||1e-6, ux=dir.x/horiz, uz=dir.z/horiz, rise=dir.y/horiz;
+  for(let i=0;i<HGRID;i++){
+    const x=-HHALF+i*HCELL, z=-HHALF+j*HCELL, h0=HHM[j*HGRID+i]+2;
+    let lit=1, dist=HCELL*.7, step=HCELL*.7;
+    while(dist<4200){
+      const ry=h0+dist*rise;
+      if(ry>WSH.maxH) break;
+      const th=hyruleAt(x+ux*dist,z+uz*dist);
+      const over=th-ry;
+      if(over>0){ lit=0; break; }
+      /* how narrowly it cleared, for a soft edge */
+      const pen=clamp(1+over/(6+dist*.03),0,1);
+      if(pen>0) lit=Math.min(lit,1-pen*.9);
+      dist+=step; step=Math.min(step*1.12,160);
+    }
+    const k=(j*HGRID+i)*4; WSH.data[k]=WSH.data[k+1]=WSH.data[k+2]=Math.round(lit*255);
+  }
+}
+function updateWorldShadow(){
+  const el=skyMat.uniforms.sunDir.value.y;
+  WSH.strength.value=clamp(el*4,0,1)*(1-skyMat.uniforms.storm.value*.6);
+  if(el<.02) return;
+  WSH.dir.copy(skyMat.uniforms.sunDir.value).normalize();
+  if(WSH.row===0&&WSH.dir.angleTo(WSH.baked)<.02) return;
+  if(WSH.row===0) WSH.baked.copy(WSH.dir);
+  const rows=Math.max(6,Math.round(18*(.016/Math.max(perfDT,.008))));
+  for(let r=0;r<rows&&WSH.row<HGRID;r++) shadowRow(WSH.row++,WSH.baked);
+  if(WSH.row>=HGRID){ WSH.row=0; WSH.tex.needsUpdate=true; }
+}
+/* the terrain shaders read it */
+(function addShadowToTerrain(){
+  const chunkHead=`uniform sampler2D uWorldShadow; uniform float uWorldShadowK;`;
+  const chunkBody=`
+  {
+    vec2 suv=(vTW.xz+vec2(${HHALF.toFixed(1)}))/${HW.toFixed(1)}*${((HGRID-1)/HGRID).toFixed(5)}+${(0.5/HGRID).toFixed(6)};
+    float sh=texture2D(uWorldShadow,suv).r;
+    diffuseColor.rgb*=mix(1.0,.52+.1*(1.0-uWorldShadowK),(1.0-sh)*uWorldShadowK);
+  }`;
+  for(const mat of [terrain.material,hyruleMesh.material,PATCH.mesh.material]){
+    const prev=mat.onBeforeCompile;
+    mat.onBeforeCompile=function(sh){
+      if(prev) prev.call(this,sh);
+      sh.uniforms.uWorldShadow={value:WSH.tex}; sh.uniforms.uWorldShadowK=WSH.strength;
+      sh.fragmentShader=chunkHead+'\n'+sh.fragmentShader.replace('#include <color_fragment>','#include <color_fragment>\n'+chunkBody);
+    };
+    const key=mat.customProgramCacheKey?mat.customProgramCacheKey():'';
+    mat.customProgramCacheKey=()=>key+'-wsh';
+    mat.needsUpdate=true;
+  }
+})();
+{ const _updateSkyShadow=updateSky;
+  updateSky=function(dt){ _updateSkyShadow(dt); try{ updateWorldShadow(); }catch(e){} };
+}
+console.log('world shadows: the sun is ray-marched over '+HGRID+'x'+HGRID+' cells of Hyrule and the terrain reads it');
+</script>
 
 
 
