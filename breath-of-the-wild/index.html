@@ -21799,6 +21799,101 @@ function updateWorldShadow(){
 }
 console.log('world shadows: the sun is ray-marched over '+HGRID+'x'+HGRID+' cells of Hyrule and the terrain reads it');
 </script>
+<script>
+/* ================= BATCH 104 — Group 7 item 5: volumetric clouds ==============
+   The sky had a gradient, a sun, and in storms a grey mottle laid over it.
+   Clouds are now a real layer between 900 and 1,700 m, ray-marched through
+   in the sky shader: density from layered noise shaped by height, each
+   sample lit by how much cloud lies between it and the sun, silver edges
+   when the sun is behind them, drifting on the wind.  Storms thicken and
+   darken the layer; at night the clouds take the moonlight.
+
+   The sky sphere now follows the camera inside the far plane - it had been
+   a fixed 9 km ball that the 3 km far plane mostly clipped away - and it is
+   drawn after the ground, so the cloud march only runs where sky is seen.
+   Options gains Clouds (off / low / high) and the three screen effects. */
+Object.assign(OPT,{clouds:OPT.clouds??1, godrays:OPT.godrays??true, dof:OPT.dof??true, mblur:OPT.mblur??true});
+const SKY_VERT=`varying vec3 vWP; varying vec3 vP;
+void main(){ vP=normalize(position); vec4 w=modelMatrix*vec4(position,1.0); vWP=w.xyz; gl_Position=projectionMatrix*viewMatrix*w; gl_Position.z=gl_Position.w*.9999; }`;
+const SKY_FRAG=`uniform vec3 top,bot,sunCol,sunDir; uniform float night,storm,uTime,uSteps;
+varying vec3 vWP; varying vec3 vP;
+float h2(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
+float n2(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.0-2.0*f);
+  return mix(mix(h2(i),h2(i+vec2(1,0)),f.x),mix(h2(i+vec2(0,1)),h2(i+vec2(1,1)),f.x),f.y); }
+float fbm(vec2 p){ float v=0.0,a=.5; for(int i=0;i<4;i++){ v+=a*n2(p); p=p*2.03+vec2(17.1,9.2); a*=.5; } return v; }
+float dens(vec3 p){
+  float hy=(p.y-900.0)/800.0; if(hy<0.0||hy>1.0) return 0.0;
+  float shape=sin(hy*3.14159)*(1.0-hy*.35);
+  vec2 w=p.xz*.00055+vec2(uTime*.004,uTime*.0016);
+  float cov=mix(.56,.34,storm);
+  float d=fbm(w)+ .35*fbm(w*3.1+hy*1.7);
+  return clamp((d-cov)*2.4,0.0,1.0)*shape;
+}
+float hash(vec3 p){return fract(sin(dot(p,vec3(12.9898,78.233,45.164)))*43758.5453);}
+void main(){
+  vec3 dir=normalize(vWP-cameraPosition);
+  float t=clamp(dir.y*1.25+.16,0.,1.);
+  vec3 c=mix(bot,top,pow(t,.85));
+  vec3 sd=normalize(sunDir);
+  float d=max(dot(dir,sd),0.);
+  c+=sunCol*pow(d,260.)*2.4; c+=sunCol*pow(d,5.)*.16;
+  if(night>.01){ vec3 g=floor(dir*300.); float s=step(.9977,hash(g))*night*max(dir.y,0.)*(1.-storm); c+=vec3(s)*1.5; }
+  if(uSteps>.5&&dir.y>.015){
+    float t0=max((900.0-cameraPosition.y)/dir.y,0.0), t1=(1700.0-cameraPosition.y)/dir.y;
+    t1=min(t1,t0+9000.0);
+    if(t1>t0){
+      float steps=uSteps, dt=(t1-t0)/steps, T=1.0; vec3 acc=vec3(0.0);
+      float jitter=h2(gl_FragCoord.xy)*dt;
+      vec3 amb=mix(bot,top,.5)*mix(1.0,.35,night);
+      vec3 lightCol=sunCol*mix(1.0,.12,night)*(1.0-storm*.55);
+      for(int i=0;i<24;i++){
+        if(float(i)>=steps||T<.03) break;
+        vec3 p=cameraPosition+dir*(t0+jitter+dt*float(i));
+        float de=dens(p);
+        if(de>.002){
+          float shadow=dens(p+sd*90.0)+dens(p+sd*260.0)*.6;
+          float lit=exp(-shadow*2.2);
+          float silver=pow(d,8.0)*.9;
+          vec3 col=amb*(.55+.45*(p.y-900.0)/800.0)*mix(1.0,.55,storm)+lightCol*(lit+silver*lit)*1.1;
+          float a=1.0-exp(-de*dt*.012);
+          acc+=T*a*col; T*=1.0-a;
+        }
+      }
+      float fade=exp(-t0*.000045);
+      c=mix(c,acc/max(1.0-T,.001),(1.0-T)*fade);
+    }
+  }
+  gl_FragColor=vec4(c,1.);
+}`;
+skyMat.vertexShader=SKY_VERT; skyMat.fragmentShader=SKY_FRAG;
+skyMat.uniforms.uTime={value:0}; skyMat.uniforms.uSteps={value:OPT.clouds===2?20:OPT.clouds===1?10:0};
+skyMat.depthWrite=false; skyMat.depthTest=true; skyMat.needsUpdate=true;
+sky.renderOrder=999; sky.matrixAutoUpdate=false; sky.frustumCulled=false;
+{ const _updateSkyClouds=updateSky;
+  updateSky=function(dt){
+    _updateSkyClouds(dt);
+    skyMat.uniforms.uTime.value+=dt;
+    skyMat.uniforms.uSteps.value=OPT.clouds===2?20:OPT.clouds===1?10:0;
+    const r=Math.min(camera.far*.92,9000)/9000;
+    sky.position.copy(camera.position); sky.scale.setScalar(r); sky.updateMatrix();
+  };
+}
+/* options for the new effects */
+(function moreOptions(){
+  const back=$('#optBack'); if(!back) return;
+  const row=back.parentNode;
+  row.insertAdjacentHTML('beforebegin',
+    '<div class="optRow"><label>Clouds</label><select id="optClouds"><option value="0">Off</option><option value="1">Low</option><option value="2">High</option></select></div>'+
+    '<div class="optRow"><label>God rays</label><input type="checkbox" id="optGod"></div>'+
+    '<div class="optRow"><label>Depth of field</label><input type="checkbox" id="optDof"></div>'+
+    '<div class="optRow"><label>Motion blur</label><input type="checkbox" id="optMb"></div>');
+  const c=$('#optClouds'); c.value=String(OPT.clouds); c.onchange=()=>{ OPT.clouds=+c.value; saveOpts(); };
+  for(const [id,k] of [['optGod','godrays'],['optDof','dof'],['optMb','mblur']]){
+    const el=$('#'+id); el.checked=!!OPT[k]; el.onchange=()=>{ OPT[k]=el.checked; saveOpts(); };
+  }
+})();
+console.log('sky: volumetric cloud layer ('+(OPT.clouds===2?'high':OPT.clouds===1?'low':'off')+'), sky follows the camera inside the far plane');
+</script>
 
 
 
