@@ -20216,6 +20216,7 @@ varying vec3 vTW; varying vec3 vTN;`;
 const TERR_FRAG_BODY=`
   {
     vec3 w=vTW; float sl=1.0-clamp(normalize(vTN).y,0.0,1.0);
+    float near=1.0/(1.0+length(cameraPosition-vTW)*.006);
     vec3 c=diffuseColor.rgb;
     float lum=dot(c,vec3(.299,.587,.114));
     float grassy=smoothstep(.015,.09,c.g-max(c.r,c.b)*.92);
@@ -20225,13 +20226,13 @@ const TERR_FRAG_BODY=`
     float n1=tnoise(w.xz*.07), n2=tnoise(w.xz*.5+17.0), n3=tnoise(w.xz*2.1+5.0);
     c*=1.0+(n1-.5)*.12+(n2-.5)*.08;
     float blade=tnoise(vec2(w.x*2.7+w.z*.35,w.z*8.5-w.x*.2))*tnoise(w.xz*1.4+3.0);
-    c*=1.0+grassy*(1.0-rocky)*((blade-.34)*.17+(n1-.5)*.10);
+    c*=1.0+grassy*(1.0-rocky)*((blade-.34)*.17*near+(n1-.5)*.10);
     c.r+=grassy*(n2-.5)*.035;
     float strata=sin(w.y*1.6+n2*3.5+n1*6.0);
     float crack=smoothstep(.47,.5,abs(tnoise(w.xz*.9+w.y*.3)-.5)) ;
-    c*=1.0+rocky*(strata*.10+(n3-.5)*.12-crack*.10);
+    c*=1.0+rocky*(strata*.10*near+(n3-.5)*.12*near-crack*.10*near);
     float rip=sin(dot(w.xz,vec2(.83,.56))*2.2+n2*2.6);
-    c*=1.0+sandy*(1.0-rocky)*rip*.07;
+    c*=1.0+sandy*(1.0-rocky)*rip*.07*near;
     c+=snowy*step(.986,thash(floor(w.xz*5.0)))*.30;
     diffuseColor.rgb=c;
   }`;
@@ -21608,6 +21609,118 @@ function updateCulling(dt){
   updateSky=function(dt){ _updateSkyCull(dt); try{ updateCulling(Math.max(dt,.016)); }catch(e){} };
 }
 console.log('culling: '+CULL.items.length+' small things draw only while they are big enough to see');
+</script>
+<script>
+/* ================= BATCH 102 — Group 7 item 2: water =========================
+   The water was two colours and a wobble, a flat sheet at one height that
+   fought the ground wherever the shore sat near the water line - the blue
+   and grey stripes along every lake edge.
+
+   The new surface knows how deep it is: the terrain's heights are packed
+   into a texture, so every pixel of water reads the ground beneath it.
+   - reflection: the sky's own colours by the reflected ray, weighted by a
+     Fresnel term, so it mirrors at a glance and goes clear looking down
+   - refraction: shallow water shows the bed through it, deep water goes dark
+   - the sun's glint on moving ripples, built from several wave trains
+   - foam where it meets the shore, breathing in and out
+   - it fades to nothing at the waterline, so shores no longer stripe */
+function heightTexture(H,W){
+  const data=new Uint8Array(W*W*4);
+  for(let i=0;i<W*W;i++){ const v=clamp(Math.round((H[i]+500)*16),0,65535); data[i*4]=v>>8; data[i*4+1]=v&255; data[i*4+3]=255; }
+  const t=new THREE.DataTexture(data,W,W,THREE.RGBAFormat); t.magFilter=t.minFilter=THREE.NearestFilter; t.needsUpdate=true;
+  return t;
+}
+const WATER_VERT=`
+uniform float uT;
+varying vec3 vW;
+#include <fog_pars_vertex>
+void main(){
+  vec3 p=position;
+  vec4 w0=modelMatrix*vec4(p,1.0);
+  float h=sin(w0.x*.09+uT*1.2)*.22+sin(w0.z*.13-uT*1.6)*.16+sin((w0.x+w0.z)*.05+uT*.7)*.25;
+  p.z+=h;
+  vec4 wp=modelMatrix*vec4(p,1.0); vW=wp.xyz;
+  vec4 mvPosition=viewMatrix*wp;
+  gl_Position=projectionMatrix*mvPosition;
+  #include <fog_vertex>
+}`;
+const WATER_FRAG=`
+uniform float uT; uniform vec3 uSunDir; uniform vec3 uSunCol; uniform vec3 uSkyTop; uniform vec3 uSkyBot; uniform float uSunI;
+uniform sampler2D uHeight; uniform vec3 uBounds; uniform float uCells; uniform float uLevel;
+uniform vec3 uShallow; uniform vec3 uDeep;
+varying vec3 vW;
+#include <fog_pars_fragment>
+float hAt(vec2 uv){ vec4 c=texture2D(uHeight,uv); return (c.r*255.0*256.0+c.g*255.0)/16.0-500.0; }
+float groundH(vec2 xz){
+  vec2 g=(xz-uBounds.xy)/uBounds.z*(uCells-1.0);
+  vec2 i=floor(g), f=g-i;
+  vec2 px=1.0/vec2(uCells);
+  vec2 uv=(i+.5)*px;
+  float a=hAt(uv), b=hAt(uv+vec2(px.x,0.)), c=hAt(uv+vec2(0.,px.y)), d=hAt(uv+px);
+  return mix(mix(a,b,f.x),mix(c,d,f.x),f.y);
+}
+float wn(vec2 p){ return sin(p.x)*cos(p.y); }
+void main(){
+  float bed=groundH(vW.xz);
+  float depth=uLevel-bed;
+  if(depth<.02) discard;
+  /* ripples: four wave trains and two drifting cross-hatches */
+  vec2 q=vW.xz;
+  float e=.6;
+  float H0=wn(q*.21+vec2(uT*.9,uT*.4))*.5+wn(q*.37-vec2(uT*.6,-uT*.8))*.35+wn(q*.9+vec2(uT*1.7,uT*1.1))*.15+wn(q*1.7-vec2(uT*2.1,uT*.5))*.07;
+  float Hx=wn((q+vec2(e,0.))*.21+vec2(uT*.9,uT*.4))*.5+wn((q+vec2(e,0.))*.37-vec2(uT*.6,-uT*.8))*.35+wn((q+vec2(e,0.))*.9+vec2(uT*1.7,uT*1.1))*.15+wn((q+vec2(e,0.))*1.7-vec2(uT*2.1,uT*.5))*.07;
+  float Hz=wn((q+vec2(0.,e))*.21+vec2(uT*.9,uT*.4))*.5+wn((q+vec2(0.,e))*.37-vec2(uT*.6,-uT*.8))*.35+wn((q+vec2(0.,e))*.9+vec2(uT*1.7,uT*1.1))*.15+wn((q+vec2(0.,e))*1.7-vec2(uT*2.1,uT*.5))*.07;
+  float camD=length(cameraPosition-vW);
+  float fine=1.0/(1.0+camD*.012);
+  vec3 n=normalize(vec3((H0-Hx)*.9*fine,1.0,(H0-Hz)*.9*fine));
+  vec3 v=normalize(cameraPosition-vW);
+  float fres=.03+.97*pow(1.0-max(dot(n,v),0.0),5.0);
+  vec3 r=reflect(-v,n);
+  vec3 sky=mix(uSkyBot,uSkyTop,pow(clamp(r.y*1.1+.08,0.0,1.0),.75));
+  float spec=pow(max(dot(r,normalize(uSunDir)),0.0),380.0)*6.0*uSunI;
+  float murk=1.0-exp(-depth*.12);
+  vec3 body=mix(uShallow,uDeep,murk);
+  /* shallow water lets the bed through */
+  body=mix(body*1.25+vec3(.06,.05,.02),body,smoothstep(.3,3.5,depth));
+  float foamBand=1.0-smoothstep(.15,1.6,depth);
+  float foamNoise=.5+.5*sin(depth*9.0-uT*2.2+wn(q*1.3)*2.0);
+  float foam=foamBand*smoothstep(.35,.8,foamNoise)*.85;
+  vec3 col=mix(body,sky,fres*.85)+uSunCol*spec;
+  col=mix(col,vec3(.92,.96,.98),foam);
+  float alpha=clamp(depth*1.6,0.0,1.0)*mix(.72,.97,max(fres,murk*.8));
+  alpha=max(alpha,foam*.9*clamp(depth*4.0,0.0,1.0));
+  gl_FragColor=vec4(col,alpha);
+  #include <fog_fragment>
+}`;
+function makeWaterMaterial(H,W,originX,originZ,size,level,shallow,deep){
+  const u=THREE.UniformsUtils.merge([THREE.UniformsLib.fog,{
+    uT:{value:0},uSunDir:{value:new THREE.Vector3(0,1,0)},uSunCol:{value:new THREE.Color(1,.95,.85)},uSunI:{value:1},
+    uSkyTop:{value:new THREE.Color()},uSkyBot:{value:new THREE.Color()},
+    uHeight:{value:heightTexture(H,W)},uBounds:{value:new THREE.Vector3(originX,originZ,size)},uCells:{value:W},uLevel:{value:level},
+    uShallow:{value:new THREE.Color(shallow)},uDeep:{value:new THREE.Color(deep)}}]);
+  return new THREE.ShaderMaterial({uniforms:u,vertexShader:WATER_VERT,fragmentShader:WATER_FRAG,transparent:true,fog:true,depthWrite:false});
+}
+const WATER2={};
+(function newWater(){
+  WATER2.h=makeWaterMaterial(HHM,HGRID,-HHALF,-HHALF,HW,HWATER,0x3aa6b8,0x0e3150);
+  WATER2.p=makeWaterMaterial(HM,GRID,PCX-HALF,PCZ-HALF,WORLD,WATER,0x4ab4c2,0x163f5a);
+  hWater.material=WATER2.h; water.material=WATER2.p;
+  hWater.renderOrder=3; water.renderOrder=3;
+})();
+{ const _updateSkyWater=updateSky;
+  updateSky=function(dt){
+    _updateSkyWater(dt);
+    for(const m of [WATER2.h,WATER2.p]){
+      const U=m.uniforms;
+      U.uT.value+=dt;
+      U.uSunDir.value.copy(skyMat.uniforms.sunDir.value);
+      U.uSunCol.value.copy(skyMat.uniforms.sunCol.value);
+      U.uSkyTop.value.copy(skyMat.uniforms.top.value); U.uSkyBot.value.copy(skyMat.uniforms.bot.value);
+      U.uSunI.value=clamp(sun.intensity,0,1.2)*(1-skyMat.uniforms.storm.value*.7);
+    }
+  };
+}
+console.log('water: depth-aware surface with reflection, refraction, glints and shore foam');
 </script>
 
 
