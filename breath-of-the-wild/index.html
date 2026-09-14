@@ -21894,6 +21894,170 @@ sky.renderOrder=999; sky.matrixAutoUpdate=false; sky.frustumCulled=false;
 })();
 console.log('sky: volumetric cloud layer ('+(OPT.clouds===2?'high':OPT.clouds===1?'low':'off')+'), sky follows the camera inside the far plane');
 </script>
+<script>
+/* ================= BATCH 105 — Group 7 items 6, 7 and 8: god rays, depth of field,
+   motion blur ============================================================
+   The frame used to go straight to the screen.  Now it is drawn into a
+   colour-and-depth target, and one composite pass does three things with
+   that depth:
+   - god rays: from the sun's place on screen, the sky that shows between
+     trees, towers and ridges is streaked back toward the viewer
+   - depth of field: things well beyond what you are looking at - Link, or
+     the face of whoever is speaking in a cutscene - soften, with a stronger
+     focus pull in cutscenes; foreground never bleeds onto the background
+   - motion blur: every pixel is placed in the world from its depth and
+     re-projected through last frame's camera, so turning the camera smears
+     the view along the way it moved - camera blur, which is what BotW does
+   Then a small FXAA pass smooths edges, because drawing to a target loses
+   the screen's antialiasing.  Each of the three can be switched off in
+   Options; with all three off the frame goes straight to the screen again. */
+const POSTFX={rt:null,rt2:null,w:0,h:0,prevVP:new THREE.Matrix4(),prevCam:new THREE.Vector3(),first:true,focus:{value:8},scene:null,cam:null,quad:null,comp:null,fxaa:null,ok:true};
+(function initPost(){
+  try{
+    const gl=renderer.getContext();
+    const hasDepthTex=renderer.capabilities.isWebGL2||!!renderer.extensions.get('WEBGL_depth_texture');
+    if(!hasDepthTex){ POSTFX.ok=false; return; }
+    POSTFX.cam=new THREE.OrthographicCamera(-1,1,1,-1,0,1);
+    POSTFX.scene=new THREE.Scene();
+    const quadGeo=new THREE.PlaneGeometry(2,2);
+    const VS=`varying vec2 vUv; void main(){ vUv=uv; gl_Position=vec4(position.xy,0.0,1.0); }`;
+    POSTFX.comp=new THREE.ShaderMaterial({depthTest:false,depthWrite:false,
+      uniforms:{tColor:{value:null},tDepth:{value:null},uProjInv:{value:new THREE.Matrix4()},uViewInv:{value:new THREE.Matrix4()},
+        uPrevVP:{value:new THREE.Matrix4()},uSunUV:{value:new THREE.Vector2(.5,.5)},uSunCol:{value:new THREE.Color(1,.9,.7)},
+        uGod:{value:0},uDof:{value:0},uMb:{value:0},uFocus:POSTFX.focus,uTexel:{value:new THREE.Vector2(1/1024,1/1024)},uAspect:{value:1}},
+      vertexShader:VS,
+      fragmentShader:`
+      uniform sampler2D tColor; uniform sampler2D tDepth; uniform mat4 uProjInv; uniform mat4 uViewInv; uniform mat4 uPrevVP;
+      uniform vec2 uSunUV; uniform vec3 uSunCol; uniform float uGod; uniform float uDof; uniform float uMb; uniform float uFocus;
+      uniform vec2 uTexel; uniform float uAspect;
+      varying vec2 vUv;
+      vec3 viewPos(vec2 uv,float d){ vec4 c=vec4(uv*2.0-1.0,d*2.0-1.0,1.0); vec4 v=uProjInv*c; return v.xyz/v.w; }
+      void main(){
+        float d=texture2D(tDepth,vUv).r;
+        vec3 base=texture2D(tColor,vUv).rgb;
+        vec3 vp=viewPos(vUv,d);
+        float dist=-vp.z;
+        vec3 col=base;
+        /* depth of field: background only, weighted so near things do not bleed out */
+        if(uDof>0.0){
+          float coc=clamp((dist-uFocus*1.6)/(uFocus*5.0),0.0,1.0)*uDof;
+          if(d>.99999) coc=uDof*.8;
+          if(coc>.02){
+            vec3 acc=base; float wsum=1.0;
+            for(int i=0;i<12;i++){
+              float a=float(i)*2.39996, r=sqrt(float(i)+.5)/3.5;
+              vec2 o=vec2(cos(a),sin(a))*r*coc*5.5*uTexel*vec2(1.0,uAspect)*1.4;
+              float sd=texture2D(tDepth,vUv+o).r;
+              float sdist=-viewPos(vUv+o,sd).z;
+              float w=sdist>=dist*.7||sd>.99999?1.0:.15;
+              acc+=texture2D(tColor,vUv+o).rgb*w; wsum+=w;
+            }
+            col=acc/wsum;
+          }
+        }
+        /* camera motion blur by reprojection */
+        if(uMb>0.0){
+          vec4 wp=uViewInv*vec4(vp,1.0);
+          if(d>.99999){ wp=uViewInv*vec4(normalize(vp)*5000.0,1.0); }
+          vec4 pc=uPrevVP*wp; vec2 puv=pc.xy/pc.w*.5+.5;
+          vec2 vel=(vUv-puv)*uMb;
+          float L=length(vel); if(L>.022) vel*=.022/L;
+          if(L>.0008){
+            vec3 acc=col;
+            for(int i=1;i<8;i++){ acc+=texture2D(tColor,vUv-vel*(float(i)/7.0)).rgb; }
+            col=acc/8.0;
+          }
+        }
+        /* god rays: sky between the silhouettes, streaked from the sun */
+        if(uGod>0.0){
+          vec2 delta=(vUv-uSunUV)/24.0*.8;
+          vec2 uv=vUv; float illum=0.0, decay=1.0;
+          for(int i=0;i<24;i++){
+            uv-=delta;
+            float sd=texture2D(tDepth,uv).r;
+            float sky=step(.99999,sd);
+            vec3 sc=texture2D(tColor,uv).rgb;
+            illum+=sky*dot(sc,vec3(.33))*decay;
+            decay*=.94;
+          }
+          float fall=clamp(1.0-length((vUv-uSunUV)*vec2(uAspect,1.0))*.9,0.0,1.0);
+          col+=uSunCol*illum/24.0*uGod*fall*fall*1.6;
+        }
+        gl_FragColor=vec4(col,1.0);
+      }`});
+    POSTFX.fxaa=new THREE.ShaderMaterial({depthTest:false,depthWrite:false,
+      uniforms:{tColor:{value:null},uTexel:{value:new THREE.Vector2()}},vertexShader:VS,
+      fragmentShader:`
+      uniform sampler2D tColor; uniform vec2 uTexel; varying vec2 vUv;
+      float lum(vec3 c){ return dot(c,vec3(.299,.587,.114)); }
+      void main(){
+        vec3 m=texture2D(tColor,vUv).rgb;
+        vec3 nw=texture2D(tColor,vUv+vec2(-1.,-1.)*uTexel).rgb, ne=texture2D(tColor,vUv+vec2(1.,-1.)*uTexel).rgb;
+        vec3 sw=texture2D(tColor,vUv+vec2(-1.,1.)*uTexel).rgb,  se=texture2D(tColor,vUv+vec2(1.,1.)*uTexel).rgb;
+        float lm=lum(m), lnw=lum(nw), lne=lum(ne), lsw=lum(sw), lse=lum(se);
+        float lmin=min(lm,min(min(lnw,lne),min(lsw,lse))), lmax=max(lm,max(max(lnw,lne),max(lsw,lse)));
+        vec2 dir=vec2(-((lnw+lne)-(lsw+lse)),((lnw+lsw)-(lne+lse)));
+        float red=max((lnw+lne+lsw+lse)*.03125,.0078125);
+        float rmin=1.0/(min(abs(dir.x),abs(dir.y))+red);
+        dir=clamp(dir*rmin,vec2(-8.0),vec2(8.0))*uTexel;
+        vec3 a=.5*(texture2D(tColor,vUv+dir*(1./3.-.5)).rgb+texture2D(tColor,vUv+dir*(2./3.-.5)).rgb);
+        vec3 b=a*.5+.25*(texture2D(tColor,vUv+dir*-.5).rgb+texture2D(tColor,vUv+dir*.5).rgb);
+        float lb=lum(b);
+        gl_FragColor=vec4((lb<lmin||lb>lmax)?a:b,1.0);
+      }`});
+    POSTFX.quad=new THREE.Mesh(quadGeo,POSTFX.comp); POSTFX.quad.frustumCulled=false; POSTFX.scene.add(POSTFX.quad);
+  }catch(e){ POSTFX.ok=false; console.warn('post effects unavailable:',e); }
+})();
+function postTargets(){
+  const v=renderer.getDrawingBufferSize(new THREE.Vector2());
+  if(v.x===POSTFX.w&&v.y===POSTFX.h&&POSTFX.rt) return;
+  POSTFX.w=v.x; POSTFX.h=v.y;
+  if(POSTFX.rt){ POSTFX.rt.dispose(); POSTFX.rt2.dispose(); }
+  POSTFX.rt=new THREE.WebGLRenderTarget(v.x,v.y,{minFilter:THREE.LinearFilter,magFilter:THREE.LinearFilter});
+  POSTFX.rt.depthTexture=new THREE.DepthTexture(v.x,v.y); POSTFX.rt.depthTexture.type=THREE.UnsignedIntType;
+  POSTFX.rt2=new THREE.WebGLRenderTarget(v.x,v.y,{minFilter:THREE.LinearFilter,magFilter:THREE.LinearFilter,depthBuffer:false});
+}
+const _sunNDC=new THREE.Vector3(), _camDir=new THREE.Vector3(), _vp=new THREE.Matrix4();
+{ const _renderPost=renderer.render.bind(renderer);
+  renderer.render=function(sc,cam){
+    const want=POSTFX.ok&&sc===scene&&cam===camera&&!renderer.getRenderTarget()&&(OPT.godrays||OPT.dof||OPT.mblur);
+    if(!want) return _renderPost(sc,cam);
+    postTargets();
+    renderer.setRenderTarget(POSTFX.rt);
+    _renderPost(scene,camera);
+    renderer.setRenderTarget(null);
+    const U=POSTFX.comp.uniforms;
+    U.tColor.value=POSTFX.rt.texture; U.tDepth.value=POSTFX.rt.depthTexture;
+    U.uProjInv.value.copy(camera.projectionMatrixInverse); U.uViewInv.value.copy(camera.matrixWorld);
+    U.uTexel.value.set(1/POSTFX.w,1/POSTFX.h); U.uAspect.value=POSTFX.w/POSTFX.h;
+    /* motion: last frame's camera, unless the camera jumped */
+    const jumped=POSTFX.first||camera.position.distanceTo(POSTFX.prevCam)>25;
+    U.uPrevVP.value.copy(jumped?_vp.multiplyMatrices(camera.projectionMatrix,camera.matrixWorldInverse):POSTFX.prevVP);
+    U.uMb.value=OPT.mblur&&!jumped?Math.min(1,.016/Math.max(perfDT,.008))*.55:0;
+    /* the sun on screen */
+    const sd=skyMat.uniforms.sunDir.value;
+    _sunNDC.copy(camera.position).addScaledVector(sd,3000).project(camera);
+    camera.getWorldDirection(_camDir);
+    const facing=_camDir.dot(sd), up=sd.y;
+    U.uSunUV.value.set(_sunNDC.x*.5+.5,_sunNDC.y*.5+.5);
+    U.uSunCol.value.copy(skyMat.uniforms.sunCol.value);
+    U.uGod.value=OPT.godrays?clamp(facing*2,0,1)*clamp(up*6,0,1)*(1-skyMat.uniforms.storm.value)*(1-skyMat.uniforms.night.value):0;
+    /* focus: the speaker in a cutscene, Link otherwise */
+    let focus=Math.max(3,camera.position.distanceTo(P.pos));
+    if(typeof DIR!=='undefined'&&DIR.on&&DIR.speaker&&DIR.actors[DIR.speaker]) focus=camera.position.distanceTo(headOf(DIR.speaker));
+    POSTFX.focus.value+=(focus-POSTFX.focus.value)*.2;
+    U.uDof.value=OPT.dof?((typeof DIR!=='undefined'&&DIR.on)?1:.45):0;
+    POSTFX.quad.material=POSTFX.comp;
+    renderer.setRenderTarget(POSTFX.rt2); _renderPost(POSTFX.scene,POSTFX.cam);
+    POSTFX.fxaa.uniforms.tColor.value=POSTFX.rt2.texture; POSTFX.fxaa.uniforms.uTexel.value.set(1/POSTFX.w,1/POSTFX.h);
+    POSTFX.quad.material=POSTFX.fxaa;
+    renderer.setRenderTarget(null); _renderPost(POSTFX.scene,POSTFX.cam);
+    POSTFX.prevVP.multiplyMatrices(camera.projectionMatrix,camera.matrixWorldInverse);
+    POSTFX.prevCam.copy(camera.position); POSTFX.first=false;
+  };
+}
+console.log('post effects: '+(POSTFX.ok?'god rays, depth of field, camera motion blur and FXAA':'unavailable on this device'));
+</script>
 
 
 
