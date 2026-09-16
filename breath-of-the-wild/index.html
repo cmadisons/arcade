@@ -4890,7 +4890,7 @@ function animate(dt,moving,speed){
 
   /* attacks take the track outright, and restart on each new swing */
   if(P.spinT>0){ want='spin'; if(newSpin) playClip(A,'spin',.05,true); }
-  else if(P.swingT>0){ want=ATKCLIPS[P.comboI%3]; if(newSwing) playClip(A,want,.05,true); }
+  else if(P.swingT>0){ want=(typeof attackClipFor==='function')?attackClipFor(P.comboI):ATKCLIPS[P.comboI%3]; if(newSwing) playClip(A,want,.05,true); }
   else if(P.chargeT>.25) want='charge';
   playClip(A,want,.16);
 
@@ -22734,6 +22734,145 @@ function buildWalkRoom(D){
   };
 }
 console.log('shrines: '+Object.keys(SHRINE_WALK).length+' walkthroughs, '+Object.values(SHRINE_WALK).reduce((a,w)=>a+w.s.length,0)+' chambers; every shrine beyond the Plateau is laid out from its own steps');
+</script>
+<script>
+/* ================= BATCH 111 — Roadmap 2: moon phases, weapon attacks, touch controls ====
+   Phase 5 item 4.  The moon was a white disc, always full.  It now runs a
+   real eight-night cycle - new, crescent, quarter, gibbous, full and back -
+   lit from the correct side, with the dark part faintly showing, and the
+   moonlight on the land follows how much of it is lit.  The Blood Moon is
+   always full.  The clock names the phase at night.
+
+   Phase 1 item 10.  Every weapon swung the same three one-handed strokes.
+   Two-handers now heave an overhead chop and a wide horizontal sweep, spears
+   jab and pull back, and rods raise and cast.
+
+   Phase 7 item 4.  On a touch screen there is now a movement stick on the
+   left, and on the right: attack, jump, shield, bow, rune, rune wheel,
+   interact, crouch, map and menu.  Look is still a drag anywhere. */
+
+/* ---- moon ---- */
+const MOON_NAMES=['New moon','Waxing crescent','First quarter','Waxing gibbous','Full moon','Waning gibbous','Last quarter','Waning crescent'];
+function moonPhase(){ const days=((P.totalTime||0)+(P.time||0))/DAY_LEN; return bloodMoon?.5:((days/8)+.5)%1; }
+(function moonShader(){
+  const S=window.__sky; if(!S) return;
+  S.moonSprite.geometry=new THREE.PlaneGeometry(90,90);
+  S.moonSprite.material=new THREE.ShaderMaterial({transparent:true,depthWrite:false,
+    uniforms:{uPhase:{value:.5},uCol:{value:new THREE.Color(0xdfe8f4)}},
+    vertexShader:`varying vec2 vUv; void main(){ vUv=uv*2.0-1.0; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+    fragmentShader:`uniform float uPhase; uniform vec3 uCol; varying vec2 vUv;
+      float h(vec2 p){ return fract(sin(dot(p,vec2(12.9898,78.233)))*43758.5453); }
+      void main(){
+        float r=length(vUv); if(r>1.0) discard;
+        vec3 n=vec3(vUv,sqrt(1.0-r*r));
+        float a=uPhase*6.28318;
+        vec3 L=vec3(-sin(a),0.0,-cos(a));
+        float lit=smoothstep(-.04,.06,dot(n,L));
+        float crater=.86+.14*step(.72,h(floor(vUv*7.0)))*(1.0-r);
+        vec3 col=uCol*crater*mix(.07,1.0,lit);
+        float edge=1.0-smoothstep(.96,1.0,r);
+        gl_FragColor=vec4(col,edge*mix(.35,.95,lit));
+      }`});
+  /* older code still sets the disc's colour every frame */
+  S.moonSprite.material.color=new THREE.Color(0xdfe8f4);
+})();
+{ const _updateSkyMoon=updateSky;
+  updateSky=function(dt){
+    _updateSkyMoon(dt);
+    const S=window.__sky; if(!S||!S.moonSprite.material.uniforms) return;
+    const ph=moonPhase(), U=S.moonSprite.material.uniforms;
+    U.uPhase.value=ph; U.uCol.value.set(bloodMoon?0xd43a2a:0xdfe8f4);
+    const lit=(1-Math.cos(ph*Math.PI*2))/2;
+    moon.intensity*=.25+.75*lit;
+    if(isNight()){ const c=$('#clock'); if(c&&!/moon/.test(c.textContent)) c.textContent+=' · '+(bloodMoon?'Blood moon':MOON_NAMES[Math.floor(ph*8+.5)%8]); }
+  };
+}
+
+/* ---- weapon-specific attacks ---- */
+defClip('heavy1',{d:.62,loop:false,k:[
+  {t:0,  p:{hips:[-.08,0,0,0,-.02,-.08],spine:[-.18,0,0],chest:[-.2,0,0],head:[.1,0,0],shoulderR:[0,0,-.1],armR:[-2.85,.1,-.15],forearmR:[-.35,0,0],shoulderL:[0,0,.1],armL:[-2.7,-.1,.2],forearmL:[-.45,0,0],thighL:[-.3,0,.06],shinL:[.3,0,0]}},
+  {t:.26,p:{hips:[.25,0,0,0,-.18,.12],spine:[.32,0,0],chest:[.22,0,0],head:[-.2,0,0],armR:[-.55,0,-.1],forearmR:[-.15,0,0],armL:[-.65,0,.18],forearmL:[-.25,0,0],thighL:[-.6,0,.06],shinL:[.7,0,0],thighR:[.2,0,-.06]}},
+  {t:.62,p:{hips:[.06,0,0,0,-.06,0],spine:[.08,0,0],chest:[.05,0,0],armR:[-.7,0,-.15],forearmR:[-.35,0,0],armL:[-.6,0,.2],forearmL:[-.5,0,0],thighL:[-.15,0,.06],shinL:[.2,0,0]}}]});
+defClip('heavy2',{d:.6,loop:false,k:[
+  {t:0,  p:{hips:[0,.85,0,0,-.08,0],spine:[.05,.5,0],chest:[.05,.55,0],head:[0,-.8,0],armR:[-1.35,.95,-.55],forearmR:[-.5,0,0],armL:[-1.25,.9,.45],forearmL:[-.6,0,0],thighR:[.2,0,-.06],thighL:[-.25,0,.06],shinL:[.25,0,0]}},
+  {t:.28,p:{hips:[0,-.9,0,0,-.12,.05],spine:[.05,-.55,0],chest:[.05,-.6,0],head:[0,.85,0],armR:[-1.45,-1.05,-.35],forearmR:[-.1,0,0],armL:[-1.35,-1.0,.3],forearmL:[-.2,0,0],thighR:[-.3,0,-.06],shinR:[.3,0,0],thighL:[.15,0,.06]}},
+  {t:.6, p:{hips:[0,-.3,0,0,-.04,0],spine:[.03,-.2,0],chest:[.02,-.2,0],head:[0,.3,0],armR:[-.8,-.3,-.25],forearmR:[-.4,0,0],armL:[-.7,-.3,.25],forearmL:[-.5,0,0]}}]});
+defClip('thrust1',{d:.34,loop:false,k:[
+  {t:0,  p:{hips:[0,.25,0,0,-.04,-.14],chest:[0,.3,0],armR:[-1.25,.1,-.25],forearmR:[-1.55,0,0],armL:[-1.1,.4,.3],forearmL:[-1.2,0,0],thighR:[.2,0,-.06]}},
+  {t:.12,p:{hips:[.05,-.2,0,0,-.08,.2],chest:[.06,-.25,0],armR:[-1.55,-.05,-.05],forearmR:[-.05,0,0],armL:[-1.45,-.2,.12],forearmL:[-.35,0,0],thighL:[-.45,0,.06],shinL:[.4,0,0],thighR:[.25,0,-.06]}},
+  {t:.34,p:{hips:[0,0,0,0,-.03,0],chest:[0,0,0],armR:[-1.2,0,-.2],forearmR:[-1.1,0,0],armL:[-1.0,.2,.25],forearmL:[-1.0,0,0]}}]});
+defClip('thrust2',{d:.28,loop:false,k:[
+  {t:0,  p:{hips:[0,-.15,0,0,-.04,-.1],chest:[0,-.2,0],armR:[-1.3,0,-.2],forearmR:[-1.4,0,0],armL:[-1.1,.2,.3],forearmL:[-1.1,0,0]}},
+  {t:.1, p:{hips:[.04,.15,0,0,-.07,.18],chest:[.05,.2,0],armR:[-1.6,.05,-.08],forearmR:[-.1,0,0],armL:[-1.4,0,.15],forearmL:[-.4,0,0],thighR:[-.4,0,-.06],shinR:[.35,0,0]}},
+  {t:.28,p:{hips:[0,0,0,0,-.03,0],armR:[-1.2,0,-.2],forearmR:[-1.1,0,0],armL:[-1.0,.2,.25],forearmL:[-1.0,0,0]}}]});
+defClip('cast',{d:.5,loop:false,k:[
+  {t:0,  p:{chest:[-.1,.15,0],armR:[-2.3,0,-.15],forearmR:[-.25,0,0],head:[-.1,0,0]}},
+  {t:.18,p:{chest:[.12,-.05,0],armR:[-1.55,0,-.05],forearmR:[-.05,0,0],hips:[.05,0,0,0,-.04,.08]}},
+  {t:.5, p:{chest:[0,0,0],armR:[-.6,0,-.15],forearmR:[-.4,0,0]}}]});
+function attackClipFor(i){
+  const w=curW(), W=w&&WEAPONS[w.n];
+  if(!W) return ATKCLIPS[i%3];
+  if(/rod/i.test(w.n)) return 'cast';
+  if(W.hand===2) return i%2?'heavy2':'heavy1';
+  if(W.hand===3) return i%2?'thrust2':'thrust1';
+  return ATKCLIPS[i%3];
+}
+
+/* ---- touch ---- */
+(function touchControls(){
+  const touch=('ontouchstart' in window)||navigator.maxTouchPoints>0;
+  if(!touch) return;
+  const st=document.createElement('style');
+  st.textContent=`
+  #tstick{position:fixed;left:26px;bottom:34px;width:150px;height:150px;border-radius:50%;z-index:15;
+    background:radial-gradient(circle,rgba(99,214,226,.10),rgba(8,20,28,.45));border:1px solid rgba(99,214,226,.4);touch-action:none}
+  #tknob{position:absolute;left:50%;top:50%;width:62px;height:62px;margin:-31px 0 0 -31px;border-radius:50%;
+    background:rgba(99,214,226,.35);border:1px solid rgba(232,246,248,.6)}
+  #tbtns{position:fixed;right:18px;bottom:26px;z-index:15;display:grid;grid-template-columns:repeat(3,64px);gap:10px;touch-action:none}
+  #tbtns button,#ttop button{width:64px;height:64px;border-radius:50%;border:1px solid rgba(99,214,226,.45);background:rgba(8,20,28,.55);
+    color:#e8f6f8;font-family:var(--ui);font-size:12px;letter-spacing:.06em;text-transform:uppercase;touch-action:none}
+  #tbtns button.big{background:rgba(232,144,46,.35)}
+  #tbtns button.on{background:rgba(99,214,226,.4)}
+  #ttop{position:fixed;right:18px;top:92px;z-index:15;display:flex;gap:8px}
+  #ttop button{width:52px;height:52px;font-size:11px}`;
+  document.head.appendChild(st);
+  document.body.insertAdjacentHTML('beforeend',
+    '<div id="tstick"><div id="tknob"></div></div>'+
+    '<div id="tbtns"><button data-k="KeyZ" data-hold="1">Shield</button><button data-k="bow" data-hold="1">Bow</button><button data-k="attack" class="big">Attack</button>'+
+    '<button data-k="KeyF">Rune</button><button data-k="KeyR" data-hold="1">Wheel</button><button data-k="Space" data-hold="1" class="big">Jump</button>'+
+    '<button data-k="ControlLeft" data-toggle="1">Crouch</button><button data-k="KeyL">Lift</button><button data-k="KeyE">Use</button></div>'+
+    '<div id="ttop"><button data-k="KeyO">Slate</button><button data-k="KeyM">Map</button><button data-k="Escape">Menu</button></div>');
+  const fire=(type,code)=>document.body.dispatchEvent(new KeyboardEvent(type,{code,bubbles:true}));
+  /* the stick drives W A S D, and running when pushed right out */
+  const stick=$('#tstick'), knob=$('#tknob'); let sid=null, cx=0, cy=0;
+  const setMove=(dx,dy)=>{
+    const L=Math.hypot(dx,dy), n=L>8?1:0, ax=dx/Math.max(L,1), ay=dy/Math.max(L,1);
+    keys.KeyW=n&&ay<-.38; keys.KeyS=n&&ay>.38; keys.KeyA=n&&ax<-.38; keys.KeyD=n&&ax>.38;
+    keys.ShiftLeft=L>62;
+  };
+  stick.addEventListener('touchstart',e=>{ e.preventDefault(); const t=e.changedTouches[0]; sid=t.identifier; const r=stick.getBoundingClientRect(); cx=r.left+r.width/2; cy=r.top+r.height/2; if(!P.playing&&!paused&&!mapOpen) startPlay(); },{passive:false});
+  stick.addEventListener('touchmove',e=>{ e.preventDefault(); for(const t of e.changedTouches) if(t.identifier===sid){
+      let dx=t.clientX-cx, dy=t.clientY-cy; const L=Math.hypot(dx,dy); if(L>70){ dx*=70/L; dy*=70/L; }
+      knob.style.transform='translate('+dx+'px,'+dy+'px)'; setMove(dx,dy); } },{passive:false});
+  const endStick=e=>{ for(const t of e.changedTouches) if(t.identifier===sid){ sid=null; knob.style.transform=''; setMove(0,0); } };
+  stick.addEventListener('touchend',endStick); stick.addEventListener('touchcancel',endStick);
+  for(const b of document.querySelectorAll('#tbtns button,#ttop button')){
+    const k=b.dataset.k;
+    b.addEventListener('touchstart',e=>{ e.preventDefault(); e.stopPropagation();
+      if(!P.playing&&!paused&&!mapOpen&&k!=='Escape'&&k!=='KeyM'&&k!=='KeyO') startPlay();
+      if(k==='attack'){ mouse.l=true; P.chargeT=.001; }
+      else if(k==='bow'){ mouse.r=true; }
+      else if(b.dataset.toggle){ keys[k]=!keys[k]; b.classList.toggle('on',keys[k]); }
+      else { keys[k]=true; fire('keydown',k); }
+    },{passive:false});
+    b.addEventListener('touchend',e=>{ e.preventDefault();
+      if(k==='attack'){ mouse.l=false; if(P.chargeT>0){ if(P.chargeT>.45) chargeRelease(); else swing(); P.chargeT=0; } }
+      else if(k==='bow'){ if(aiming) releaseArrow(); mouse.r=false; }
+      else if(!b.dataset.toggle){ keys[k]=false; fire('keyup',k); }
+    },{passive:false});
+  }
+})();
+console.log('moon phases on an eight-night cycle; two-handed, spear and rod attacks; touch stick and buttons');
 </script>
 
 
