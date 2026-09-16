@@ -22887,3 +22887,302 @@ console.log('moon phases on an eight-night cycle; two-handed, spear and rod atta
 
 
 
+<script>
+"use strict";
+/* ================= BATCH 112 — Roadmap 2: wildlife worth hunting ================= */
+/* One generic four-legged body, bent into deer, goats, bears, wolves and rhinos by a
+   handful of numbers, so every species reuses the same gaits as the boar. */
+function beastSpec(o){
+  const up=o.up||.40, lo=o.lo||.34, bw=o.bw||.8, bh=o.bh||.8, hs=o.hs||.42, sn=o.sn||.24;
+  const tall=!!o.tall;
+  const D={hipY:up+lo+.26,spineY:.02,spineZ:.20*(o.len||1),chestY:.04,chestZ:.44*(o.len||1),
+    neckY:tall?.24:.10,neckZ:tall?.30:.28,neck2Y:tall?.26:.02,neck2Z:tall?.10:.10,
+    headY:tall?.16:.02,headZ:tall?.12:.14,
+    neckBind:tall?[-.6,0,0]:[.20,0,0],neck2Bind:tall?[-.3,0,0]:[.10,0,0],headBind:tall?[1.0,0,0]:[0,0,0],
+    legX:bw*.36,upper:up,lower:lo,frontZ:.40*(o.len||1),frontY:-.18,backZ:-.34*(o.len||1),backY:-.18,
+    tailY:.16,tailZ:-.52*(o.len||1),tailL:o.tailL||.20,tailBind:o.tailBind||[-.6,0,0],lowerBind:[.16,0,0]};
+  const neck=tall
+    ? [{g:'taper',t0:.34,t1:.5,s:[bw*.44,.58,bw*.5],p:[0,.16,.08],r:[.3,0,0],m:'hide'}]
+    : [{g:'taper',t0:.42,t1:.5,s:[bw*.7,.34,bh*.7],p:[0,0,.14],r:[1.57,0,0],m:'hide'}];
+  const neck2=tall
+    ? [{g:'taper',t0:.3,t1:.36,s:[bw*.36,.46,bw*.4],p:[0,.14,.04],r:[.24,0,0],m:'hide'}]
+    : [{g:'box',s:[bw*.6,bh*.54,.30],p:[0,0,.12],m:'hide'}];
+  const head=[
+    {g:'taper',t0:.26,t1:.42,s:[hs,hs*1.2,hs],p:[0,-.02,.24],r:[1.40,0,0],m:'hideD'},
+    {g:o.snoutBox?'box':'taper',t0:.2,t1:.3,s:[hs*.56,sn*1.4,hs*.5],p:[0,-.06,.36+sn*.5],r:[1.57,0,0],m:'snout'},
+    {g:'sph',s:[.08,.08,.06],p:[-hs*.34,.12,.24],m:'dark',b:true},
+    {g:'sph',s:[.08,.08,.06],p:[ hs*.34,.12,.24],m:'dark',b:true},
+    {g:'sph',s:[.08,.07,.06],p:[0,-.02,.40+sn],m:'dark',b:true}];
+  const ear=o.ears||'point';
+  for(const s of[-1,1]){
+    if(ear==='round') head.push({g:'sph',s:[.14,.14,.07],p:[s*hs*.4,hs*.62,.08],m:'hideD'});
+    else if(ear==='long') head.push({g:'cone',s:[.12,.38,.06],p:[s*hs*.42,hs*.8,0],r:[-.2,0,-s*.25],m:'hideD'});
+    else head.push({g:'cone',s:[.12,.24,.07],p:[s*hs*.4,hs*.68,.04],r:[-.2,0,-s*.3],m:'hideD'});
+    if(o.horn==='antler'){
+      head.push({g:'cyl',s:[.05,.62,.05],p:[s*.16,.54,-.02],r:[-.35,0,-s*.45],m:'horn'});
+      head.push({g:'cyl',s:[.04,.34,.04],p:[s*.30,.76,.14],r:[.45,0,-s*.2],m:'horn'});
+      head.push({g:'cyl',s:[.04,.30,.04],p:[s*.36,.84,-.12],r:[-.6,0,-s*.5],m:'horn'});
+      head.push({g:'cyl',s:[.035,.24,.035],p:[s*.26,.62,.20],r:[.9,0,-s*.1],m:'horn'});
+    } else if(o.horn==='palm'){
+      head.push({g:'cyl',s:[.06,.36,.06],p:[s*.2,.40,0],r:[0,0,-s*1.1],m:'horn'});
+      head.push({g:'box',s:[.62,.06,.36],p:[s*.52,.56,-.02],r:[0,0,-s*.35],m:'horn'});
+      head.push({g:'cone',s:[.05,.18,.05],p:[s*.74,.70,.12],r:[0,0,-s*.3],m:'horn'});
+      head.push({g:'cone',s:[.05,.18,.05],p:[s*.64,.72,-.14],r:[0,0,-s*.3],m:'horn'});
+    } else if(o.horn==='goat'){
+      head.push({g:'cone',s:[.08,.40,.08],p:[s*.10,.36,-.06],r:[-1.1,0,-s*.2],m:'horn'});
+    }
+  }
+  if(o.horn==='rhino'){
+    head.push({g:'cone',s:[.16,.56,.16],p:[0,.16,.40+sn],r:[.2,0,0],m:'horn'});
+    head.push({g:'cone',s:[.10,.26,.10],p:[0,.24,.18+sn],r:[.1,0,0],m:'horn'});
+  }
+  if(o.tusk) for(const s of[-1,1]) head.push({g:'cone',s:[.09,.22,.09],p:[s*.16,-.06,.40],r:[-.9,0,s*.3],m:'tusk'});
+  if(o.mane) head.push({g:'cone3',s:[.08,.26,.40],p:[0,.30,-.08],m:'bristle'});
+  const tail=o.tail==='bushy'
+    ? [{g:'taper',t0:.12,t1:.07,s:[.24,.36,.24],p:[0,0,-.16],r:[1.57,0,0],m:'hide'}]
+    : [{g:'taper',t0:.06,t1:.04,s:[.09,.22,.09],p:[0,0,-.11],r:[1.57,0,0],m:'hideD'}];
+  const tail2=o.tail==='bushy'
+    ? [{g:'taper',t0:.10,t1:.02,s:[.26,.38,.26],p:[0,0,-.18],r:[1.57,0,0],m:'tip'}]
+    : (o.tail==='white'?[{g:'sph',s:[.14,.14,.10],p:[0,0,-.04],m:'tip'}]:[]);
+  const lt=1.5*(o.legT||1);
+  D.parts={
+    hips:[{g:'sph',s:[bw*.92,bh*.92,bw],p:[0,0,-.18],m:'hide'}],
+    spine:[{g:'taper',t0:.5,t1:.56,s:[bw,.80*(o.len||1),bh],p:[0,.04,.16],r:[1.57,0,0],m:'hide'}]
+      .concat(o.hump?[{g:'sph',s:[bw*.8,bh*.5,bw*.8],p:[0,bh*.42,.3],m:'hideD'}]:[]),
+    chest:[{g:'sph',s:[bw*1.06,bh*1.02,bw*.92],p:[0,0,.02],m:'hide'}]
+      .concat(o.belly?[{g:'sph',s:[bw*.7,bh*.5,bw*.7],p:[0,-bh*.3,.02],m:'tip'}]:[]),
+    neck, neck2, head, tail, tail2,
+    legF:[{g:'taper',t0:.20,t1:.15,s:[.24*lt,up*1.05,.24*lt],p:[0,-up*.5,0],m:'hideD'}],
+    legF2:[{g:'taper',t0:.14,t1:.11,s:[.17*lt,lo*1.05,.17*lt],p:[0,-lo*.5,0],m:'hideD'}],
+    legF3:[{g:o.paw?'sph':'box',s:[.18*lt,.12,.22*lt],p:[0,-.05,.03],m:'hoof'}],
+    legB:[{g:'taper',t0:.26,t1:.16,s:[.28*lt,up*1.05,.28*lt],p:[0,-up*.5,0],m:'hideD'}],
+    legB2:[{g:'taper',t0:.14,t1:.11,s:[.17*lt,lo*1.05,.17*lt],p:[0,-lo*.5,0],m:'hideD'}],
+    legB3:[{g:o.paw?'sph':'box',s:[.18*lt,.12,.22*lt],p:[0,-.05,.03],m:'hoof'}]
+  };
+  return quadSpec(D);
+}
+
+/* temper: shy flees, aggr charges on sight, night hunts after dark, blupee pays out, cucco retaliates */
+const SPECIES={
+  boar     :{n:'Woodland Boar',        hp:8,  drop:'Raw Meat',           run:8,  temper:'shy'},
+  bird     :{n:'Wood Pigeon',          hp:1,  drop:'Raw Bird Drumstick', run:11, temper:'shy', bird:true},
+  redBoar  :{n:'Red-Tusked Boar',      hp:20, drop:'Raw Prime Meat',     run:9,  temper:'aggr', dmg:6, aggroR:12, sc:1.0,
+    spec:{tusk:1,mane:1,bw:.9,bh:.86}, pal:{hide:0x6e3a28,hideD:0x5a2c1e,snout:0x8a5a48,hoof:0x2e2822,tusk:0xd8402c,dark:0x141010,bristle:0x2a1a12,tip:0x5a2c1e,horn:0xd8402c}},
+  doe      :{n:'Mountain Doe',         hp:8,  drop:'Raw Meat',           run:12, temper:'shy', sc:.9,
+    spec:{tall:1,up:.62,lo:.58,bw:.62,bh:.66,hs:.36,sn:.22,ears:'long',tail:'white',len:1.1},
+    pal:{hide:0xa87850,hideD:0x8a6040,snout:0x5a4030,hoof:0x2a2420,dark:0x121010,tip:0xf2eee4,horn:0xe0d4b8}},
+  buck     :{n:'Mountain Buck',        hp:12, drop:'Raw Prime Meat',     run:12, temper:'shy', sc:1.0, n2:2,
+    spec:{tall:1,up:.64,lo:.60,bw:.66,bh:.70,hs:.38,sn:.22,ears:'long',tail:'white',horn:'antler',len:1.1},
+    pal:{hide:0x9a6a44,hideD:0x7a5234,snout:0x4a3428,hoof:0x2a2420,dark:0x121010,tip:0xf2eee4,horn:0xe6dcc4}},
+  goat     :{n:'Mountain Goat',        hp:10, drop:'Raw Meat',           run:9,  temper:'shy', sc:.8,
+    spec:{tall:1,up:.44,lo:.38,bw:.78,bh:.80,hs:.38,sn:.2,ears:'point',horn:'goat'},
+    pal:{hide:0xe8e2d4,hideD:0xc8c0b0,snout:0x9a8e80,hoof:0x3a3430,dark:0x121010,tip:0xe8e2d4,horn:0x5a5048}},
+  moose    :{n:'Tabantha Moose',       hp:30, drop:'Raw Prime Meat',     run:10, temper:'shy', sc:1.35, n2:2,
+    spec:{tall:1,up:.66,lo:.62,bw:.9,bh:.96,hs:.44,sn:.34,snoutBox:1,ears:'point',horn:'palm',hump:1,len:1.15},
+    pal:{hide:0x5a4030,hideD:0x46322a,snout:0x3a2a22,hoof:0x201a16,dark:0x0e0c0a,tip:0x46322a,horn:0xc8b894}},
+  honeyBear:{n:'Honeyvore Bear',       hp:40, drop:'Raw Prime Meat',     run:9,  temper:'shy', sc:1.25, n2:2,
+    spec:{up:.44,lo:.38,bw:1.12,bh:1.08,hs:.56,sn:.2,ears:'round',paw:1,legT:1.5,hump:1,belly:1},
+    pal:{hide:0x3a2618,hideD:0x2e1e14,snout:0xb08a60,hoof:0x1a1410,dark:0x0a0808,tip:0xd8b060}},
+  grizzBear:{n:'Grizzlemaw Bear',      hp:60, drop:'Raw Gourmet Meat',   run:10, temper:'aggr', dmg:14, aggroR:18, sc:1.45,
+    spec:{up:.46,lo:.40,bw:1.16,bh:1.1,hs:.58,sn:.22,ears:'round',paw:1,legT:1.6,hump:1,belly:1},
+    pal:{hide:0xe4e0d8,hideD:0xc4beb2,snout:0x6a5a4a,hoof:0x2a2420,dark:0x0a0808,tip:0x2a2622}},
+  rhino    :{n:'Great-Horned Rhinoceros',hp:60,drop:'Raw Gourmet Meat',  run:11, temper:'aggr', dmg:16, aggroR:16, sc:1.6,
+    spec:{up:.40,lo:.36,bw:1.2,bh:1.1,hs:.6,sn:.34,snoutBox:1,ears:'point',horn:'rhino',legT:1.7,len:1.2},
+    pal:{hide:0x7a746c,hideD:0x625c56,snout:0x6a645e,hoof:0x3a3632,dark:0x0a0808,tip:0x625c56,horn:0xd8ccb0}},
+  wolf     :{n:'Maraudo Wolf',         hp:14, drop:'Raw Meat',           run:13, temper:'night', dmg:5, aggroR:22, sc:.8,
+    spec:{up:.50,lo:.46,bw:.6,bh:.64,hs:.40,sn:.34,ears:'point',tail:'bushy',paw:1,len:1.1,tailBind:[-.3,0,0]},
+    pal:{hide:0x7a7470,hideD:0x5e5854,snout:0x9a948e,hoof:0x2a2826,dark:0x0a0808,tip:0xd8d4ce}},
+  coyote   :{n:'Wasteland Coyote',     hp:10, drop:'Raw Meat',           run:13, temper:'night', dmg:4, aggroR:18, sc:.7,
+    spec:{up:.50,lo:.46,bw:.56,bh:.6,hs:.38,sn:.34,ears:'long',tail:'bushy',paw:1,len:1.1,tailBind:[-.3,0,0]},
+    pal:{hide:0xc49a68,hideD:0xa47c50,snout:0xe0c8a4,hoof:0x3a3026,dark:0x0a0808,tip:0x4a3a2a}},
+  fox      :{n:'Hyrule Fox',           hp:4,  drop:'Raw Meat',           run:12, temper:'shy', sc:.5,
+    spec:{up:.40,lo:.36,bw:.56,bh:.56,hs:.40,sn:.36,ears:'long',tail:'bushy',paw:1,tailL:.3,tailBind:[-.2,0,0]},
+    pal:{hide:0xd06a2a,hideD:0xb45a22,snout:0xf0e6d8,hoof:0x201a16,dark:0x0a0808,tip:0xf4efe6}},
+  blupee   :{n:'Blupee',               hp:3,  drop:null,                 run:14, temper:'blupee', sc:.38,
+    spec:{up:.34,lo:.30,bw:.7,bh:.7,hs:.5,sn:.12,ears:'long',tail:'white',paw:1},
+    pal:{hide:0x5ad8ff,hideD:0x3ab8f0,snout:0xbaf0ff,hoof:0x9ae8ff,dark:0x0a2a4a,tip:0xeafcff}},
+  cucco    :{n:'Cucco',                hp:1e9,drop:null,                 run:7,  temper:'cucco', bird:true, sc:.34,
+    pal:{feather:0xf6f2ea,featherD:0xe0dace,beak:0xe8b030}},
+  heron    :{n:'Mountain Heron',       hp:2,  drop:'Raw Bird Thigh',     run:12, temper:'shy', bird:true, sc:.62,
+    pal:{feather:0x8a9aaa,featherD:0x6a7a8a,beak:0xe0c050}},
+  duck     :{n:'Bright-Chested Duck',  hp:1,  drop:'Raw Bird Thigh',     run:11, temper:'shy', bird:true, sc:.48,
+    pal:{feather:0x3a7a4a,featherD:0x8a5a3a,beak:0xe8a020}},
+  hawk     :{n:'Islander Hawk',        hp:3,  drop:'Raw Whole Bird',     run:14, temper:'shy', bird:true, sc:.66,
+    pal:{feather:0x6a4a30,featherD:0x4a3220,beak:0x2a2420}}
+};
+const BEAST_SPECS={};
+/* a cucco is a round white hen, not a soaring bird — built plain so it can waddle */
+let CUCCO_PARTS=null;
+function cuccoMesh(){
+  if(!CUCCO_PARTS){ const L=c=>new THREE.MeshPhongMaterial({color:c,flatShading:true,shininess:0});
+    CUCCO_PARTS={w:L(0xf6f2ea),r:L(0xd8302a),y:L(0xe8b030),k:new THREE.MeshBasicMaterial({color:0x101010}),
+      body:new THREE.SphereGeometry(.26,8,6),head:new THREE.SphereGeometry(.14,8,6),
+      cone:new THREE.ConeGeometry(.05,.12,5),leg:new THREE.CylinderGeometry(.02,.02,.18,4),
+      comb:new THREE.BoxGeometry(.03,.1,.14),eye:new THREE.SphereGeometry(.025,5,4),tail:new THREE.ConeGeometry(.12,.26,5)}; }
+  const Q=CUCCO_PARTS, g=new THREE.Group(), m=(geo,mat,x,y,z,rx)=>{const o=new THREE.Mesh(geo,mat);
+    o.position.set(x,y,z); if(rx) o.rotation.x=rx; o.castShadow=true; g.add(o); return o;};
+  const b=m(Q.body,Q.w,0,.36,0); b.scale.set(1,.9,1.15);
+  m(Q.head,Q.w,0,.62,.16); m(Q.comb,Q.r,0,.77,.16); m(Q.cone,Q.y,0,.6,.32,Math.PI/2);
+  m(Q.cone,Q.r,0,.5,.24,Math.PI); m(Q.eye,Q.k,.1,.65,.24); m(Q.eye,Q.k,-.1,.65,.24);
+  m(Q.tail,Q.w,0,.52,-.26,-.8); m(Q.leg,Q.y,.08,.09,0); m(Q.leg,Q.y,-.08,.09,0);
+  g.scale.setScalar(1.2); return g;
+}
+function addBeast(kind,x,z){
+  const T=SPECIES[kind]; if(!T) return null;
+  if(!T.bird&&!T.spec){ addCritter(kind,x,z); const c=critters[critters.length-1]; c.T=T; c._lastHp=c.hp; c.home=new THREE.Vector3(x,0,z); return c; }
+  const g=new THREE.Group(); let rig;
+  if(kind==='cucco'){ g.add(cuccoMesh()); g.position.set(x,groundAt(x,z),z); scene.add(g);
+    const C={kind,T,g,pos:g.position,hp:T.hp,flee:0,hunt:0,cd:0,hits:0,yaw:rnd()*TAU,wt:0,alive:true,
+      home:new THREE.Vector3(x,0,z),rig:null,anim:null,drop:null,bob:rnd()*TAU,_lastHp:T.hp};
+    critters.push(C); return C; }
+  if(T.bird){ if(!BIRDSPEC) BIRDSPEC=birdSpec(); rig=buildRig(BIRDSPEC,T.pal,T.sc); }
+  else { if(!BEAST_SPECS[kind]) BEAST_SPECS[kind]=beastSpec(T.spec); rig=buildRig(BEAST_SPECS[kind],T.pal,T.sc); }
+  if(kind==='blupee') rig.root.traverse(m=>{ if(m.isMesh&&m.material.emissive){
+    m.material=m.material.clone(); m.material.emissive=new THREE.Color(0x2a8ac8); } });
+  g.add(rig.root); g.position.set(x,groundAt(x,z),z); scene.add(g);
+  const C={kind,T,g,pos:g.position,hp:T.hp,flee:0,hunt:0,cd:0,hits:0,yaw:rnd()*TAU,wt:0,alive:true,
+    home:new THREE.Vector3(x,0,z),rig,anim:makeAnim(rig,T.bird?'birdSoar':'qIdle'),drop:T.drop};
+  C._lastHp=C.hp; critters.push(C); return C;
+}
+/* the old spawns become named species too */
+for(const C of critters) if(!C.T){ C.T=SPECIES[C.kind]; C._lastHp=C.hp; }
+
+const HUNT_STATS={placed:{}};
+(function populateWildlife(){
+  const spot=(R,pad)=>{
+    for(let t=0;t<40;t++){
+      const a=rnd()*TAU, r=Math.sqrt(rnd())*R.r*(pad||1);
+      const x=R.x+Math.cos(a)*r, z=R.z+Math.sin(a)*r;
+      if(groundAt(x,z)>waterAt(x,z)+2 && slopeAt(x,z)<0.9) return [x,z];
+    }
+    return null;
+  };
+  const shore=(R)=>{            /* water birds want the edge of the water */
+    for(let t=0;t<80;t++){
+      const a=rnd()*TAU, r=Math.sqrt(rnd())*R.r;
+      const x=R.x+Math.cos(a)*r, z=R.z+Math.sin(a)*r, h=groundAt(x,z)-waterAt(x,z);
+      if(h>.2&&h<2.5) return [x,z];
+    }
+    return spot(R);
+  };
+  const put=(kind,s,n)=>{ if(!s) return; for(let i=0;i<(n||1);i++){
+    const c=addBeast(kind,s[0]+(i?(rnd()-.5)*10:0),s[1]+(i?(rnd()-.5)*10:0));
+    if(c) HUNT_STATS.placed[kind]=(HUNT_STATS.placed[kind]||0)+1; } };
+  const table=[
+    ['doe',      ['central','ridge','duel','lanayru','faron','hylia','woodland','akkala'],4,1],
+    ['buck',     ['central','ridge','duel','lanayru','faron','woodland','akkala'],2,1],
+    ['goat',     ['hebra','tabantha','eldin','gerudo','akkala'],4,1],
+    ['moose',    ['hebra','tabantha'],3,1],
+    ['honeyBear',['woodland','faron','lanayru','akkala'],2,1],
+    ['grizzBear',['hebra','tabantha','woodland'],2,1],
+    ['rhino',    ['gerudo','faron'],2,1],
+    ['wolf',     ['central','ridge','duel','woodland','hebra'],1,3],
+    ['coyote',   ['wasteland','gerudo'],2,2],
+    ['fox',      ['central','ridge','hebra','tabantha','woodland','akkala','lanayru'],1,1],
+    ['redBoar',  ['central','duel','faron','lanayru'],3,1],
+    ['blupee',   ['woodland','ridge','faron','akkala','hebra'],1,1],
+    ['cucco',    ['kakariko','hateno','lurelin'],1,5],
+    ['hawk',     ['tabantha','gerudo','eldin'],2,1]];
+  for(const [kind,regs,per,pack] of table)
+    for(const k of regs){ const R=REGIONS[k]; if(!R) continue;
+      for(let i=0;i<per;i++) put(kind, kind==='cucco'?spot({x:R.x,z:R.z,r:Math.min(R.r,120)}):spot(R), pack); }
+  for(const k of ['hylia','faron','lanayru','zora'])
+    for(let i=0;i<3;i++){ put('heron',shore(REGIONS[k])); if(k!=='faron') put('duck',shore(REGIONS[k])); }
+  /* the plateau gets a taste of it too */
+  const pl=(r)=>{ for(let t=0;t<60;t++){ const a=rnd()*TAU, d=rnd()*r;
+      const x=LM.forest.x+Math.cos(a)*d, z=LM.forest.z+Math.sin(a)*d;
+      if(onPlateau(x,z)&&groundAt(x,z)>WATER+2) return [x,z]; } return null; };
+  put('doe',pl(260)); put('doe',pl(260)); put('buck',pl(260)); put('fox',pl(300)); put('blupee',pl(200));
+})();
+
+killCritter=function(C){
+  C.alive=false; C.g.visible=false; sfx('kill');
+  const n=C.T&&C.T.n2?C.T.n2:1;
+  if(C.drop) for(let i=0;i<n;i++) spawnPickup(C.pos.x+i*.8,C.pos.z,{m:C.drop});
+  if(C.T&&C.T.n&&C.kind!=='bird'&&C.kind!=='boar') toast(C.T.n+' hunted'+(C.drop?' — '+C.drop+(n>1?' ×'+n:''):''));
+  HUNT_STATS[C.kind]=(HUNT_STATS[C.kind]||0)+1;
+};
+
+/* Cuccos remember. Hit one enough and the flock comes for you. */
+const CUCCO_SWARM=[];
+function cuccoRevenge(C){
+  toast('The Cuccos are furious!','bad');
+  for(let i=0;i<10;i++){
+    const a=i/10*TAU, b=addBeast('cucco',P.pos.x+Math.cos(a)*30,P.pos.z+Math.sin(a)*30);
+    if(!b) continue; b.swarm=16+rnd()*4; b.pos.y=P.pos.y+8+rnd()*6; CUCCO_SWARM.push(b);
+  }
+}
+
+updateCritters=function(dt){
+  const night=isNight();
+  for(const C of critters){
+    if(!C.alive) continue;
+    const T=C.T||SPECIES[C.kind]; C.T=T;
+    const d=C.pos.distanceTo(P.pos);
+    /* far animals stand still and are hidden — the cheapest wildlife is the kind you can't see */
+    if(d>260&&!C.swarm){ if(C.g.visible) C.g.visible=false; continue; }
+    if(!C.g.visible) C.g.visible=true;
+    C.wt-=dt; C.cd=Math.max(0,C.cd-dt);
+    /* a hit registers as flee on the old code path; work out what this animal does about it */
+    if(C._lastHp===undefined) C._lastHp=C.hp;
+    if(C.hp<C._lastHp){
+      const lost=C._lastHp-C.hp;
+      if(C.kind==='blupee'){ const v=[1,5,20,50,100][Math.floor(rnd()*5)];
+        P.rupees+=v; toast('+'+v+' rupees','good'); sfx('pickup'); C.hits++; C.hp=T.hp;
+        if(C.hits>=3){ C.alive=false; C.g.visible=false; continue; } }
+      if(C.kind==='cucco'&&!C.swarm){ C.hits++; C.hp=T.hp; if(C.hits===5) cuccoRevenge(C); }
+      if(T.temper==='aggr'||T.temper==='night') { C.hunt=10; C.flee=0; }
+      void lost;
+    }
+    C._lastHp=C.hp;
+    let aggr=T.temper==='aggr'||(T.temper==='night'&&night);
+    if(C.swarm){ C.swarm-=dt; if(C.swarm<=0){ C.alive=false; scene.remove(C.g); continue; } }
+    if(aggr&&d<(T.aggroR||14)&&!P.dead&&!P.inShrine) C.hunt=Math.max(C.hunt,4);
+    if(!aggr&&!C.swarm&&d<(P.crouch?6:14)) C.flee=Math.max(C.flee,3);
+    if(C.hunt>0){ C.flee=0; C.hunt-=dt; if(d>60) C.hunt=0; }
+    C.flee=Math.max(0,C.flee-dt);
+    const gy=groundAt(C.pos.x,C.pos.z);
+    if(C.swarm){
+      const dir=P.pos.clone().add(new THREE.Vector3(0,1.2,0)).sub(C.pos); const L=dir.length(); dir.normalize();
+      C.pos.addScaledVector(dir,Math.min(L,13*dt)); C.yaw=Math.atan2(dir.x,dir.z);
+      if(L<1.4&&C.cd<=0){ damage(2,'cucco',{ignoreArmour:true}); C.cd=.9; }
+    } else if(C.hunt>0){
+      const dir=P.pos.clone().sub(C.pos).setY(0); const L=dir.length(); dir.normalize();
+      const reach=1.2+(T.sc||1)*1.1;
+      if(L>reach) C.pos.addScaledVector(dir,T.run*dt*(L<8?.8:1));
+      C.yaw=Math.atan2(dir.x,dir.z);
+      if(L<reach+.4&&C.cd<=0){ damage(T.dmg||4,C.kind); C.cd=1.5;
+        if(typeof P.vel==='object'&&P.vel) P.vel.addScaledVector(dir,6); }
+    } else if(C.flee>0){
+      const dir=C.pos.clone().sub(P.pos).setY(0).normalize();
+      C.pos.addScaledVector(dir,T.run*dt); C.yaw=Math.atan2(dir.x,dir.z);
+    } else if(C.wt<=0){ C.wt=2+rnd()*4; C.yaw=rnd()*TAU;
+      if(C.home&&Math.hypot(C.pos.x-C.home.x,C.pos.z-C.home.z)>40) C.yaw=Math.atan2(C.home.x-C.pos.x,C.home.z-C.pos.z);
+    } else { C.pos.x+=Math.sin(C.yaw)*1.2*dt; C.pos.z+=Math.cos(C.yaw)*1.2*dt; }
+    if(C.swarm) C.pos.y=Math.max(C.pos.y,groundAt(C.pos.x,C.pos.z)+.4);
+    else if(T.bird&&C.flee>0&&C.kind!=='cucco') C.pos.y=lerp(C.pos.y,gy+8,1-Math.pow(.02,dt));
+    else C.pos.y=Math.max(gy,T.bird?WATER:gy);
+    if(!T.bird&&C.pos.y<waterAt(C.pos.x,C.pos.z)-.6){ C.yaw+=Math.PI; C.pos.y=waterAt(C.pos.x,C.pos.z)-.6; }
+    C.g.rotation.y=C.yaw;
+    if(d>120){ continue; }                     /* skip the rig work when it's only a few pixels */
+    if(!C.anim){ C.bob+=dt*(C.flee>0||C.swarm?22:6); const k=C.g.children[0];
+      if(k){ k.position.y=Math.abs(Math.sin(C.bob))*(C.flee>0||C.swarm?.12:.03); k.rotation.z=Math.sin(C.bob)*.12; }
+      continue; }
+    const mvx=C.pos.x-(C._px===undefined?C.pos.x:C._px), mvz=C.pos.z-(C._pz===undefined?C.pos.z:C._pz);
+    C._px=C.pos.x; C._pz=C.pos.z;
+    const csp=dt>0?Math.hypot(mvx,mvz)/dt:0;
+    C.spdSm=(C.spdSm||0)*.7+csp*.3;
+    if(!T.bird){
+      const fast=C.flee>0||C.hunt>0;
+      playClip(C.anim, fast?(C.spdSm>7?'qGallop':'qTrot'):(C.spdSm>.35?'qWalk':(C.wt>1.5?'qGraze':'qIdle')),.22);
+      C.anim.spd=fast?Math.max(.8,C.spdSm/9):Math.max(.6,C.spdSm/2.4);
+    } else {
+      const flap=C.flee>0||C.swarm;
+      playClip(C.anim, flap?'birdFlap':'birdSoar',.18);
+      C.anim.spd=flap?1.4:1;
+    }
+    stepAnim(C.anim,dt);
+  }
+};
+console.log('wildlife: '+Object.keys(HUNT_STATS.placed).map(k=>k+' '+HUNT_STATS.placed[k]).join(', '));
+</script>
