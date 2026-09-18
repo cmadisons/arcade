@@ -23572,3 +23572,283 @@ function dragonWhere(){ return DRAGONS.map(G=>{ let best='',bd=1e9;
   return G.n+' — over '+best; }); }
 console.log('dragons aloft: '+DRAGONS.map(G=>G.n).join(', '));
 </script>
+<script>
+"use strict";
+/* ================= BATCH 115 — Roadmap 2: the people of Hyrule, by name ================= */
+/* The named cast of each settlement, stood where they live, each with their own line.
+   Settlements are region keys; [dx,dz] is an offset from its centre in metres. */
+const CAST=[
+  /* Kakariko Village */
+  ['Impa','kakariko',[0,-40],'villager',{cloth:0xa83a3a,hair:0xe8e4dc,scale:.8},'You have come at last. Sit — there is much you need to remember, and I am old enough to be patient.'],
+  ['Paya','kakariko',[6,-36],'villager',{cloth:0xd8d0c0,hair:0xe8e4dc},'Oh! I— welcome to Kakariko. Grandmother has been expecting you. I was only sweeping, I promise.'],
+  ['Dorian','kakariko',[-30,10],'villager',{cloth:0x2a2a3a,hair:0x2a2a2a},'I keep watch over Lady Impa. That is all you need to know about me.'],
+  ['Claree','kakariko',[24,30],'villager',{cloth:0x6a4a8a},'Enchanted armour, fit for a hero. Well — fit for anyone with the rupees.'],
+  ['Olkin','kakariko',[-20,40],'villager',{cloth:0x5a7a3a},'The Swift Carrots are coming along nicely. The trick is talking to them.'],
+  ['Brigo','kakariko',[80,-60],'villager',{cloth:0x7a6a4a},'I guard this bridge. Some day a monster will try it, and I will be ready. Probably.'],
+  /* Hateno Village and its lab */
+  ['Reede','hateno',[10,10],'villager',{cloth:0x5a6a8a},'I am the mayor here. We keep to ourselves, mostly, and grow our crops.'],
+  ['Uma','hateno',[-30,20],'villager',{cloth:0x8a7a4a},'This old house on the hill has stood empty for years. Someone ought to live in it.'],
+  ['Pruce','hateno',[20,-30],'villager',{cloth:0x6a8a4a},'Our crops grow fine without fertiliser. Well — they grow. Fine is a big word.'],
+  ['Prissen','hateno',[-40,-10],'villager',{cloth:0x9a5a6a},'I dye things. Clothes, mostly. Bring me your armour and I will make it sing.'],
+  ['Sayge','hateno',[30,40],'villager',{cloth:0x7a5a3a},'Old Man Sayge, they call me. I have never met another Sayge, so I suppose it fits.'],
+  ['Garini','hateno',[-15,-45],'villager',{cloth:0x4a6a5a},'The Hateno cheese is the best in Hyrule. I will not be taking questions on that.'],
+  ['Kyra','hateno',[140,120],'villager',{cloth:0xb04a4a},'Thirty more squats! Then I walk up the hill. Then thirty more.'],
+  ['Robbie','akkala',[180,-420],'villager',{cloth:0x3a3a4a,hair:0xe8e4dc},'Who goes there — a Sheikah Slate! Then you are the one. Bring me Ancient parts and we shall work wonders.'],
+  ['Jerrin','akkala',[190,-410],'villager',{cloth:0x7a5a8a,hair:0x3a2a2a},'Robbie forgets to eat when he is working. So — always.'],
+  /* Tarrey Town, which Hudson is building */
+  ['Rhondson','akkala',[-460,120],'gerudo',{cloth:0xd8b878,skin:0xd8a878,hair:0x8a2a2a},'Hudson and I are building a town. A real one. Every name ends in -son, that is the rule.'],
+  ['Greyson','akkala',[-440,140],'goron',{scale:1.4,skin:0xb06a4a,cloth:0x8a4a2a},'I came for the rocks, I stayed for the... well, also the rocks, goro.'],
+  ['Pelison','akkala',[-480,100],'zora',{skin:0x8fd0e8,cloth:0x9ab8c4},'A Zora in the mountains! My father thinks I have lost my fins.'],
+  ['Kapson','akkala',[-470,150],'villager',{cloth:0x8a6a3a},'Tarrey Town will have the finest shop in Akkala. The only shop, so far.'],
+  ['Granté','akkala',[-450,90],'villager',{cloth:0x2a2a3a},'I collect armour. Rare armour. You would be amazed what people leave lying about.'],
+  ['Fyson','akkala',[-490,130],'villager',{cloth:0x4a7a4a},'I was going to be a Goron. It did not work out. I sell bows instead.'],
+  ['Kilton','akkala',[-640,-40],'villager',{cloth:0x2a1a2a,skin:0xd8d8e8},'Monsters! I adore them. Bring me their parts and I will pay in mon. Mon, yes. Not rupees.'],
+  /* Rito Village */
+  ['Kaneli','rito',[0,-10],'rito',{cloth:0x9a8a6a,scale:1.1},'The Divine Beast circles overhead and our warriors cannot fly. An elder can only watch for so long.'],
+  ['Teba','rito',[14,-20],'rito',{cloth:0xe8e4dc},'You want to face Vah Medoh? Prove you can keep up with me at the Flight Range first.'],
+  ['Saki','rito',[20,-24],'rito',{cloth:0xd8a0a0},'Teba will not say he is worried. I will say it for him.'],
+  ['Tulin','rito',[18,-28],'rito',{cloth:0xf0e8d0,scale:.7},'Dad says I am too young to fly with him. I have been practising anyway!'],
+  ['Harth','rito',[-20,40],'rito',{cloth:0x5a6a8a},'I run the Flight Range. Mind the updrafts — or better, use them.'],
+  ['Kheel','rito',[26,10],'rito',{cloth:0xa87a5a},'The Rito sing to keep their spirits up. I sing because I like it.'],
+  ['Kotts','rito',[-10,26],'rito',{cloth:0x6a8a5a},'I am writing a poem about the wind. It keeps changing direction.'],
+  ['Genli','rito',[-26,-10],'rito',{cloth:0x8a4a4a},'Flint and Rock Salt, fresh from the frozen lakes. Good for cooking, better for trade.'],
+  ['Laissa','rito',[6,34],'rito',{cloth:0xd8b8d8},'My sisters and I sing the old songs. There is one about a hero, if you want to hear it.'],
+  ['Cecili','rito',[-32,-28],'rito',{cloth:0x5a8aa8},'Welcome to the Swallow’s Roost. Bring your own feathers.'],
+  ['Notts','rito',[30,-40],'rito',{cloth:0x8a7a5a},'Hebra is cold this time of year. Hebra is cold every time of year.'],
+  ['Molli','rito',[-6,-44],'rito',{cloth:0xc8a080},'Please be careful on the stairs. People forget not everyone has wings.'],
+  /* Zora’s Domain */
+  ['King Dorephan','zora',[0,0],'zora',{skin:0x6a90b8,cloth:0x9ab8c4,scale:2.6},'Welcome, Link. My daughter spoke of you often. We have not forgotten.'],
+  ['Prince Sidon','zora',[10,14],'zora',{skin:0xc84a4a,cloth:0xe8e4dc,scale:1.5},'You are Link! The very same! Come — my people need a Hylian champion, and I have a feeling about you.'],
+  ['Muzu','zora',[-10,12],'zora',{skin:0x7a9aa8,cloth:0x6a8a9a,scale:.9},'A Hylian, here? I will speak plainly: I have not forgiven your kind, and I have not forgotten Lady Mipha.'],
+  ['Bazz','zora',[24,-10],'zora',{skin:0x6aa8c8,cloth:0x4a6a8a},'Captain of the guard. Sidon trusts you, so I will too — for now.'],
+  ['Gaddison','zora',[-24,-12],'zora',{skin:0xa8d8e8,cloth:0x8ab8c8},'I guard the bridge. We guard it together, if a Lizalfos comes.'],
+  ['Rivan','zora',[30,20],'zora',{skin:0x5a98b8,cloth:0x6a7a8a},'The Lynel on Ploymus Mountain is not a rumour. I wish it were.'],
+  ['Kodah','zora',[-34,30],'zora',{skin:0x8fd0e8,cloth:0xb8c8d8},'I polish the stone statues every morning. Nobody asks me to. I just like them bright.'],
+  ['Dunma','zora',[40,-30],'zora',{skin:0x6a88a8,cloth:0x5a6a7a},'I have lived a very long time. Longer than your grandmother, probably.'],
+  ['Seggin','zora',[-40,-30],'zora',{skin:0x9ac8d8,cloth:0x8a9aaa},'The ice-cold fish fillets at the Coral Reef are the best in the Domain.'],
+  ['Kayden','zora',[16,-40],'zora',{skin:0x7ab8d8,cloth:0x9ab8c4},'I will marry one day. First I must be brave enough to ask.'],
+  /* Goron City */
+  ['Yunobo','eldin',[140,-1720],'goron',{scale:1.3,skin:0xb06a4a,cloth:0x6a4a8a},'I-I am a descendant of Daruk! Not that I am brave or anything. But I am, goro.'],
+  ['Bludo','eldin',[160,-1745],'goron',{scale:1.9,skin:0xa06040,cloth:0x6a3a2a},'Name is Bludo — Boss Bludo! My back is killing me, and Rudania will not settle down.'],
+  ['Gonguron','eldin',[110,-1700],'goron',{scale:1.5,skin:0xb87050,cloth:0x8a5a3a},'Rock Roast is the best meal in Hyrule. Rock Roast is the only meal in Hyrule, brother.'],
+  /* Gerudo Town and the desert */
+  ['Buliara','gerudoTown',[0,-30],'gerudo',{cloth:0x8a2a2a,skin:0xc8906a,hair:0x8a2a2a,scale:1.2},'Lady Riju is my charge. Anyone who troubles her answers to me.'],
+  ['Rotana','gerudoTown',[20,26],'gerudo',{cloth:0xd8b878,skin:0xd8a878,hair:0xa83a2a},'Do you know what the girls here want? Nobody does. That is the secret of the town.'],
+  ['Calyban','wasteland',[500,-600],'gerudo',{cloth:0xc89a58,skin:0xd8a878,hair:0x6a2a2a},'Kara Kara Bazaar has water, shade and gossip. Pay for one and the rest are free.'],
+  ['Ashai','gerudoTown',[-30,20],'gerudo',{cloth:0x9a6a3a,skin:0xc8906a,hair:0x8a2a2a},'The Yiga Clan have made their hideout in the Karusa Valley. Nobody who goes in comes back out.'],
+  /* the Korok Forest */
+  ['Oaki','korok',[10,10],'korok',{scale:.7,cloth:0x4f8442},'Yahaha! You found me! No wait — you found Oaki. It is different.'],
+  ['Pepp','korok',[-12,16],'korok',{scale:.7,cloth:0x5a9a4a},'The Great Deku Tree is very old. Older than old. Old-old.'],
+  ['Natie','korok',[18,-14],'korok',{scale:.7,cloth:0x6a8a3a},'I grew a flower yesterday. Today I will grow another one.'],
+  ['Drak','korok',[-20,-10],'korok',{scale:.7,cloth:0x3a6a3a},'Mister Hylian, can you carry these seeds for me? Just a few. Maybe nine hundred.'],
+  ['Hollo','korok',[4,-24],'korok',{scale:.7,cloth:0x7a9a3a},'Bring me a Korok Seed and watch what happens! Nothing happens. But it is fun.'],
+  /* the road */
+  ['Pondo','hebra',[400,-500],'villager',{cloth:0x7a5a3a,scale:1.2},'Snowball bowling! Roll one down the lane, knock my pins over, win a prize. Easy.'],
+  ['Magda','tabantha',[240,180],'villager',{cloth:0x8a6a5a},'My cuccos keep running away. Seven of them. Have you seen seven cuccos?'],
+  ['Tasho','central',[-200,300],'villager',{cloth:0x6a4a3a},'The Horseback Archery range is open. Loose an arrow at every target before the horse gets bored.'],
+  ['Pyle','duel',[300,-200],'villager',{cloth:0x5a5a4a},'I run the gallery. Stand behind the line, hit the targets, and try not to hit me.'],
+  ['Mayro','ridge',[100,-150],'villager',{cloth:0x7a6a4a},'The Ridge is windy. Very windy. Good for paragliding, bad for hats.'],
+  ['Hino','hylia',[-300,-200],'villager',{cloth:0x6a7a5a},'I saw a dragon over the lake this morning. A big one. Green. You believe me, right?'],
+  ['Mils','faron',[200,300],'villager',{cloth:0x5a7a3a},'Faron is hot and wet and beautiful. Mostly hot.'],
+  ['Konba','woodland',[-300,200],'villager',{cloth:0x4a5a3a},'The Lost Woods take anyone who does not follow the flames. I followed them. I still got a bit lost.'],
+  ['Nazbi','lanayru',[200,-200],'villager',{cloth:0x6a6a8a},'The Great Spring of Wisdom is up on Mount Lanayru. Something lives there that is not quite a Zora.'],
+  ['Lorn','lanayru',[-300,300],'villager',{cloth:0x7a6a8a},'I have been walking this road for ten years. I keep meaning to find out where it goes.']
+];
+const CAST_NPCS=[];
+(function castHyrule(){
+  let n=0;
+  for(const [name,where,off,kind,look,line] of CAST){
+    const R=REGIONS[where]; if(!R) continue;
+    let x=R.x+off[0], z=R.z+off[1];
+    /* step off water and cliffs if the offset landed badly */
+    for(let t=0;t<30&&(groundAt(x,z)<waterAt(x,z)+.5||slopeAt(x,z)>1.1);t++){ x+=(rnd()-.5)*16; z+=(rnd()-.5)*16; }
+    const N=makeNPC(Object.assign({x,z,kind,name},look));
+    N.lines=[line].concat(NPC_LINES[kind]||NPC_LINES.villager);
+    N.trait={t:'named',line};
+    N.age=kind==='korok'?100:20+Math.floor(rnd()*50);
+    N.cast=true;
+    const a=rnd()*TAU;
+    N.spotWork=[x+Math.cos(a)*10,z+Math.sin(a)*10]; N.spotSocial=[x+Math.cos(a+2)*8,z+Math.sin(a+2)*8];
+    N.spotBed=[x,z]; N.wakeAt=6+rnd()*1.5; N.bedAt=20+rnd()*2;
+    CAST_NPCS.push(N); n++;
+  }
+  /* the stall-holders with a shop sign for a name get their real names in the dialogue header */
+  const uniq=new Set(npcs.map(N=>N.name));
+  console.log('named cast placed: '+n+' | unique names in Hyrule: '+uniq.size+' of '+npcs.length+' people');
+})();
+</script>
+<script>
+"use strict";
+/* ================= BATCH 116 — Roadmap 2: mini-games with real targets and real pins ================= */
+/* The ring courses stay for surfing and the sand seals. Archery is now shot at
+   targets that score, and Pondo's snowbowling has pins that fall over. */
+const TGAMES=[];
+const TGAME_DEF=[
+  {id:'gallery', n:'Shooting Gallery',     host:'Pyle',  where:'duel',  off:[300,-200], count:10, time:60, prize:[[20,300],[14,100],[8,30]],
+   blurb:'Ten targets downrange. Two points for the bullseye, one for the board. Twenty to win the big prize.'},
+  {id:'horse',   n:'Horseback Archery',    host:'Tasho', where:'central',off:[-200,300], count:14, time:90, prize:[[26,500],[16,150],[8,40]], horse:true,
+   blurb:'Targets line the track. Points count double from the saddle — so get on a horse.'},
+  {id:'flight',  n:'Flight Range Targets', host:'Harth', where:'rito',  off:[-20,40],  count:8,  time:120, prize:[[16,400],[10,120],[5,30]], air:true,
+   blurb:'Balloon targets in the canyon updrafts. Points count double while gliding or in the air.'}
+];
+function targetMesh(){
+  const g=new THREE.Group();
+  const cols=[0xf4f0e6,0xd83a2a,0xf4f0e6,0xd83a2a,0xf2c230];
+  for(let i=0;i<5;i++){ const m=new THREE.Mesh(new THREE.CylinderGeometry(1.1-i*.22,1.1-i*.22,.12+i*.02,18),
+    new THREE.MeshLambertMaterial({color:cols[i]})); m.rotation.x=Math.PI/2; m.position.z=i*.02; g.add(m); }
+  const post=new THREE.Mesh(new THREE.CylinderGeometry(.09,.09,2.6,5),MAT.wood); post.position.y=-2.2; g.add(post);
+  g.traverse(o=>{ if(o.isMesh) o.castShadow=true; });
+  return g;
+}
+(function buildTargetGames(){
+  for(const D of TGAME_DEF){
+    const R=REGIONS[D.where]; if(!R) continue;
+    const hx=R.x+D.off[0], hz=R.z+D.off[1];
+    const g=new THREE.Group(); world.add(g);
+    const targets=[];
+    for(let i=0;i<D.count;i++){
+      let x,z,y;
+      if(D.horse){ const a=i/D.count*TAU; x=hx+Math.cos(a)*55+Math.cos(a)*((i%2)?9:-9); z=hz+Math.sin(a)*55+Math.sin(a)*((i%2)?9:-9); y=groundAt(x,z)+2.8; }
+      else if(D.air){ const a=i/D.count*TAU; x=hx+Math.cos(a)*40; z=hz+Math.sin(a)*40; y=groundAt(x,z)+14+(i%3)*6; }
+      else { x=hx+(i%5-2)*6; z=hz-26-Math.floor(i/5)*14; y=groundAt(x,z)+2.8; }
+      const m=targetMesh(); m.position.set(x,y,z); m.lookAt(hx,y,hz);
+      if(D.air){ m.children[5].visible=false;
+        const bal=new THREE.Mesh(new THREE.SphereGeometry(.9,10,8),new THREE.MeshLambertMaterial({color:0xd84a4a})); bal.position.y=1.9; m.add(bal); }
+      g.add(m); targets.push({m,x,y,z,hit:false,base:y,ph:rnd()*TAU});
+    }
+    const M={G:{id:D.id,n:D.n,time:D.time,blurb:D.blurb},D,targets,g,running:false,t:0,score:0,best:0,x:hx,z:hz,tgame:true};
+    TGAMES.push(M);
+    IA({kind:'minigame',mg:M,x:hx,z:hz,y:groundAt(hx,hz)+1,r:6,label:D.n});
+  }
+})();
+function startTargetGame(M){
+  if(M.running){ toast('Already running'); return; }
+  M.running=true; M.t=M.D.time; M.score=0;
+  for(const T of M.targets){ T.hit=false; T.m.visible=true; }
+  cut(M.D.host,M.D.blurb,{t:3}); toast(M.D.n+' — '+M.D.time+' seconds','good'); sfx('click');
+}
+function endTargetGame(M){
+  M.running=false;
+  const S=M.score; M.best=Math.max(M.best,S);
+  P.mgBest=P.mgBest||{}; P.mgBest[M.D.id]=Math.max(P.mgBest[M.D.id]||0,S);
+  let won=0; for(const [need,r] of M.D.prize) if(S>=need){ won=r; break; }
+  if(won){ P.rupees+=won; P.minigamesWon=P.minigamesWon||{}; if(won===M.D.prize[0][1]) P.minigamesWon[M.D.id]=1;
+    toast(M.D.n+': '+S+' points — +'+won+' rupees','good'); sfx('orb'); }
+  else toast(M.D.n+': '+S+' points. '+M.D.host+': “Try again?”');
+  updateGear();
+}
+function scoreTarget(M,T,d){
+  let pts=d<.45?2:1;
+  if(M.D.horse&&P.mount) pts*=2;
+  if(M.D.air&&(P.gliding||!P.onGround)) pts*=2;
+  M.score+=pts; T.hit=true; T.m.visible=false; sfx('pickup');
+  toast((pts>=2?'Bullseye! ':'')+'+'+pts+' · '+M.score+' points');
+}
+const _tv=new THREE.Vector3();
+{ const _ua=updateArrows;
+  updateArrows=function(dt){
+    for(const M of TGAMES){ if(!M.running) continue;
+      for(let i=arrows.length-1;i>=0;i--){ const A=arrows[i], p=A.m.position;
+        for(const T of M.targets){ if(T.hit) continue;
+          T.m.getWorldPosition(_tv); const d=_tv.distanceTo(p);
+          if(d<1.25){ scoreTarget(M,T,d); scene.remove(A.m); arrows.splice(i,1); break; } } } }
+    return _ua(dt);
+  };
+}
+/* ---- Pondo's snowbowling: a lane, ten pins, one ball ---- */
+const BOWL={pins:[],ball:null,rolling:false,t:0,lane:null,running:false};
+(function buildBowling(){
+  const R=REGIONS.hebra; if(!R) return;
+  const pondo=CAST_NPCS.find(N=>N.name==='Pondo');
+  const sx=pondo?pondo.pos.x+6:R.x+400, sz=pondo?pondo.pos.z:R.z-500;
+  /* the lane runs downhill if there is a downhill to be had */
+  let best=0,bestDrop=-1e9;
+  for(let a=0;a<TAU;a+=TAU/16){ const d=groundAt(sx,sz)-groundAt(sx+Math.sin(a)*40,sz+Math.cos(a)*40); if(d>bestDrop){bestDrop=d;best=a;} }
+  const dir=new THREE.Vector3(Math.sin(best),0,Math.cos(best));
+  BOWL.lane={x:sx,z:sz,dir};
+  const pinG=new THREE.CylinderGeometry(.18,.28,1.3,8), pinM=new THREE.MeshLambertMaterial({color:0xf4f0e8});
+  const band=new THREE.MeshLambertMaterial({color:0xc83a2a});
+  const side=new THREE.Vector3(dir.z,0,-dir.x);
+  let k=0;
+  for(let row=0;row<4;row++) for(let j=0;j<=row;j++){
+    const along=34+row*1.1, across=(j-row/2)*1.1;
+    const x=sx+dir.x*along+side.x*across, z=sz+dir.z*along+side.z*across;
+    const g=new THREE.Group(); const m=new THREE.Mesh(pinG,pinM); m.position.y=.65; g.add(m);
+    const b=new THREE.Mesh(new THREE.CylinderGeometry(.2,.2,.1,8),band); b.position.y=1.0; g.add(b);
+    g.position.set(x,groundAt(x,z),z); g.traverse(o=>{ if(o.isMesh) o.castShadow=true; }); world.add(g);
+    BOWL.pins.push({g,x,z,hx:x,hz:z,down:false,v:new THREE.Vector3(),tilt:0,ax:new THREE.Vector3()}); k++;
+  }
+  const ball=new THREE.Mesh(new THREE.SphereGeometry(.9,12,9),new THREE.MeshLambertMaterial({color:0xf8fbff}));
+  ball.castShadow=true; ball.visible=false; world.add(ball); BOWL.ball={m:ball,v:new THREE.Vector3()};
+  const M={G:{id:'bowl',n:'Snowbowling',time:12,blurb:'Roll it straight down the lane. Knock all ten over for a strike!'},running:false,t:0,x:sx,z:sz,bowl:true};
+  BOWL.M=M;
+  IA({kind:'minigame',mg:M,x:sx,z:sz,y:groundAt(sx,sz)+1,r:6,label:'Snowbowling'});
+  /* the old ring version of snowbowling retires */
+  const old=minigames.findIndex(m=>m.G.id==='bowl');
+  if(old>=0){ const O=minigames[old]; O.g.visible=false; minigames.splice(old,1);
+    const ia=interactables.findIndex(it=>it.mg===O); if(ia>=0) interactables.splice(ia,1); }
+})();
+function startBowling(M){
+  if(M.running){ toast('The ball is rolling'); return; }
+  if(P.rupees<20){ toast('Pondo: “Twenty rupees a roll!”','bad'); return; }
+  P.rupees-=20; updateGear();
+  for(const p of BOWL.pins){ p.down=false; p.tilt=0; p.v.set(0,0,0); p.x=p.hx; p.z=p.hz;
+    p.g.position.set(p.x,groundAt(p.x,p.z),p.z); p.g.rotation.set(0,0,0); }
+  const L=BOWL.lane, yaw=Math.atan2(camera.getWorldDirection(_tv).x,_tv.z);
+  /* aim with the camera, but only within the lane's width of angle */
+  const lane=Math.atan2(L.dir.x,L.dir.z); let off=yaw-lane; off=Math.atan2(Math.sin(off),Math.cos(off)); off=clamp(off,-.12,.12);
+  const a=lane+off;
+  BOWL.ball.m.position.set(L.x+L.dir.x*2,groundAt(L.x,L.z)+.9,L.z+L.dir.z*2);
+  BOWL.ball.v.set(Math.sin(a)*15,0,Math.cos(a)*15); BOWL.ball.m.visible=true;
+  M.running=true; M.t=M.G.time; cut('Pondo',M.G.blurb,{t:2}); sfx('swing');
+}
+function updateBowling(dt){
+  const M=BOWL.M; if(!M||!M.running) return;
+  M.t-=dt;
+  const b=BOWL.ball, p=b.m.position;
+  if(b.m.visible){
+    p.addScaledVector(b.v,dt); b.v.multiplyScalar(Math.pow(.93,dt));
+    p.y=groundAt(p.x,p.z)+.9; b.m.rotation.x+=b.v.length()*dt/.9;
+    if(b.v.length()<1) b.m.visible=false;
+  }
+  for(const q of BOWL.pins){
+    if(b.m.visible&&!q.down&&Math.hypot(p.x-q.x,p.z-q.z)<1.15){
+      q.down=true; q.v.set(q.x-p.x,0,q.z-p.z).normalize().multiplyScalar(b.v.length()*.6).addScaledVector(b.v,.2);
+      b.v.multiplyScalar(.92); sfx('clang'); }
+    if(q.down){
+      q.x+=q.v.x*dt; q.z+=q.v.z*dt; q.v.multiplyScalar(Math.pow(.2,dt));
+      q.tilt=Math.min(Math.PI/2,q.tilt+dt*6);
+      q.g.position.set(q.x,groundAt(q.x,q.z),q.z);
+      q.g.rotation.set(0,Math.atan2(q.v.x,q.v.z),0); q.g.rotateX(q.tilt);
+      /* a falling pin takes its neighbours with it */
+      if(q.v.length()>1.5) for(const r of BOWL.pins) if(!r.down&&Math.hypot(r.x-q.x,r.z-q.z)<.75){
+        r.down=true; r.v.copy(q.v).multiplyScalar(.7).add(new THREE.Vector3(r.x-q.x,0,r.z-q.z).normalize().multiplyScalar(1.5)); }
+    }
+  }
+  if(M.t<=0||(!b.m.visible&&BOWL.pins.every(q=>!q.down||q.v.length()<.3))){
+    M.running=false; b.m.visible=false;
+    const n=BOWL.pins.filter(q=>q.down).length;
+    P.mgBest=P.mgBest||{}; P.mgBest.bowl=Math.max(P.mgBest.bowl||0,n);
+    let prize=n===10?300:n>=7?50:n>=4?20:0;
+    if(n===10){ P.minigamesWon=P.minigamesWon||{}; P.minigamesWon.bowl=1; }
+    if(prize){ P.rupees+=prize; updateGear(); }
+    toast(n===10?'STRIKE! +300 rupees':n+' pins'+(prize?' — +'+prize+' rupees':'')+'. Pondo: “Again?”',n===10?'good':'');
+    sfx(n===10?'orb':'click');
+    BOWL.last=n;
+  }
+}
+{ const _s=startMinigame;
+  startMinigame=function(M){ if(M&&M.tgame) return startTargetGame(M); if(M&&M.bowl) return startBowling(M); return _s.apply(this,arguments); };
+  const _u=updateMinigames;
+  updateMinigames=function(dt){
+    _u(dt);
+    for(const M of TGAMES){ if(!M.running) continue; M.t-=dt;
+      for(const T of M.targets){ if(M.D.air&&!T.hit) T.m.position.y=T.base+Math.sin(performance.now()/700+T.ph)*1.2; }
+      if(M.t<=0||M.targets.every(T=>T.hit)) endTargetGame(M); }
+    updateBowling(dt);
+  };
+}
+/* the host of each game stands by it */
+for(const M of TGAMES){ const N=CAST_NPCS.find(N=>N.name===M.D.host); if(N&&M.D.id!=='flight'){ N.pos.set(M.x-4,groundAt(M.x-4,M.z+3),M.z+3); N.home.copy(N.pos); N.spotWork=[M.x-4,M.z+3]; } }
+console.log('mini-games: '+(minigames.length+TGAMES.length+1)+' — '+minigames.map(m=>m.G.n).concat(TGAMES.map(m=>m.D.n),['Snowbowling (pins)']).join(', '));
+</script>
