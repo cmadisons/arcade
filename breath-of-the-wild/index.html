@@ -1535,6 +1535,53 @@ for(let k=0;k<HHM.length;k++) if(HHM[k]<HWATER-110) HHM[k]=HWATER-110;
 { const T=new Float32Array(HHM);
   for(let j=1;j<HGRID-1;j++)for(let i=1;i<HGRID-1;i++){const k=j*HGRID+i;
     HHM[k]=(T[k]*4+T[k-1]+T[k+1]+T[k-HGRID]+T[k+HGRID])/8;} }
+/* Roadmap 3, group B — settlements sit in their land, not on spikes.
+   The shrine anchors pin each village to its real altitude, but only within 190 m, and
+   the ground sculpted around several of them was lower — so the pin became a spike.
+   The village keeps its real height; the land around it is brought to meet it. */
+{
+  const at=(x,z)=>{ const i=clamp(Math.round((x+HHALF)/HCELL),0,HGRID-1), j=clamp(Math.round((z+HHALF)/HCELL),0,HGRID-1); return HHM[j*HGRID+i]; };
+  const each=(x,z,R,fn)=>{ const i0=Math.max(1,Math.floor((x-R+HHALF)/HCELL)), i1=Math.min(HGRID-2,Math.ceil((x+R+HHALF)/HCELL));
+    const j0=Math.max(1,Math.floor((z-R+HHALF)/HCELL)), j1=Math.min(HGRID-2,Math.ceil((z+R+HHALF)/HCELL));
+    for(let j=j0;j<=j1;j++) for(let i=i0;i<=i1;i++){ const px=i*HCELL-HHALF, pz=j*HCELL-HHALF, d=Math.hypot(px-x,pz-z);
+      if(d<=R){ const k=j*HGRID+i; HHM[k]=fn(HHM[k],d,px-x,pz-z); } } };
+  const sm=t=>t<=0?0:t>=1?1:t*t*(3-2*t);
+  const V=k=>REGIONS[k];
+  /* Kakariko: a valley. The floor stays at the village's height; a rim of cliffs rises
+     70-110 m above it on every side but the west, where the road comes in from the Dueling Peaks. */
+  { const K=V('kakariko'), h0=at(K.x,K.z);
+    const gate=Math.atan2(REGIONS.duel.z-K.z,REGIONS.duel.x-K.x);
+    each(K.x,K.z,650,(h,d)=>d<170?lerp(h,h0,sm(1-(d-120)/50)):h);
+    each(K.x,K.z,650,(h,d,dx,dz)=>{
+      let a=Math.atan2(dz,dx)-gate; a=Math.atan2(Math.sin(a),Math.cos(a));
+      const open=sm((Math.abs(a)-.28)/.35);                       /* 0 in the gap, 1 elsewhere */
+      const band=sm(1-Math.abs(d-330)/190);                       /* the rim, peaking at 330 m */
+      const floor=d<240?sm(1-(d-170)/70):0;                       /* the valley floor runs out to the rim */
+      let t=h;
+      if(d<240) t=lerp(t,h0,floor);
+      const rim=h0+95*band*open;
+      return Math.max(t,lerp(t,rim,band));
+    });
+  }
+  /* Hateno: a hillside town. The slope climbs east toward the lab, and the land within
+     700 m is brought up to meet it instead of falling away. */
+  { const K=V('hateno'), h0=at(K.x,K.z);
+    each(K.x,K.z,720,(h,d,dx,dz)=>{ const target=h0+dx*.10-Math.max(0,d-260)*.05; const w=sm(1-(d-200)/520); return Math.max(h,lerp(h,target,w)); });
+  }
+  /* Gerudo Town: flat desert. The sand within 350 m is the town's level, easing out to 950 m. */
+  { const K=V('gerudoTown'), h0=at(K.x,K.z);
+    each(K.x,K.z,950,(h,d)=>lerp(h,h0-2,sm(1-(d-350)/600)));
+  }
+  /* Zora's Domain: a stone plaza, level across 120 m, stepping down to the reservoir. */
+  { const K=V('zora'), h0=at(K.x,K.z);
+    each(K.x,K.z,210,(h,d)=>lerp(h,h0,sm(1-(d-120)/90)));
+  }
+  /* one gentle pass over what was touched, so no cell edge reads as a step */
+  { const T=new Float32Array(HHM);
+    for(const k of ['kakariko','hateno','gerudoTown','zora']){ const K=V(k);
+      each(K.x,K.z,980,(h,d,dx,dz)=>{ const i=Math.round((K.x+dx+HHALF)/HCELL), j=Math.round((K.z+dz+HHALF)/HCELL), q=j*HGRID+i;
+        return d<100&&k!=='kakariko'?h:(T[q]*4+T[q-1]+T[q+1]+T[q-HGRID]+T[q+HGRID])/8; }); } }
+}
 function hyruleAt(x,z){
   const gx=(x+HHALF)/HCELL, gz=(z+HHALF)/HCELL;
   const i=Math.floor(gx), j=Math.floor(gz);
