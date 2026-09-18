@@ -23852,3 +23852,214 @@ function updateBowling(dt){
 for(const M of TGAMES){ const N=CAST_NPCS.find(N=>N.name===M.D.host); if(N&&M.D.id!=='flight'){ N.pos.set(M.x-4,groundAt(M.x-4,M.z+3),M.z+3); N.home.copy(N.pos); N.spotWork=[M.x-4,M.z+3]; } }
 console.log('mini-games: '+(minigames.length+TGAMES.length+1)+' — '+minigames.map(m=>m.G.n).concat(TGAMES.map(m=>m.D.n),['Snowbowling (pins)']).join(', '));
 </script>
+<script>
+"use strict";
+/* ================= BATCH 117 — Roadmap 2: the Champions' Ballad, in full ================= */
+/* What the chain was missing: a memory at the end of each Champion's song, the Final
+   Trial against Monk Maz Koshia on the Great Plateau, and a Master Cycle Zero that
+   actually rides. */
+const BALLAD_MEMORIES={
+  mipha:{actors:{mipha:{kind:'mipha',at:[.8,0],face:-QTR},link:{kind:'link',at:[-.8,0],face:QTR,clip:'kneel'}},
+    shots:[{tpl:'establish',d:4,title:['Champion Mipha','A Mended Arm']},
+      {tpl:'close',a:'mipha',who:'Mipha',line:'Hold still. You always do this — charge in first, and let me find you afterwards.',mood:'sad'},
+      {tpl:'close',a:'link',who:'Link',line:'…',clips:{link:'kneel'}},
+      {tpl:'two',a:'mipha',who:'Mipha',line:'There. Good as new. Promise me you will let me do this again, whenever you need it.',mood:'happy'},
+      {tpl:'pullback',d:4}]},
+  daruk:{actors:{daruk:{kind:'daruk',at:[1.2,0],face:-QTR,clip:'proud'},link:{kind:'link',at:[-1,0],face:QTR}},
+    shots:[{tpl:'establish',d:4,title:['Champion Daruk','Rock Roast and Rockslides']},
+      {tpl:'close',a:'daruk',who:'Daruk',line:'You did not even flinch when that boulder came down! Little guy, you are tougher than you look.',mood:'happy'},
+      {tpl:'ots',a:'daruk',b:'link',who:'Daruk',line:'Here — the finest cut of rock in the city. No? More for me, then!',mood:'happy'},
+      {tpl:'crane',a:'daruk',who:'Daruk',line:'If you ever need a shield, you just holler. Daruk’s Protection has your back.',mood:'neutral'},
+      {tpl:'pullback',d:4}]},
+  revali:{actors:{revali:{kind:'revali',at:[1,0],face:-QTR,clip:'proud'},link:{kind:'link',at:[-1,0],face:QTR}},
+    shots:[{tpl:'establish',d:4,title:['Champion Revali','The Flight Range']},
+      {tpl:'close',a:'revali',who:'Revali',line:'Every target, from the air, before you touch the ground. Surely the princess’s chosen knight can manage that?',mood:'angry'},
+      {tpl:'two',a:'revali',who:'Revali',line:'…Hmph. Not bad. Not good, mind you. Not bad.',mood:'neutral'},
+      {tpl:'close',a:'revali',who:'Revali',line:'I practised the Gale for years so nobody would ever outfly me. Remember that when you use it.',mood:'neutral'},
+      {tpl:'pullback',d:4}]},
+  urbosa:{actors:{urbosa:{kind:'urbosa',at:[1,0],face:-QTR},zelda:{kind:'zelda',at:[-1,.4],face:QTR},link:{kind:'link',at:[-2.4,-1.2],face:.6}},
+    shots:[{tpl:'establish',d:4,title:['Champion Urbosa','A Mother’s Promise']},
+      {tpl:'close',a:'urbosa',who:'Urbosa',line:'Your mother made me promise to look after you, little bird. I have never broken a promise to her.',mood:'happy'},
+      {tpl:'close',a:'zelda',who:'Zelda',line:'Then keep it a little longer. I am not ready to do this alone.',mood:'sad',clips:{zelda:'bowHead'}},
+      {tpl:'ots',a:'urbosa',b:'link',who:'Urbosa',line:'And you — watch her back. The Gerudo will be watching yours.',mood:'neutral'},
+      {tpl:'pullback',d:4}]}
+};
+function playBalladMemory(id){
+  const def=BALLAD_MEMORIES[id]; if(!def||typeof dirPlay!=='function') return;
+  P.balladMem=P.balladMem||{}; if(P.balladMem[id]) return; P.balladMem[id]=1;
+  const st=findStage(P.pos.x,P.pos.z,P.look.yaw+Math.PI);
+  dirPlay(Object.assign({ox:st.ox,oz:st.oz,yaw:st.yaw,sepia:true},def));
+}
+
+/* ---- the Final Trial: an arena rises on the Great Plateau ---- */
+Object.assign(ETYPE,{
+  mazKoshia:{n:'Monk Maz Koshia', hp:1500, dmg:28, spd:4.2, col:0xd8c8a0, s:1.5, boss:true},
+  mazClone :{n:'Monk Maz Koshia', hp:1,    dmg:14, spd:4.6, col:0xd8c8a0, s:1.5}
+});
+{ const _es=enemyShape; enemyShape=function(type,T){ return (type==='mazKoshia'||type==='mazClone')?'yiga':_es(type,T); }; }
+const FINAL={arena:null,x:0,z:0,y:0,active:false,risen:false,monk:null,clones:[],orbs:[],phase:0,t:0};
+(function buildArena(){
+  /* the flattest open ground on the Plateau, away from the Temple of Time */
+  let best=null,bs=1e9;
+  for(let i=0;i<500;i++){
+    const x=PCX+(rnd()-.5)*700, z=PCZ+(rnd()-.5)*700;
+    if(!onPlateau(x,z)||groundAt(x,z)<WATER+4) continue;
+    if(Math.hypot(x-LM.temple.x,z-LM.temple.z)<120||Math.hypot(x-LM.tower.x,z-LM.tower.z)<80) continue;
+    const h=groundAt(x,z); let s=0; for(let a=0;a<TAU;a+=TAU/12) s+=Math.abs(groundAt(x+Math.cos(a)*24,z+Math.sin(a)*24)-h);
+    if(s<bs){bs=s;best=[x,z];}
+  }
+  if(!best) return;
+  const [x,z]=best, y=groundAt(x,z);
+  FINAL.x=x; FINAL.z=z; FINAL.y=y;
+  const g=new THREE.Group(); g.position.set(x,y-30,z); world.add(g);   /* sunk until it rises */
+  const stone=new THREE.MeshLambertMaterial({color:0x5a5448}), glow=new THREE.MeshBasicMaterial({color:0x63d6e2});
+  const floor=new THREE.Mesh(new THREE.CylinderGeometry(26,27,1.2,32),stone); floor.position.y=-.45; g.add(floor);
+  const ring=new THREE.Mesh(new THREE.TorusGeometry(22,.18,6,64),glow); ring.rotation.x=Math.PI/2; ring.position.y=.2; g.add(ring);
+  for(let i=0;i<8;i++){ const a=i/8*TAU;
+    const c=new THREE.Mesh(new THREE.BoxGeometry(2,12,2),stone); c.position.set(Math.cos(a)*25,6,Math.sin(a)*25); g.add(c);
+    const e=new THREE.Mesh(new THREE.BoxGeometry(.4,1.4,.4),glow); e.position.set(Math.cos(a)*24,9,Math.sin(a)*24); g.add(e); }
+  g.traverse(o=>{ if(o.isMesh){ o.castShadow=true; o.receiveShadow=true; } });
+  FINAL.arena=g;
+  IA({kind:'finalTrial',x,z,y:y+1,r:10,label:'The Final Trial'});
+})();
+function raiseFinalTrial(){
+  if(FINAL.risen||!FINAL.arena) return;
+  FINAL.risen=true; FINAL.rise=30; sfx('thunder');
+  toast('Something rises on the Great Plateau…','good');
+}
+function startFinalTrial(){
+  if(FINAL.active) return;
+  if(!FINAL.risen){ toast('Sealed. Kass may know more.'); return; }
+  if(P.ballad&&P.ballad.final==='done'){ toast('The Final Trial is complete'); return; }
+  FINAL.active=true; FINAL.phase=1; FINAL.t=0;
+  FINAL.monk=makeEnemy({t:'mazKoshia',x:FINAL.x,z:FINAL.z+12});
+  FINAL.monk.aggroT=1e9; FINAL.monk.finalBoss=true;
+  cut('Monk Maz Koshia','I have waited ten thousand years for one worthy of the final test. Show me what the Champions saw in you.');
+}
+function finalTick(dt){
+  if(FINAL.rise>0){ const r=Math.min(FINAL.rise,dt*6); FINAL.rise-=r; FINAL.arena.position.y+=r; }
+  if(!FINAL.active) return;
+  const M=FINAL.monk; FINAL.t+=dt;
+  if(!M.alive){
+    FINAL.active=false;
+    for(const C of FINAL.clones){ C.alive=false; C.g.visible=false; } FINAL.clones.length=0;
+    for(const O of FINAL.orbs) scene.remove(O.m); FINAL.orbs.length=0;
+    P.ballad.final='done'; P.masterCycle=true;
+    cut('Monk Maz Koshia','Splendid… splendid! Take the Divine Beast that the Champions never knew — the Master Cycle Zero. Press U to call it.');
+    give('Master Cycle Zero'); P.hasCycle=true; sfx('orb');
+    return;
+  }
+  const hp=M.hp/M.hpMax;
+  FINAL.phase=hp>.66?1:hp>.33?2:3;
+  /* he blinks around you rather than walking */
+  FINAL.blink=(FINAL.blink||4)-dt;
+  if(FINAL.blink<=0){ FINAL.blink=FINAL.phase===1?4:3;
+    const a=rnd()*TAU; M.pos.set(P.pos.x+Math.cos(a)*6,groundAt(P.pos.x+Math.cos(a)*6,P.pos.z+Math.sin(a)*6),P.pos.z+Math.sin(a)*6);
+    sfx('rune'); }
+  /* phase two: copies of himself — only one of them bleeds */
+  if(FINAL.phase>=2&&FINAL.clones.filter(C=>C.alive).length===0&&(FINAL.cloneT=(FINAL.cloneT||0)-dt)<=0){
+    FINAL.cloneT=12;
+    for(let i=0;i<4;i++){ const a=i/4*TAU; const C=makeEnemy({t:'mazClone',x:FINAL.x+Math.cos(a)*14,z:FINAL.z+Math.sin(a)*14});
+      C.aggroT=1e9; C.clone=true; FINAL.clones.push(C); }
+    toast('Maz Koshia splits into five!','bad');
+  }
+  /* phase three: the sky falls in circles you can read and step out of */
+  if(FINAL.phase===3&&(FINAL.orbT=(FINAL.orbT||0)-dt)<=0){
+    FINAL.orbT=1.3;
+    const x=P.pos.x+(rnd()-.5)*6, z=P.pos.z+(rnd()-.5)*6;
+    const m=new THREE.Mesh(new THREE.RingGeometry(2.4,3,24),new THREE.MeshBasicMaterial({color:0xf0a040,side:THREE.DoubleSide,transparent:true,opacity:.8}));
+    m.rotation.x=-Math.PI/2; m.position.set(x,groundAt(x,z)+.15,z); scene.add(m);
+    FINAL.orbs.push({m,x,z,t:1.4});
+  }
+  for(let i=FINAL.orbs.length-1;i>=0;i--){ const O=FINAL.orbs[i]; O.t-=dt; O.m.scale.setScalar(1+Math.sin(O.t*20)*.05);
+    if(O.t<=0){ if(Math.hypot(P.pos.x-O.x,P.pos.z-O.z)<3) damage(20,'Maz Koshia'); scene.remove(O.m); FINAL.orbs.splice(i,1); sfx('boom'); } }
+  /* walking out of the arena ends the trial; he will be waiting */
+  if(Math.hypot(P.pos.x-FINAL.x,P.pos.z-FINAL.z)>60||P.dead){
+    FINAL.active=false; M.alive=false; M.g.visible=false;
+    for(const C of FINAL.clones){ C.alive=false; C.g.visible=false; } FINAL.clones.length=0;
+    toast('The trial resets. Come back when you are ready.');
+  }
+}
+/* a clone has no drop and gives no rupees */
+{ const _k=killEnemy; killEnemy=function(E){ if(E&&E.clone){ E.alive=false; E.g.visible=false; sfx('rune'); return; } return _k.apply(this,arguments); }; }
+
+/* ---- Kass now points you to the Final Trial instead of handing the Cycle over ---- */
+{ const _tk=talkKass;
+  talkKass=function(id){
+    const songs=BALLAD.songs.filter(s=>s.id!=='start');
+    const wasDone={}; for(const s of songs) wasDone[s.id]=P.ballad[s.id]==='done';
+    const hadCycle=P.masterCycle;
+    if(!hadCycle) P.masterCycle='held';                   /* keep the old ending from firing */
+    _tk(id);
+    if(!hadCycle&&P.masterCycle==='held') P.masterCycle=false;
+    for(const s of songs) if(!wasDone[s.id]&&P.ballad[s.id]==='done') setTimeout(()=>playBalladMemory(s.id),1600);
+    if(songs.every(s=>P.ballad[s.id]==='done')&&!FINAL.risen){
+      setTimeout(()=>{ cut('Kass','Every song is sung. My teacher’s last verse is a place, not a tune — the Final Trial, on the Great Plateau where your journey began.'); raiseFinalTrial(); },3200);
+    }
+  };
+}
+
+/* ---- the Master Cycle Zero ---- */
+const CYCLE={on:false,spd:0,fuel:100,g:null};
+(function buildCycle(){
+  const g=new THREE.Group(), dark=new THREE.MeshPhongMaterial({color:0x2a3440,flatShading:true,shininess:20}),
+        glow=new THREE.MeshBasicMaterial({color:0x63d6e2}), gold=new THREE.MeshPhongMaterial({color:0xc8a040,flatShading:true});
+  const wheelG=new THREE.TorusGeometry(.42,.14,8,18);
+  for(const z of[-.95,.95]){ const w=new THREE.Mesh(wheelG,dark); w.rotation.y=Math.PI/2; w.position.set(0,.5,z); g.add(w);
+    const hub=new THREE.Mesh(new THREE.CylinderGeometry(.16,.16,.2,10),glow); hub.rotation.z=Math.PI/2; hub.position.set(0,.5,z); g.add(hub); }
+  const body=new THREE.Mesh(new THREE.BoxGeometry(.5,.45,1.6),dark); body.position.y=.9; g.add(body);
+  const nose=new THREE.Mesh(new THREE.ConeGeometry(.3,.8,6),gold); nose.rotation.x=Math.PI/2; nose.position.set(0,1.0,1.1); g.add(nose);
+  const seat=new THREE.Mesh(new THREE.BoxGeometry(.42,.14,.7),gold); seat.position.set(0,1.18,-.3); g.add(seat);
+  const eye=new THREE.Mesh(new THREE.SphereGeometry(.12,8,6),glow); eye.position.set(0,1.1,1.45); g.add(eye);
+  const bars=new THREE.Mesh(new THREE.BoxGeometry(1.0,.08,.08),dark); bars.position.set(0,1.35,.7); g.add(bars);
+  g.traverse(o=>{ if(o.isMesh) o.castShadow=true; });
+  g.visible=false; scene.add(g); CYCLE.g=g;
+})();
+function toggleCycle(){
+  const owned=P.hasCycle||(P.weapons||[]).some(w=>w.n==='Master Cycle Zero');
+  if(!owned){ toast('You have no vehicle to call'); return; }
+  if(P.inShrine||P.inRes||P.inBeast||P.inCastle||P.inCave||P.swimming){ toast('Not here'); return; }
+  if(P.mount&&typeof dismount==='function') dismount();
+  CYCLE.on=!CYCLE.on; CYCLE.spd=0; CYCLE.g.visible=CYCLE.on;
+  toast(CYCLE.on?'Master Cycle Zero — W to ride, U to get off · fuel '+Math.round(CYCLE.fuel)+'%':'You step off the Master Cycle Zero'); sfx('rune');
+}
+addEventListener('keydown',e=>{ if(P.playing&&e.code==='KeyU') toggleCycle(); });
+function refuelCycle(){
+  /* it runs on whatever you feed it — cheapest material first */
+  const have=Object.keys(P.mats||{}).filter(k=>P.mats[k]>0&&MATS[k]).sort((a,b)=>(MATS[a].sell||1)-(MATS[b].sell||1));
+  if(!have.length) return false;
+  const k=have[0]; P.mats[k]--; CYCLE.fuel=Math.min(100,CYCLE.fuel+25); toast('The Cycle eats a '+k+' · fuel '+Math.round(CYCLE.fuel)+'%'); updateGear();
+  return true;
+}
+{ const _up=updatePlayer;
+  updatePlayer=function(dt){
+    if(!CYCLE.on) return _up(dt);
+    /* the engine drives, so the legs do not */
+    const kw=keys.KeyW||keys.ArrowUp, ks=keys.KeyS||keys.ArrowDown, ka=keys.KeyA||keys.ArrowLeft, kd=keys.KeyD||keys.ArrowRight;
+    keys.KeyW=keys.KeyS=keys.KeyA=keys.KeyD=keys.ArrowUp=keys.ArrowDown=keys.ArrowLeft=keys.ArrowRight=false;
+    _up(dt);
+    keys.KeyW=kw; keys.KeyS=ks; keys.KeyA=ka; keys.KeyD=kd;
+    if(CYCLE.fuel<=0&&!refuelCycle()){ if(CYCLE.spd>0) toast('Out of fuel — carry materials to feed it','bad'); CYCLE.spd=Math.max(0,CYCLE.spd-30*dt); }
+    const maxS=(keys.ShiftLeft||keys.ShiftRight)?30:22;
+    if(kw&&CYCLE.fuel>0) CYCLE.spd=Math.min(maxS,CYCLE.spd+16*dt);
+    else if(ks) CYCLE.spd=Math.max(-5,CYCLE.spd-24*dt);
+    else CYCLE.spd*=Math.pow(.5,dt);
+    if(ka) CYCLE.yaw=(CYCLE.yaw===undefined?P.look.yaw:CYCLE.yaw)+1.6*dt;
+    if(kd) CYCLE.yaw=(CYCLE.yaw===undefined?P.look.yaw:CYCLE.yaw)-1.6*dt;
+    if(CYCLE.yaw===undefined) CYCLE.yaw=P.look.yaw;
+    const fx=-Math.sin(CYCLE.yaw), fz=-Math.cos(CYCLE.yaw);
+    const nx=P.pos.x+fx*CYCLE.spd*dt, nz=P.pos.z+fz*CYCLE.spd*dt;
+    if(groundAt(nx,nz)>waterAt(nx,nz)-.3&&slopeAt(nx,nz)<1.6){ P.pos.x=nx; P.pos.z=nz; }
+    else CYCLE.spd=0;
+    P.pos.y=Math.max(P.pos.y,groundAt(P.pos.x,P.pos.z)+.7);
+    CYCLE.fuel=Math.max(0,CYCLE.fuel-Math.abs(CYCLE.spd)*dt*.04);
+    CYCLE.g.position.set(P.pos.x,groundAt(P.pos.x,P.pos.z),P.pos.z);
+    CYCLE.g.rotation.set(0,CYCLE.yaw+Math.PI,(ka?.25:kd?-.25:0)*Math.min(1,CYCLE.spd/10));
+    player.rotation.y=CYCLE.yaw+Math.PI;
+  };
+}
+{ const _i=interact; interact=function(){ const it=nearest; if(it&&it.kind==='finalTrial'){ startFinalTrial(); return; } _i(); }; }
+{ const _p=promptFor; promptFor=function(it){ if(it&&it.kind==='finalTrial') return FINAL.risen?(P.ballad.final==='done'?'<b>The Final Trial</b> · complete':'<b>E</b> Begin the Final Trial'):'<b>A sealed ring of stone</b>'; return _p(it); }; }
+{ const _ue=updateEnemies; updateEnemies=function(dt){ _ue(dt); try{ finalTick(dt); }catch(e){ if(window.__errs) window.__errs.push('final:'+e.message); } }; }
+console.log('Champions’ Ballad: 4 Champion memories, the Final Trial at '+Math.round(FINAL.x)+','+Math.round(FINAL.z)+', Master Cycle Zero on U');
+</script>
