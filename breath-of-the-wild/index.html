@@ -23186,3 +23186,234 @@ updateCritters=function(dt){
 };
 console.log('wildlife: '+Object.keys(HUNT_STATS.placed).map(k=>k+' '+HUNT_STATS.placed[k]).join(', '));
 </script>
+<script>
+"use strict";
+/* ================= BATCH 113 — Roadmap 2: world bosses, roaming patrols, a repopulating world, performance ================= */
+/* The real map has about forty Talus, forty Hinox (Stalnox included) and five Moldugas.
+   They are placed by region here and only built when you come within 650 m, the same
+   way the camps are, so load time does not pay for seventy bosses you cannot see. */
+Object.assign(ETYPE,{
+  luminousTalus:{n:'Luminous Stone Talus',hp:300, dmg:60, spd:1.6, col:0x9ad4e0, s:5.0, boss:true, talus:true},
+  rareTalus    :{n:'Rare Stone Talus',    hp:300, dmg:60, spd:1.6, col:0x6a5a7a, s:5.0, boss:true, talus:true},
+  molduking    :{n:'Molduking',           hp:2250,dmg:80, spd:10,  col:0x8a7450, s:7.4, boss:true, sand:true}
+});
+const BOSS_PLAN=[
+  ['stoneTalus',   17,['central','ridge','lanayru','akkala','duel','faron','hylia','tabantha','woodland','hateno']],
+  ['luminousTalus', 6,['lanayru','zora','akkala','faron','eldin']],
+  ['rareTalus',     4,['central','akkala','gerudo','hebra']],
+  ['igneoTalus',    3,['eldin']],
+  ['frostTalus',    5,['hebra','tabantha']],
+  ['redHinox',     14,['central','duel','faron','hylia','ridge','lanayru','woodland','tabantha','hateno']],
+  ['blueHinox',     9,['akkala','lanayru','faron','hebra','gerudo','eldin']],
+  ['blackHinox',    6,['akkala','eldin','hebra','gerudo','tabantha']],
+  ['stalnox',       6,['central','ridge','woodland','faron','hylia','akkala']],
+  ['molduga',       1,['wasteland']],
+  ['molduking',     1,['wasteland']]
+];
+const LAZY_BOSSES=[];
+(function placeBosses(){
+  const ok=(x,z,sand)=>!onPlateau(x,z) && groundAt(x,z)>waterAt(x,z)+3 && slopeAt(x,z)<(sand?0.5:0.7);
+  const far=(x,z)=>LAZY_BOSSES.every(b=>Math.hypot(b.x-x,b.z-z)>220) &&
+                   enemies.every(E=>!E.T.boss||Math.hypot(E.home.x-x,E.home.z-z)>220);
+  for(const [t,n,regs] of BOSS_PLAN){
+    for(let i=0;i<n;i++){
+      const R=REGIONS[regs[i%regs.length]]; if(!R) continue;
+      for(let tries=0;tries<60;tries++){
+        const a=rnd()*TAU, r=R.r*(.25+.7*Math.sqrt(rnd()));
+        const x=R.x+Math.cos(a)*r, z=R.z+Math.sin(a)*r;
+        if(!ok(x,z,ETYPE[t].sand)||(tries<40&&!far(x,z))) continue;
+        LAZY_BOSSES.push({t,x:Math.round(x),z:Math.round(z),region:R.n,E:null}); break;
+      }
+    }
+  }
+})();
+function bossCensus(){
+  const c={talus:0,hinox:0,molduga:0};
+  const add=t=>{ const T=ETYPE[t]; if(T.talus) c.talus++; else if(T.sand) c.molduga++; else if(/Hinox|stalnox/.test(t)) c.hinox++; };
+  for(const E of enemies) if(E.T.boss&&!LAZY_BOSSES.some(b=>b.E===E)) add(E.t);
+  for(const b of LAZY_BOSSES) add(b.t);
+  return c;
+}
+function streamBosses(){
+  for(const b of LAZY_BOSSES){
+    if(b.E) continue;
+    if(Math.hypot(b.x-P.pos.x,b.z-P.pos.z)>650) continue;
+    try{ b.E=makeEnemy({t:b.t,x:b.x,z:b.z}); b.E.worldBoss=true;
+      if(b.E.night){ b.E.dormant=true; b.E.g.visible=false; } }catch(e){ b.E=false; }
+    return;                                    /* one a tick keeps the frame smooth */
+  }
+}
+
+/* boss parts: Hinox shed toenails, teeth and guts; a Talus is its ore; a Molduga its fins */
+const BOSS_DROPS={
+  stoneTalus   :[['Flint',3],['Amber',2],['Opal',2],['Topaz',1]],
+  luminousTalus:[['Luminous Stone',6],['Flint',2]],
+  rareTalus    :[['Diamond',1],['Ruby',1],['Sapphire',1],['Topaz',1],['Opal',2]],
+  igneoTalus   :[['Flint',3],['Ruby',2],['Amber',1]],
+  frostTalus   :[['Flint',3],['Sapphire',2],['Opal',1]],
+  redHinox     :[['Hinox Toenail',1],['Hinox Tooth',1]],
+  blueHinox    :[['Hinox Toenail',1],['Hinox Tooth',1],['Hinox Guts',1]],
+  blackHinox   :[['Hinox Toenail',2],['Hinox Tooth',1],['Hinox Guts',1]],
+  stalnox      :[['Hinox Toenail',1],['Hinox Tooth',1]],
+  molduga      :[['Molduga Fin',2],['Molduga Guts',1]],
+  molduking    :[['Molduga Fin',3],['Molduga Guts',2],['Diamond',1]]
+};
+{ const _k=killEnemy;
+  killEnemy=function(E){
+    const was=E&&E.alive, pk=pickups.length;
+    _k.apply(this,arguments);
+    if(!was||E.alive||E.collapsed||E.__dropped) return;
+    const D=BOSS_DROPS[E.t]; if(!D) return;
+    /* the generic drop table hands every monster bokoblin parts; a boss has its own */
+    for(let i=pickups.length-1;i>=pk;i--) if(/^Bokoblin/.test(pickups[i].label)){ scene.remove(pickups[i].mesh); pickups.splice(i,1); }
+    E.__dropped=true;                          /* a Blood Moon revival re-arms it below */
+    let k=0;
+    for(const [m,n] of D) for(let i=0;i<n;i++,k++){
+      const a=k*2.1; spawnPickup(E.pos.x+Math.cos(a)*2.4,E.pos.z+Math.sin(a)*2.4,{m}); }
+    if(E.worldBoss) toast(E.T.n+' defeated','good');
+  };
+}
+{ const _bm=triggerBloodMoon;
+  triggerBloodMoon=function(){ for(const E of enemies) E.__dropped=false; return _bm.apply(this,arguments); };
+}
+
+/* ---- roaming patrols: groups walking a loop, not standing on a spot ---- */
+const PATROLS=[];
+const PATROL_ROSTER={
+  central:['redBoko','blueBoko','redMoblin'], duel:['redBoko','blueBoko','greenLiz'],
+  hateno:['redBoko','greenLiz'], lanayru:['blueLiz','blueBoko'], akkala:['blackBoko','blueMoblin'],
+  eldin:['blackBoko','blueMoblin'], hebra:['blueBoko','stalLiz'], tabantha:['redBoko','blueBoko','redMoblin'],
+  gerudo:['blueBoko','blackBoko'], wasteland:['blackBoko','yigaFoot'], faron:['greenLiz','blueLiz','blueBoko'],
+  woodland:['redBoko','redMoblin'], ridge:['redBoko','blueBoko'], hylia:['redBoko','greenLiz']
+};
+(function planPatrols(){
+  for(const k in PATROL_ROSTER){
+    const R=REGIONS[k]; if(!R) continue;
+    for(let p=0;p<2;p++){
+      const cx=R.x+(rnd()-.5)*R.r, cz=R.z+(rnd()-.5)*R.r, rad=90+rnd()*120, pts=[];
+      for(let i=0;i<6;i++){ const a=i/6*TAU+rnd()*.4;
+        const x=cx+Math.cos(a)*rad, z=cz+Math.sin(a)*rad;
+        if(!onPlateau(x,z)&&groundAt(x,z)>waterAt(x,z)+2&&slopeAt(x,z)<0.8) pts.push([x,z]); }
+      if(pts.length<3) continue;
+      const pool=PATROL_ROSTER[k];
+      PATROLS.push({pts,i:0,pos:new THREE.Vector3(pts[0][0],0,pts[0][1]),mobs:null,
+        roster:[0,1,2,3].slice(0,3+(rnd()<.4?1:0)).map(()=>pool[Math.floor(rnd()*pool.length)]),
+        region:R.n,wipedAt:-1,generation:0});
+    }
+  }
+})();
+function patrolTick(dt){
+  const day=P.time/DAY_LEN;
+  for(const Q of PATROLS){
+    const d=Math.hypot(Q.pos.x-P.pos.x,Q.pos.z-P.pos.z);
+    /* the route keeps walking even when nobody is watching */
+    const tgt=Q.pts[Q.i], dx=tgt[0]-Q.pos.x, dz=tgt[1]-Q.pos.z, L=Math.hypot(dx,dz);
+    const fighting=Q.mobs&&Q.mobs.some(E=>E.alive&&E.aggroT>0);
+    if(!fighting){ if(L<4) Q.i=(Q.i+1)%Q.pts.length; else { Q.pos.x+=dx/L*1.3*dt; Q.pos.z+=dz/L*1.3*dt; } }
+    if(!Q.mobs){
+      if(d<520&&Q.wipedAt<0){
+        Q.mobs=Q.roster.map((t,j)=>{ const E=makeEnemy({t,x:Q.pos.x+(j-1)*3,z:Q.pos.z-j*2}); E.patrol=Q; E.slot=j; return E; });
+      }
+      continue;
+    }
+    if(Q.mobs.every(E=>!E.alive&&!E.collapsed)){
+      /* wiped out: after a day, a fresh squad — a tier tougher — takes the route */
+      if(Q.wipedAt<0) Q.wipedAt=day;
+      else if(day-Q.wipedAt>1&&d>300){
+        for(const E of Q.mobs){ scene.remove(E.g); const ix=enemies.indexOf(E); if(ix>=0) enemies.splice(ix,1); }
+        Q.mobs=null; Q.wipedAt=-1; Q.generation++;
+        if(Q.generation>=2) Q.roster=Q.roster.map(t=>UPGRADE[t]||t);
+      }
+      continue;
+    }
+    for(const E of Q.mobs){
+      if(!E.alive||E.aggroT>0) continue;
+      const ox=Q.pos.x+(E.slot-1)*3.2, oz=Q.pos.z-E.slot*2.2;
+      E.home.set(ox,groundAt(ox,oz),oz);
+      const ex=ox-E.pos.x, ez=oz-E.pos.z, el=Math.hypot(ex,ez);
+      if(el>2.5){ E.wander.set(ex/el,0,ez/el); E.wt=Math.max(E.wt,.5); }
+      if(el>60&&d>200){ E.pos.set(ox,groundAt(ox,oz),oz); }   /* caught up off-screen */
+    }
+  }
+}
+
+/* ---- the wild repopulates: small wandering groups appear out of sight and leave when far ---- */
+const DRIFTERS=[];
+let _driftT=40;
+function driftTick(dt){
+  _driftT-=dt;
+  for(let i=DRIFTERS.length-1;i>=0;i--){ const E=DRIFTERS[i];
+    if(Math.hypot(E.pos.x-P.pos.x,E.pos.z-P.pos.z)>700||(!E.alive&&!E.collapsed&&!E.g.visible)){
+      if(E.alive||E.g.visible===false){ scene.remove(E.g); const ix=enemies.indexOf(E); if(ix>=0) enemies.splice(ix,1); DRIFTERS.splice(i,1); } } }
+  if(_driftT>0||P.inShrine||P.inRes||onPlateau(P.pos.x,P.pos.z)) return;
+  _driftT=75+rnd()*60;
+  if(DRIFTERS.filter(E=>E.alive).length>=24) return;
+  /* no spawning into towns */
+  for(const k in REGIONS){ const R=REGIONS[k]; if(R.r<450&&Math.hypot(P.pos.x-R.x,P.pos.z-R.z)<R.r+120) return; }
+  let near=0; for(const E of enemies) if(E.alive&&!E.dormant&&Math.hypot(E.pos.x-P.pos.x,E.pos.z-P.pos.z)<300) near++;
+  if(near>=8) return;
+  /* pick the region you are in for the roster, and a spot behind you, out of view */
+  let best=null,bd=1e9; for(const k in PATROL_ROSTER){ const R=REGIONS[k]; const dd=Math.hypot(P.pos.x-R.x,P.pos.z-R.z)/R.r; if(dd<bd){bd=dd;best=k;} }
+  const pool=PATROL_ROSTER[best]||['redBoko'];
+  const fwd=Math.atan2(camera.position.x-P.pos.x,camera.position.z-P.pos.z);
+  for(let t=0;t<20;t++){
+    const a=fwd+(rnd()-.5)*1.4, r=140+rnd()*80;
+    const x=P.pos.x+Math.sin(a)*r, z=P.pos.z+Math.cos(a)*r;
+    if(onPlateau(x,z)||groundAt(x,z)<waterAt(x,z)+2||slopeAt(x,z)>0.8) continue;
+    const n=2+Math.floor(rnd()*2);
+    for(let j=0;j<n;j++){ const E=makeEnemy({t:pool[Math.floor(rnd()*pool.length)],x:x+j*3,z:z+j*2}); E.drifter=true; DRIFTERS.push(E); }
+    break;
+  }
+}
+
+/* ---- performance: distant enemies think four times a second, not sixty ----
+   Everything inside 140 m updates every frame. Between 140 m and the 420 m cull they
+   bank their dt and run one catch-up step every fourth frame. If the frame time climbs
+   past 30 ms the near radius and the cull pull in until it recovers. */
+const PERF={frame:0,ms:16,near:140,cull:420,throttled:0};
+{ const _ue=updateEnemies;
+  updateEnemies=function(dt){
+    PERF.frame++;
+    const all=enemies.slice(), N2=PERF.near*PERF.near, C2=PERF.cull*PERF.cull, run=[];
+    let thr=0;
+    for(const E of all){
+      const dx=E.pos.x-P.pos.x, dz=E.pos.z-P.pos.z, d2=dx*dx+dz*dz;
+      if(d2<N2||E.aggroT>0||E.T.boss&&d2<C2*.25){ E.__acc=0; run.push(E); continue; }
+      if(d2>C2){ run.push(E); continue; }                     /* the cull wrapper hides it */
+      E.__acc=(E.__acc||0)+dt;
+      if((PERF.frame+(E.__ph=E.__ph===undefined?Math.floor(rnd()*4):E.__ph))%4===0) run.push(E);
+      else thr++;
+    }
+    PERF.throttled=thr;
+    enemies.length=0; run.forEach(E=>enemies.push(E));
+    try{
+      /* the batch still gets the real dt; banked time is applied as extra motion below */
+      _ue(dt);
+    } finally { enemies.length=0; all.forEach(E=>enemies.push(E)); }
+    for(const E of run) if(E.__acc>0){ const extra=E.__acc; E.__acc=0;
+      if(E.alive&&!E.dormant&&E.aggroT<=0&&E.wander){ E.pos.x+=E.wander.x*1.5*extra; E.pos.z+=E.wander.z*1.5*extra;
+        E.pos.y=groundAt(E.pos.x,E.pos.z); } }
+  };
+}
+let _perfLast=performance.now();
+function perfTick(){
+  const now=performance.now(), ms=now-_perfLast; _perfLast=now;
+  if(ms<200) PERF.ms=PERF.ms*.95+ms*.05;
+  if(PERF.ms>30){ PERF.near=Math.max(80,PERF.near-2); PERF.cull=Math.max(260,PERF.cull-4); }
+  else if(PERF.ms<20){ PERF.near=Math.min(140,PERF.near+1); PERF.cull=Math.min(420,PERF.cull+2); }
+}
+
+{ const _uc=updateCritters, _ue2=updateEnemies;
+  let _bT=0;
+  updateEnemies=function(dt){
+    perfTick();
+    if(P.playing){ _bT-=dt; if(_bT<=0){ _bT=.5; streamBosses(); }
+      try{ patrolTick(dt); driftTick(dt); }catch(e){ if(window.__errs) window.__errs.push('patrol:'+e.message); } }
+    _ue2(dt);
+  };
+  void _uc;
+}
+{ const c=bossCensus();
+  console.log('world bosses: Talus '+c.talus+', Hinox '+c.hinox+', Molduga '+c.molduga+
+    ' ('+LAZY_BOSSES.length+' streamed in on approach); patrols: '+PATROLS.length); }
+</script>
