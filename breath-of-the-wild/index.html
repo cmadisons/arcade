@@ -23417,3 +23417,158 @@ function perfTick(){
   console.log('world bosses: Talus '+c.talus+', Hinox '+c.hinox+', Molduga '+c.molduga+
     ' ('+LAZY_BOSSES.length+' streamed in on approach); patrols: '+PATROLS.length); }
 </script>
+<script>
+"use strict";
+/* ================= BATCH 114 — Roadmap 2: the three dragons ================= */
+/* Dinraal, Naydra and Farosh fly their circuits all day. Each is a 115 m serpent built
+   from segments that follow the head's own trail, so the body snakes through every
+   turn the head made. Shoot the horn for a shard of horn, the mouth for a fang, a claw
+   for a claw, the body for a scale. Each part can be had once every half a day. */
+const DRAGONS=[];
+const DRAGON_DEF=[
+  {n:'Dinraal', body:0xc2402a, belly:0xe0a060, mane:0xf08a2a, horn:0xe0c898, el:'fire', speed:22,
+   route:[[-2900,-2200],[-2700,-1500],[-2215,-900],[-1200,-1700],[0,-1800],[1200,-2000],[2500,-2000],[3300,-2600],[3900,-3200]]},
+  {n:'Naydra',  body:0x4a7ab8, belly:0xc8e0f0, mane:0xf0f6fa, horn:0xe8f0f4, el:'ice', speed:20,
+   route:[[3750,-1500],[3200,-600],[2500,-900],[1500,-600],[300,-500],[-900,-300],[-2215,-372]]},
+  {n:'Farosh',  body:0x3a8a4a, belly:0xd8d060, mane:0xf0e040, horn:0xf0e8a8, el:'shock', speed:24,
+   route:[[-2328,2207],[-1200,2600],[0,3000],[700,2100],[1500,3300],[2400,3500],[2836,3304]]}
+];
+const DSEG=36, DGAP=3.2;
+function dragonMat(c,e){ return new THREE.MeshPhongMaterial({color:c,flatShading:true,shininess:6,specular:0x222222,
+  emissive:new THREE.Color(e||0x000000)}); }
+function buildDragon(D){
+  const root=new THREE.Group(); scene.add(root);
+  const mb=dragonMat(D.body,D.el==='fire'?0x301008:0), ml=dragonMat(D.belly), mm=dragonMat(D.mane,0x202010),
+        mh=dragonMat(D.horn), mk=new THREE.MeshBasicMaterial({color:D.el==='ice'?0x2a4aa0:0xf8e060});
+  const segG=new THREE.CylinderGeometry(1,1,DGAP*1.15,9); segG.rotateX(Math.PI/2);
+  const finG=new THREE.ConeGeometry(.5,1.6,4);
+  const segs=[];
+  for(let i=0;i<DSEG;i++){
+    const r=2.3*(1-Math.pow(i/DSEG,1.6)*.82)+.12;
+    const s=new THREE.Group(); root.add(s);
+    const b=new THREE.Mesh(segG,mb); b.scale.set(r,r,1); s.add(b);
+    const bl=new THREE.Mesh(segG,ml); bl.scale.set(r*.78,r*.5,1); bl.position.y=-r*.5; s.add(bl);
+    if(i%2===0){ const f=new THREE.Mesh(finG,mm); f.position.y=r*1.05; f.scale.set(r*.9,r*.9,r*.9); f.rotation.x=-.5; s.add(f); }
+    s.userData.r=r; segs.push(s);
+  }
+  /* head: snout, jaw, eyes, the branching horns and long whiskers */
+  const head=new THREE.Group(); root.add(head);
+  const skull=new THREE.Mesh(new THREE.BoxGeometry(3.6,2.6,4.4),mb); skull.position.z=.6; head.add(skull);
+  const snout=new THREE.Mesh(new THREE.BoxGeometry(2.8,1.5,3.4),mb); snout.position.set(0,-.2,4.2); head.add(snout);
+  const jaw=new THREE.Mesh(new THREE.BoxGeometry(2.6,.7,4.6),ml); jaw.position.set(0,-1.4,3.2); jaw.rotation.x=.18; head.add(jaw);
+  const nose=new THREE.Mesh(new THREE.SphereGeometry(.9,7,5),mb); nose.position.set(0,.2,5.9); head.add(nose);
+  for(const s of[-1,1]){
+    const eye=new THREE.Mesh(new THREE.SphereGeometry(.42,7,5),mk); eye.position.set(s*1.5,.7,2.2); head.add(eye);
+    const h=new THREE.Group(); h.position.set(s*1.1,1.2,-.6); head.add(h);
+    const main=new THREE.Mesh(new THREE.CylinderGeometry(.18,.42,6,6),mh); main.position.set(s*.9,2.6,-1.4); main.rotation.set(-.6,0,-s*.35); h.add(main);
+    for(let k=0;k<3;k++){ const t=new THREE.Mesh(new THREE.CylinderGeometry(.1,.22,2.2,5),mh);
+      t.position.set(s*(1.1+k*.4),2.2+k*1.1,-.8-k*.9); t.rotation.set(.3,0,-s*(1.0+k*.2)); h.add(t); }
+    const wh=new THREE.Mesh(new THREE.CylinderGeometry(.06,.12,9,4),mm); wh.position.set(s*2.2,-.6,6.4); wh.rotation.set(1.2,0,-s*.9); head.add(wh);
+    const mane=new THREE.Mesh(new THREE.ConeGeometry(.9,3.6,5),mm); mane.position.set(s*1.7,.2,-1.6); mane.rotation.set(-1.9,0,-s*.5); head.add(mane);
+  }
+  const hornTip=new THREE.Object3D(); hornTip.position.set(0,3.6,-2); head.add(hornTip);
+  const mouth=new THREE.Object3D(); mouth.position.set(0,-.8,5.2); head.add(mouth);
+  /* four legs with three-toed claws, on segments 5 and 20 */
+  const claws=[];
+  for(const si of [5,20]) for(const s of[-1,1]){
+    const leg=new THREE.Group(); segs[si].add(leg); leg.position.set(s*segs[si].userData.r*.9,-segs[si].userData.r*.5,0);
+    const up=new THREE.Mesh(new THREE.CylinderGeometry(.35,.45,3,6),mb); up.position.set(s*.8,-1.2,0); up.rotation.z=s*.8; leg.add(up);
+    const hand=new THREE.Group(); hand.position.set(s*1.8,-2.4,.6); leg.add(hand);
+    for(let k=-1;k<=1;k++){ const c=new THREE.Mesh(new THREE.ConeGeometry(.16,1.2,4),mh); c.position.set(k*.35,-.3,.5); c.rotation.x=1.9; hand.add(c); }
+    claws.push(hand);
+  }
+  const tail=new THREE.Mesh(new THREE.ConeGeometry(1.4,5,4),mm); tail.rotation.x=-Math.PI/2; tail.position.z=-3; tail.scale.set(.3,1,1); segs[DSEG-1].add(tail);
+  root.traverse(o=>{ if(o.isMesh){ o.castShadow=true; o.frustumCulled=false; } });
+  return {root,head,segs,claws,hornTip,mouth,jaw};
+}
+function dragonAlt(x,z){
+  let g=-1e9; for(let i=-1;i<=1;i++) for(let j=-1;j<=1;j++) g=Math.max(g,groundAt(x+i*30,z+j*30),waterAt(x+i*30,z+j*30));
+  return g+34;
+}
+for(const D of DRAGON_DEF){
+  const M=buildDragon(D);
+  const r=D.route, trail=[];
+  const p=new THREE.Vector3(r[0][0],dragonAlt(r[0][0],r[0][1]),r[0][1]);
+  for(let i=0;i<DSEG*DGAP/0.5+4;i++) trail.push(p.clone());
+  DRAGONS.push(Object.assign({},D,M,{pos:p,leg:1,dir:1,trail,t:rnd()*100,cool:{},hurtT:0,near:1e9,
+    part:{horn:"Shard of "+D.n+"'s Horn",fang:"Shard of "+D.n+"'s Fang",claw:D.n+"'s Claw",scale:D.n+"'s Scale"}}));
+}
+const _dv=new THREE.Vector3(), _dq=new THREE.Vector3();
+function updateDragons(dt){
+  for(const G of DRAGONS){
+    G.t+=dt;
+    /* the route runs out and back, the way the real circuits do */
+    const tg=G.route[G.leg], dx=tg[0]-G.pos.x, dz=tg[1]-G.pos.z, L=Math.hypot(dx,dz);
+    if(L<40){ G.leg+=G.dir; if(G.leg>=G.route.length||G.leg<0){ G.dir*=-1; G.leg+=2*G.dir; } }
+    const want=Math.atan2(dx,dz);
+    G.yaw=G.yaw===undefined?want:aLerp(G.yaw,want,1-Math.pow(.35,dt));
+    const sp=G.speed*dt, weave=Math.sin(G.t*.7)*.35;
+    G.pos.x+=Math.sin(G.yaw+weave)*sp; G.pos.z+=Math.cos(G.yaw+weave)*sp;
+    const alt=dragonAlt(G.pos.x+Math.sin(G.yaw)*80,G.pos.z+Math.cos(G.yaw)*80)+Math.sin(G.t*.45)*14;
+    G.pos.y=lerp(G.pos.y,alt,1-Math.pow(.6,dt));
+    /* record the trail every half metre, and hang the segments off it */
+    /* exactly half a metre apart, however far the head moved this frame */
+    for(let n=0;n<200&&G.trail[0].distanceTo(G.pos)>=.5;n++){
+      const o=G.trail.pop(); o.copy(G.pos).sub(G.trail[0]).setLength(.5).add(G.trail[0]); G.trail.unshift(o); }
+    G.near=G.pos.distanceTo(P.pos);
+    const far=G.near>2600; G.root.visible=!far; if(far) continue;
+    G.head.position.copy(G.pos);
+    G.head.lookAt(_dv.copy(G.trail[0]).add(_dq.copy(G.trail[0]).sub(G.trail[4]).normalize()));
+    G.jaw.rotation.x=.18+Math.max(0,Math.sin(G.t*.9))*.35;
+    const step=DGAP/.5;
+    for(let i=0;i<DSEG;i++){
+      const a=G.trail[Math.min(G.trail.length-1,Math.round((i+1)*step))], b=G.trail[Math.min(G.trail.length-1,Math.round(i*step))];
+      const s=G.segs[i];
+      s.position.copy(a).lerp(b,.5); s.position.y+=Math.sin(G.t*2.2-i*.35)*1.4;
+      { const qx=b.x-a.x, qz=b.z-a.z, ql=Math.hypot(qx,qz)||1, w=Math.sin(G.t*1.3-i*.32)*2.6*Math.min(1,i/4);
+        s.position.x+=qz/ql*w; s.position.z-=qx/ql*w; }
+      if(a.distanceToSquared(b)>1e-4) s.lookAt(b);
+    }
+    for(let k=0;k<G.claws.length;k++) G.claws[k].rotation.x=Math.sin(G.t*1.6+k)*.5;
+    /* the element around the body: heat, frost or a static charge */
+    let close=1e9; for(let i=0;i<DSEG;i+=3) close=Math.min(close,G.segs[i].position.distanceTo(P.pos));
+    close=Math.min(close,G.near);
+    if(close<14&&!P.dead){ G.hurtT-=dt;
+      if(G.hurtT<=0){ G.hurtT=1.2; damage(G.el==='shock'?6:4,G.n,{ignoreArmour:true});
+        if(G.el==='fire'&&typeof igniteAt==='function') P.burnT=Math.max(P.burnT||0,1);
+        toast(G.el==='fire'?G.n+"'s heat scorches you":G.el==='ice'?G.n+"'s frost bites":G.n+"'s charge arcs to you",'bad'); } }
+  }
+}
+function dragonHit(G,where,at){
+  const now=P.time/DAY_LEN, part=G.part[where];
+  const cd=where==='horn'?1:.5;
+  if(G.cool[where]!==undefined&&now-G.cool[where]<cd){ toast(G.n+' shrugs it off'); return; }
+  G.cool[where]=now; sfx('orb');
+  /* the part tumbles down; it lands by you rather than on a canyon floor 40 m below */
+  const a=rnd()*TAU; spawnPickup(P.pos.x+Math.cos(a)*3,P.pos.z+Math.sin(a)*3,{m:part});
+  toast(part+' falls from '+G.n+'!','good');
+  P.dragonParts=(P.dragonParts||0)+1;
+}
+{ const _ua=updateArrows;
+  updateArrows=function(dt){
+    for(let i=arrows.length-1;i>=0;i--){
+      const A=arrows[i], p=A.m.position;
+      for(const G of DRAGONS){
+        if(!G.root.visible||G.pos.distanceTo(p)>140) continue;
+        let where=null;
+        const hornW=G.hornTip.getWorldPosition(_dv);
+        if(hornW.distanceTo(p)<4.2) where='horn';
+        else if(G.mouth.getWorldPosition(_dv).distanceTo(p)<3.2) where='fang';
+        else if(G.claws.some(c=>c.getWorldPosition(_dq).distanceTo(p)<2.6)) where='claw';
+        else if(G.head.position.distanceTo(p)<4) where='fang';
+        else for(const s of G.segs) if(s.position.distanceTo(p)<s.userData.r+.8){ where='scale'; break; }
+        if(where){ dragonHit(G,where,p); scene.remove(A.m); arrows.splice(i,1); break; }
+      }
+    }
+    return _ua(dt);
+  };
+}
+{ const _ue=updateEnemies;
+  updateEnemies=function(dt){ _ue(dt); if(P.playing&&!P.inShrine&&!P.inRes) try{ updateDragons(dt); }catch(e){ if(window.__errs) window.__errs.push('dragon:'+e.message); } };
+}
+/* the Slate map shows where each one is right now */
+function dragonWhere(){ return DRAGONS.map(G=>{ let best='',bd=1e9;
+  for(const [nm,x,z] of PLACES_NAMED){ const d=Math.hypot(G.pos.x-x,G.pos.z-z); if(d<bd){bd=d;best=nm;} }
+  return G.n+' — over '+best; }); }
+console.log('dragons aloft: '+DRAGONS.map(G=>G.n).join(', '));
+</script>
