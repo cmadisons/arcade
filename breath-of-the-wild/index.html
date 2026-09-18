@@ -24063,3 +24063,64 @@ function refuelCycle(){
 { const _ue=updateEnemies; updateEnemies=function(dt){ _ue(dt); try{ finalTick(dt); }catch(e){ if(window.__errs) window.__errs.push('final:'+e.message); } }; }
 console.log('Champions’ Ballad: 4 Champion memories, the Final Trial at '+Math.round(FINAL.x)+','+Math.round(FINAL.z)+', Master Cycle Zero on U');
 </script>
+<script>
+"use strict";
+/* ================= BATCH 118 — Roadmap 2: the armour the real game has that this one did not ================= */
+/* Breath of the Wild has about 120 distinct pieces; this game had 109. The missing ones
+   are the three Master Trials sets (Evil Spirit, Mystic, Miner's), the Champions'
+   Ballad's Tunic of Memories, and Hateno's Cece Hat. No invented bonuses — defence only,
+   and the Great Fairies upgrade them like everything else. */
+Object.assign(ARMOR,{
+  'Evil Spirit Mask'   :{def:3, slot:'head', set:'evilspirit'},
+  'Evil Spirit Armor'  :{def:3, slot:'body', set:'evilspirit'},
+  'Evil Spirit Greaves':{def:3, slot:'legs', set:'evilspirit'},
+  'Mystic Headpiece'   :{def:4, slot:'head', set:'mystic'},
+  'Mystic Robe'        :{def:4, slot:'body', set:'mystic'},
+  'Mystic Trousers'    :{def:4, slot:'legs', set:'mystic'},
+  "Miner's Mask"       :{def:3, slot:'head', set:'miner'},
+  "Miner's Top"        :{def:3, slot:'body', set:'miner'},
+  "Miner's Trousers"   :{def:3, slot:'legs', set:'miner'},
+  'Tunic of Memories'  :{def:4, slot:'body'},
+  'Cece Hat'           :{def:1, slot:'head'}
+});
+Object.assign(SETCOL,{evilspirit:{c:0x2a2230,t:0x8a2a3a},mystic:{c:0x3a2a5a,t:0xb8a0d8},miner:{c:0x6a5a3a,t:0xe0b030}});
+Object.assign(NAMECOL,{'Tunic of Memories':0x2f6a8a,'Cece Hat':0xd8a0c0});
+const NEW_ARMOR_PLACES=[
+  ['Evil Spirit Mask',   REGIONS.castle.x+160, REGIONS.castle.z+120],
+  ['Evil Spirit Armor',  REGIONS.castle.x-180, REGIONS.castle.z+90],
+  ['Evil Spirit Greaves',REGIONS.castle.x+60,  REGIONS.castle.z-200],
+  ['Mystic Headpiece',   REGIONS.hebra.x+300,  REGIONS.hebra.z+200],
+  ['Mystic Robe',        REGIONS.wasteland.x-300,REGIONS.wasteland.z+200],
+  ['Mystic Trousers',    REGIONS.woodland.x+250,REGIONS.woodland.z+300],
+  ["Miner's Mask",       REGIONS.eldin.x-200,  REGIONS.eldin.z+150],
+  ["Miner's Top",        REGIONS.eldin.x+220,  REGIONS.eldin.z-100],
+  ["Miner's Trousers",   REGIONS.akkala.x-150, REGIONS.akkala.z-250],
+  ['Cece Hat',           REGIONS.hateno.x+24,  REGIONS.hateno.z-18]
+];
+(function placeNewArmour(){
+  let n=0;
+  for(const [item,ax,az] of NEW_ARMOR_PLACES){
+    let x=ax,z=az,tries=0;
+    while(tries++<40&&(groundAt(x,z)<waterAt(x,z)+2||slopeAt(x,z)>1.0)){ x=ax+(rnd()-.5)*160; z=az+(rnd()-.5)*160; }
+    if(groundAt(x,z)<waterAt(x,z)+2) continue;
+    const y=groundAt(x,z), g=new THREE.Group();
+    g.position.set(x,y,z); g.rotation.y=rnd()*TAU; world.add(g);
+    box(g,2.0,1.15,1.4,0,.58,0,MAT.wood);
+    const lid=new THREE.Group(); lid.position.set(0,1.16,-.7); g.add(lid);
+    box(lid,2.0,.55,1.4,0,.28,.7,MAT.wood2);
+    box(g,2.1,.2,.26,0,.58,0,MAT.metal);
+    g.userData={lid};
+    IA({kind:'armourChest',item,x,z,y:y+1.2,r:4,label:'Open the chest',obj:g});
+    n++;
+  }
+  console.log('armour: '+(Object.keys(ARMOR).length-1)+' pieces, '+n+' new chests placed');
+})();
+/* the Tunic of Memories is what the Ballad's four memories leave you with */
+{ const _pbm=playBalladMemory;
+  playBalladMemory=function(id){
+    _pbm(id);
+    const seen=Object.keys(P.balladMem||{}).length;
+    if(seen>=4&&!(P.ownedArmor&&P.ownedArmor['Tunic of Memories'])) setTimeout(()=>give('Tunic of Memories'),2500);
+  };
+}
+</script>
