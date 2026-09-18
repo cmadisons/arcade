@@ -315,6 +315,14 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 "use strict";
+/* An error caught and ignored is still an error. Record each distinct one once, so a
+   sweep can find it — nothing is thrown, the game carries on exactly as before. */
+window.__errs=window.__errs||[];
+function __swallowed(e){ try{ const m=String(e&&e.message||e); const S=__swallowed.seen||(__swallowed.seen=new Set());
+  if(S.has(m)) return; S.add(m); window.__errs.push('swallowed: '+m+((e&&e.stack)?' @ '+String(e.stack).split('\n')[1]:''));
+  if(S.size<=20) console.warn('swallowed error:',m); }catch(_x){} }
+
+
 /* ==========================================================================
    GREAT PLATEAU — original engine, Breath of the Wild's opening region.
    Terrain is hand-sculpted in 100 explicit passes (see SCULPT below).
@@ -6706,7 +6714,7 @@ function save(){ try{ localStorage.setItem(KEY,JSON.stringify({
   runes:P.runes,slate:P.hasSlate,glider:P.hasGlider,shrines:P.shrines,chests:P.chests,
   tower:P.tower,travel:P.travel,quest:P.quest,time:P.time,map:mapRevealed,master:P.master,
   leftRes:P.leftRes,docked:P.slateDocked,doublet:P.doubletDone,killed:P.killed,side:P.sideDoublet
-})); }catch(e){} }
+})); }catch(e){__swallowed(e)} }
 function hasSave(){ try{return !!localStorage.getItem(KEY);}catch(e){return false;} }
 function load(){
   try{
@@ -6752,7 +6760,7 @@ function tone(f,dur,type,vol,to,dest){
     g.gain.setValueAtTime(vol||.12,c.currentTime);
     g.gain.exponentialRampToValueAtTime(.0001,c.currentTime+dur);
     o.connect(g); g.connect(dest||sfxGain); o.start(); o.stop(c.currentTime+dur);
-  }catch(e){}
+  }catch(e){__swallowed(e)}
 }
 function noise(dur,vol,freq,q){
   try{ const c=ac(),n=c.createBufferSource(),b=c.createBuffer(1,Math.max(1,c.sampleRate*dur),c.sampleRate);
@@ -6761,7 +6769,7 @@ function noise(dur,vol,freq,q){
     n.buffer=b; const f=c.createBiquadFilter(); f.type='bandpass'; f.frequency.value=freq||900; f.Q.value=q||1;
     const g=c.createGain(); g.gain.value=vol||.15;
     n.connect(f); f.connect(g); g.connect(sfxGain); n.start();
-  }catch(e){}
+  }catch(e){__swallowed(e)}
 }
 function sfx(k){
   switch(k){
@@ -7121,7 +7129,7 @@ function updateMusic(dt){
   /* look ahead a quarter second so the beat never depends on the frame rate */
   let guard=0;
   while(musNext<c.currentTime+.25&&guard++<32){
-    try{ scheduleStep(musStep,musNext); }catch(e){}
+    try{ scheduleStep(musStep,musNext); }catch(e){__swallowed(e)}
     musStep++; musNext+=dur8;
   }
 }
@@ -7259,7 +7267,7 @@ function startPlay(){
   ['#pause','#mapscreen','#boon','#title','#cookpanel'].forEach(s=>$(s).classList.remove('on'));
   $('#hud').classList.add('on'); P.playing=true;
   canvas.requestPointerLock&&canvas.requestPointerLock();
-  try{ ac().resume(); }catch(e){}
+  try{ ac().resume(); }catch(e){__swallowed(e)}
 }
 var newGame=function(){
   P.hp=12;P.hearts=3;P.tempHearts=0;P.stam=STAM_MAX;P.vessels=0;P.orbs=0;
@@ -8448,9 +8456,9 @@ function speak(who,text){
     const v=pickVoice(cfg.want); if(v) u.voice=v;
     u.pitch=cfg.pitch; u.rate=cfg.rate; u.volume=.95;
     curUtter=u; speechSynthesis.speak(u);
-  }catch(e){}
+  }catch(e){__swallowed(e)}
 }
-function stopSpeaking(){ try{ speechSynthesis.cancel(); }catch(e){} }
+function stopSpeaking(){ try{ speechSynthesis.cancel(); }catch(e){__swallowed(e)} }
 /* every cutscene line is now spoken, and the line holds until the voice finishes */
 const _nextCut=nextCut;
 nextCut=function(){
@@ -8481,7 +8489,7 @@ const _save=save;
 save=function(){ _save();
   try{ const d=JSON.parse(localStorage.getItem(KEY)||'{}');
     d.towers=P.towers; d.beast=divineBeasts.ruta?divineBeasts.ruta.active:0;
-    localStorage.setItem(KEY,JSON.stringify(d)); }catch(e){} };
+    localStorage.setItem(KEY,JSON.stringify(d)); }catch(e){__swallowed(e)} };
 const _load=load;
 load=function(){ const r=_load();
   if(r){ try{ const d=JSON.parse(localStorage.getItem(KEY)); P.towers=d.towers||{plateau:0};
@@ -8489,7 +8497,7 @@ load=function(){ const r=_load();
       const g=towerObjs[t.id]; g.userData.eye.material=MAT.glowB;
       g.userData.beam.material.color.set(0x63d6e2);
       g.userData.rings.forEach(x=>x.material=MAT.glowB); }
-  }catch(e){} }
+  }catch(e){__swallowed(e)} }
   return r; };
 const _newGame2=newGame;
 newGame=function(){ P.towers={}; stopSpeaking();
@@ -15760,7 +15768,7 @@ function nzq(dur,vol,opt){
     if(o.to) f.frequency.exponentialRampToValueAtTime(Math.max(40,o.to),c.currentTime+dur);
     const g=c.createGain(); g.gain.value=vol;
     n.connect(f); f.connect(g); g.connect(o.dest||sfxGain); n.start();
-  }catch(e){}
+  }catch(e){__swallowed(e)}
 }
 const R1=()=>Math.random();          /* never the game RNG — audio must not shift the world */
 
@@ -15852,7 +15860,7 @@ function ambInit(){
     AMB.rain =bed('highpass',1500,.5);
     AMB.water=bed('bandpass',720,.9);
     AMB.ready=true;
-  }catch(e){}
+  }catch(e){__swallowed(e)}
 }
 function nearWater(x,z){                 /* how loud should running water be here */
   let best=1e9;
@@ -15868,7 +15876,7 @@ function ambAudio(dt){
   if(!P.playing) return;
   ambInit(); if(!AMB.ready) return;
   const c=ac(), now=c.currentTime, T=.5;
-  const set=(bed,v)=>{ try{ bed.g.gain.setTargetAtTime(Math.max(0,v),now,T); }catch(e){} };
+  const set=(bed,v)=>{ try{ bed.g.gain.setTargetAtTime(Math.max(0,v),now,T); }catch(e){__swallowed(e)} };
   const indoors=!!(P.inShrine||P.inRes||P.inBeast||P.inCastle);
   const rain=(typeof raining!=='undefined'&&raining)?1:0;
   const storm=(typeof storming!=='undefined'&&storming)?1:0;
@@ -15972,7 +15980,7 @@ function enemyVoice(E,ev){
                      setTimeout(()=>tone(f*.6,.35,V.w,V.g*.6,f*.2),180); break;
       case 'idle':   tone(f*.9,.13,V.w,V.g*.45,f*.75); break;
     }
-  }catch(e){}
+  }catch(e){__swallowed(e)}
 }
 /* hook the voices onto what actually happens to an enemy */
 if(typeof hitEnemy==='function'){
@@ -16054,7 +16062,7 @@ if(typeof animate==='function'){
   const _anim=animate;
   animate=function(dt,moving,speed){
     const r=_anim.apply(this,arguments);
-    try{ footAudio(dt,moving,speed); ambAudio(dt); voiceAudio(dt); }catch(e){}
+    try{ footAudio(dt,moving,speed); ambAudio(dt); voiceAudio(dt); }catch(e){__swallowed(e)}
     return r;
   };
 }
@@ -16100,7 +16108,7 @@ function applyBareLook(){
     } else {
       for(const id of ['cuffBL','cuffBR','cuffL','cuffR']) rigShow(linkRig,id,true);
     }
-  }catch(e){}
+  }catch(e){__swallowed(e)}
 }
 /* the Slate rides on his hip from the moment he picks it up */
 (function(){
@@ -16122,7 +16130,7 @@ function applyBareLook(){
     bx([.020,.020,.010],[-.05,-.09,.040],amber);  /* the runes down one side */
     bx([.020,.020,.010],[-.05,-.05,.040],amber);
     rig.slate=g; g.visible=false;
-  }catch(e){}
+  }catch(e){__swallowed(e)}
 })();
 /* keep it in step with the loadout and with whether he has the Slate at all */
 if(typeof refreshArmour==='function'){
@@ -16354,7 +16362,7 @@ if(typeof animate==='function'){
   const _animSets=animate;
   animate=function(dt,moving,speed){
     const r=_animSets.apply(this,arguments);
-    try{ radiantGlow(); setBonusWatch(); }catch(e){}
+    try{ radiantGlow(); setBonusWatch(); }catch(e){__swallowed(e)}
     return r;
   };
 }
@@ -16458,12 +16466,12 @@ function conductShock(x,z,from,depth){
     if(d>9) continue;
     if(!enemyConducts(E)) continue;                    /* only through a conductor */
     E._conducted=true; hit++;
-    try{ applyElement(E,'shock'); }catch(e){}
+    try{ applyElement(E,'shock'); }catch(e){__swallowed(e)}
     hit+=conductShock(E.pos.x,E.pos.z,E,depth+1);
   }
   /* and back to the player, if he is the one standing in the puddle */
   if(depth===0&&playerConducts()&&Math.hypot(P.pos.x-x,P.pos.z-z)<9&&from){
-    try{ applyPlayerElement('shock'); }catch(e){}
+    try{ applyPlayerElement('shock'); }catch(e){__swallowed(e)}
   }
   return hit;
 }
@@ -16510,7 +16518,7 @@ function strikeLightning(x,z,onPlayer,victim){
     col.position.set(x,y+120,z); g.add(col);
     const li=new THREE.PointLight(0xdff0ff,7,90); li.position.set(x,y+6,z); g.add(li);
     scene.add(g);
-    setTimeout(()=>{ try{scene.remove(g);}catch(e){} },160);
+    setTimeout(()=>{ try{scene.remove(g);}catch(e){__swallowed(e)} },160);
     sfx('thunder');
     if(onPlayer){
       toast('Lightning! Put the metal away','bad');
@@ -16519,7 +16527,7 @@ function strikeLightning(x,z,onPlayer,victim){
     igniteAt(x,z);
     for(const e2 of enemies) if(e2) e2._conducted=false;
     conductShock(x,z,victim||null,0);
-  }catch(e){}
+  }catch(e){__swallowed(e)}
 }
 /* a warning first, the way the real game flashes your weapon */
 let _warnT=0;
@@ -16585,7 +16593,7 @@ function bodyImpacts(dt){
       const p=(b.mass||1)*sp;                       /* momentum */
       const dmg=Math.round(clamp(p*0.9,4,90));
       const nx=b.vel.x/sp, nz=b.vel.z/sp;
-      try{ hitEnemy(E,dmg,nx,nz,null); }catch(e){}
+      try{ hitEnemy(E,dmg,nx,nz,null); }catch(e){__swallowed(e)}
       /* equal and opposite: the thing bounces, the monster is shoved */
       E.vel.x+=nx*p*0.10; E.vel.z+=nz*p*0.10; E.stun=Math.max(E.stun||0,.5);
       b.vel.multiplyScalar(-.28); b._hitCd=.4;
@@ -16610,7 +16618,7 @@ if(typeof animate==='function'){
       updateWind(dt); windSpreadFire(dt); windPushBodies(dt);
       lightningTick(dt); lightningWarn(dt);
       carryTick(dt); bodyImpacts(dt);
-    }catch(e){}
+    }catch(e){__swallowed(e)}
     return r;
   };
 }
@@ -16637,7 +16645,7 @@ function attackPhases(dt){
     if(t>ATK_WINDUP){
       if(!E._telegraphed){
         E._telegraphed=true;
-        try{ enemyVoice(E,'attack'); }catch(e){}
+        try{ enemyVoice(E,'attack'); }catch(e){__swallowed(e)}
         /* it rears back and reddens: the whole point is that you can see it */
         E._flash=.18;
       }
@@ -16662,7 +16670,7 @@ function attackPhases(dt){
             body.material.color.setHex(0xff6a4a); }
           else if(!on&&E.__col!==undefined){ body.material.color.setHex(E.__col); E.__col=undefined; }
         }
-      }catch(e){}
+      }catch(e){__swallowed(e)}
     }
   }
 }
@@ -16712,7 +16720,7 @@ function updateRagdolls(dt){
       g.traverse(o=>{ if(o.isMesh&&o.material&&o.material.transparent!==undefined){
         o.material.transparent=true; o.material.opacity=Math.max(0,r.life); } });
     }
-    if(r.life<=0){ try{scene.remove(g);}catch(e){} ragdolls.splice(i,1); }
+    if(r.life<=0){ try{scene.remove(g);}catch(e){__swallowed(e)} ragdolls.splice(i,1); }
   }
 }
 if(typeof killEnemy==='function'){
@@ -16739,8 +16747,8 @@ if(typeof die==='function'){
     if(P.dead||dyingT>0) return;
     dyingT=1.0; _dyArgs=[title,src];
     P.playing=false;                              /* he stops taking orders at once */
-    try{ document.exitPointerLock&&document.exitPointerLock(); }catch(e){}
-    try{ sfx('hurt'); }catch(e){}
+    try{ document.exitPointerLock&&document.exitPointerLock(); }catch(e){__swallowed(e)}
+    try{ sfx('hurt'); }catch(e){__swallowed(e)}
     return;
   };
   window.__realDie=_dieAnim;
@@ -16753,10 +16761,10 @@ function dyingTick(dt){
   try{
     player.rotation.x=-t*Math.PI*.48;
     player.position.y=lerp(player.position.y,groundAt(P.pos.x,P.pos.z)+.35,1-Math.pow(.02,dt));
-  }catch(e){}
+  }catch(e){__swallowed(e)}
   if(was>0&&dyingT<=0){
     dyingT=0;
-    try{ player.rotation.x=0; }catch(e){}
+    try{ player.rotation.x=0; }catch(e){__swallowed(e)}
     if(window.__realDie&&_dyArgs){ window.__realDie(_dyArgs[0],_dyArgs[1]); _dyArgs=null; }
   }
 }
@@ -16764,7 +16772,7 @@ function dyingTick(dt){
 if(typeof respawn==='function'){
   const _resp=respawn;
   respawn=function(){ dyingT=0; _dyArgs=null;
-    try{ player.rotation.x=0; }catch(e){}
+    try{ player.rotation.x=0; }catch(e){__swallowed(e)}
     return _resp.apply(this,arguments); };
 }
 
@@ -16772,7 +16780,7 @@ if(typeof animate==='function'){
   const _animG3=animate;
   animate=function(dt,moving,speed){
     const r=_animG3.apply(this,arguments);
-    try{ attackPhases(dt); updateRagdolls(dt); dyingTick(dt); }catch(e){}
+    try{ attackPhases(dt); updateRagdolls(dt); dyingTick(dt); }catch(e){__swallowed(e)}
     return r;
   };
 }
@@ -16852,7 +16860,7 @@ function shade(mat,opts){
         f=f.replace('#include <dithering_fragment>','#include <dithering_fragment>'+CEL_FRAG_BODY);
       else f=f.replace(/\}\s*$/, CEL_FRAG_BODY+'\n}');
       shader.fragmentShader=f;
-    }catch(e){}
+    }catch(e){__swallowed(e)}
   };
   mat.needsUpdate=true;
   return mat;
@@ -16861,9 +16869,7 @@ function shade(mat,opts){
 function shadeExisting(){
   let n=0, w=0;
   const windy=new Set();
-  try{
-    for(const k in I){ if(I[k]&&I[k].material) windy.add(I[k].material); }
-  }catch(e){}
+  /* foliage is found and given its wind later, once the forests exist (Batch 119) */
   scene.traverse(o=>{
     if(!o.isMesh&&!o.isInstancedMesh) return;
     const list=Array.isArray(o.material)?o.material:[o.material];
@@ -16903,7 +16909,7 @@ if(typeof animate==='function'){
         CEL_UNIFORMS.uWind.value.set(WIND.x,WIND.z);
         CEL_UNIFORMS.uWindStr.value=clamp(WIND.str*0.6,0.2,3.0);
       }
-    }catch(e){}
+    }catch(e){__swallowed(e)}
     return r;
   };
 }
@@ -17018,9 +17024,9 @@ console.log('cooking: '+RECIPES.length+' recipes, tiered effects with real durat
 const OPT_KEY=KEY+':opts';
 const OPT={ music:0.16, sfx:0.5, sens:1.0, invertY:false, draw:1.0, cel:true, quality:1 };
 (function loadOpts(){
-  try{ Object.assign(OPT, JSON.parse(localStorage.getItem(OPT_KEY)||'{}')); }catch(e){}
+  try{ Object.assign(OPT, JSON.parse(localStorage.getItem(OPT_KEY)||'{}')); }catch(e){__swallowed(e)}
 })();
-function saveOpts(){ try{ localStorage.setItem(OPT_KEY,JSON.stringify(OPT)); }catch(e){} }
+function saveOpts(){ try{ localStorage.setItem(OPT_KEY,JSON.stringify(OPT)); }catch(e){__swallowed(e)} }
 function applyOpts(){
   try{
     if(typeof musicGain!=='undefined'&&musicGain) musicGain.gain.value=OPT.music;
@@ -17031,7 +17037,7 @@ function applyOpts(){
     camera.far = 2000*OPT.draw + 1000; camera.updateProjectionMatrix();
     renderer.setPixelRatio(Math.min(devicePixelRatio, OPT.quality>1?1.75:OPT.quality<1?0.75:1.25));
     if(typeof CEL!=='undefined') CEL.on=!!OPT.cel;
-  }catch(e){}
+  }catch(e){__swallowed(e)}
 }
 
 /* ---- three save slots, each stamped with a version ---- */
@@ -17060,7 +17066,7 @@ save=function(){
       if(SLOT!==0) localStorage.removeItem(KEY);   /* the base key is slot 0 only */
       else localStorage.setItem(KEY,s);
     }
-  }catch(e){}
+  }catch(e){__swallowed(e)}
   return r;
 };
 const _loadSlot=load;
@@ -17071,13 +17077,13 @@ load=function(){
       if(raw) localStorage.setItem(KEY,raw);      /* hand the base loader this slot */
       else return false;
     }
-  }catch(e){}
+  }catch(e){__swallowed(e)}
   return _loadSlot.apply(this,arguments);
 };
 const _hasSaveSlot=hasSave;
 hasSave=function(){ try{ return !!localStorage.getItem(slotKey(SLOT)); }catch(e){ return false; } };
 function useSlot(i){
-  SLOT=i; try{ localStorage.setItem(KEY+':slot',String(i)); }catch(e){}
+  SLOT=i; try{ localStorage.setItem(KEY+':slot',String(i)); }catch(e){__swallowed(e)}
 }
 
 /* ---- what everything is, in words ---- */
@@ -17215,7 +17221,7 @@ if(typeof updateGear==='function'){
         const d=nm?describe(nm.trim()):'';
         if(d){ const s=document.createElement('span'); s.className='desc'; s.textContent=d; el.appendChild(s); }
       }
-    }catch(e){}
+    }catch(e){__swallowed(e)}
     return r;
   };
 }
@@ -17309,14 +17315,14 @@ function streamCamps(dt){
     const d=Math.hypot(c.x-P.pos.x, c.z-P.pos.z);
     if(!c._built && d<CAMP_NEAR && raised<2){   /* at most two a tick, so no hitch */
       c._built=true; raised++;
-      try{ buildCamp(c); }catch(e){}
+      try{ buildCamp(c); }catch(e){__swallowed(e)}
       c._mobs=[];
       c.mob.forEach((t,i)=>{
         const ang=i/c.mob.length*TAU;
         try{
           const E=makeEnemy({t,x:c.x+Math.cos(ang)*7,z:c.z+Math.sin(ang)*7,camp:c});
           if(E) c._mobs.push(E);
-        }catch(e){}
+        }catch(e){__swallowed(e)}
       });
     } else if(c._built && d>CAMP_FAR){
       /* far away: hide what is left of it, and let it come back on the next approach */
@@ -17343,7 +17349,7 @@ function isCorrupted(E){
       const w=curW();
       if(w&&/master sword/i.test(w.n)&&isCorrupted(E)) dmg*=2;   /* 30 becomes 60 */
       arguments[1]=dmg;
-    }catch(e){}
+    }catch(e){__swallowed(e)}
     return _hitMS.apply(this,arguments);
   };
   /* it never breaks: it goes dark instead */
@@ -17357,7 +17363,7 @@ function isCorrupted(E){
             toast('The Master Sword has run out of energy','bad'); refreshHeld(); updateGear(); }
           return;
         }
-      }catch(e){}
+      }catch(e){__swallowed(e)}
       return _deg.apply(this,arguments);
     };
   }
@@ -17408,7 +17414,7 @@ function weatherTick(dt){
       rainMesh.material.color.setHex(WX.snow>0.5?0xf0f4f8:0x9fb4c4);
       rainMesh.material.opacity=WX.snow>0.5?0.85:0.5;
     }
-  }catch(e){}
+  }catch(e){__swallowed(e)}
 }
 function weatherName(){
   return WX.type==='snow'?'Snow':WX.type==='fog'?'Fog':WX.type==='haze'?'Heat haze'
@@ -17418,7 +17424,7 @@ if(typeof animate==='function'){
   const _animW=animate;
   animate=function(dt,moving,speed){
     const r=_animW.apply(this,arguments);
-    try{ streamCamps(dt); masterSwordTick(dt); weatherTick(dt); }catch(e){}
+    try{ streamCamps(dt); masterSwordTick(dt); weatherTick(dt); }catch(e){__swallowed(e)}
     return r;
   };
 }
@@ -17651,7 +17657,7 @@ function questsDoneCount(){ return Object.keys(P.questDone||{}).length; }
       const str=JSON.stringify(d);
       localStorage.setItem(KEY,str);
       if(typeof slotKey==='function') localStorage.setItem(slotKey(SLOT),str);
-    }catch(e){}
+    }catch(e){__swallowed(e)}
     return r;
   };
   const _l=load;
@@ -17664,7 +17670,7 @@ function questsDoneCount(){ return Object.keys(P.questDone||{}).length; }
       P.stable=d.stable||P.stable||{};
       if(d.rupees!==undefined) P.rupees=d.rupees;
       reapplyDyes();
-    }catch(e){}
+    }catch(e){__swallowed(e)}
     return r;
   };
 })();
@@ -17673,7 +17679,7 @@ if(typeof animate==='function'){
   const _a=animate;
   animate=function(dt,moving,speed){
     const r=_a.apply(this,arguments);
-    try{ surfTick(dt); economyTick(); }catch(e){}
+    try{ surfTick(dt); economyTick(); }catch(e){__swallowed(e)}
     return r;
   };
 }
@@ -17992,7 +17998,7 @@ console.log('phase 4: '+TEMPER.length+' horse temperaments, '+Object.keys(HORSE_
 let resWake=0, resWokeOnce=false;
 function beginResWake(){
   resWake=5.2; resWokeOnce=true;
-  try{ P.pos.copy(RES.wake); P.pos.y=RES.floorY-1.6; P.vel.set(0,0,0); }catch(e){}
+  try{ P.pos.copy(RES.wake); P.pos.y=RES.floorY-1.6; P.vel.set(0,0,0); }catch(e){__swallowed(e)}
 }
 function resWakeTick(dt){
   if(resWake<=0) return;
@@ -18005,10 +18011,10 @@ function resWakeTick(dt){
     P.look.pitch=lerp(-0.55,-0.10,Math.min(1,t*1.4));   /* eyes open on the ceiling */
     if(RES.fluid) RES.fluid.material.opacity=0.6*(1-t*0.7);
     if(RES.basinRing) RES.basinRing.material.color.setHSL(0.52,0.7,0.45+0.25*Math.sin(t*9));
-  }catch(e){}
+  }catch(e){__swallowed(e)}
   if(was>0&&resWake<=0){
     resWake=0;
-    try{ if(RES.fluid) RES.fluid.material.opacity=0.18; }catch(e){}
+    try{ if(RES.fluid) RES.fluid.material.opacity=0.18; }catch(e){__swallowed(e)}
   }
 }
 /* stage it on a new game, and only then */
@@ -18022,7 +18028,7 @@ if(typeof _newGame2==='function'||typeof newGame==='function'){
         beginResWake();
         cut('A voice','Wake now. The water has held you long enough.',{t:2.6});
         cut('A voice','A hundred years have gone by above this room, and none of them were kind.',{t:3.4});
-      }catch(e){}
+      }catch(e){__swallowed(e)}
       return r;
     };
   }
@@ -18046,7 +18052,7 @@ if(typeof animate==='function'){
       /* the basin keeps its slow glow the whole time you are in there */
       if(P.inRes&&RES.basinRing&&resWake<=0)
         RES.basinRing.material.color.setHSL(0.52,0.65,0.42+0.06*Math.sin(performance.now()/700));
-    }catch(e){}
+    }catch(e){__swallowed(e)}
     return r;
   };
 }
@@ -18176,7 +18182,7 @@ function renderInv(){
 function openInventory(){
   if(INV.open) return;
   INV.open=true; P.playing=false;
-  try{ document.exitPointerLock&&document.exitPointerLock(); }catch(e){}
+  try{ document.exitPointerLock&&document.exitPointerLock(); }catch(e){__swallowed(e)}
   $i('#inventory').classList.add('on');
   renderInv(); sfx('slate');
 }
@@ -18908,7 +18914,7 @@ function rbImpacts(dt){
       if(pos.distanceTo(E.pos)>rad+1.2+(E.s||1)*.6) continue;
       const p=b.mass*sp, dmg=Math.round(clamp(p*.9,4,120));
       const nx=b.v.x/sp, nz=b.v.z/sp;
-      try{ hitEnemy(E,dmg,nx,nz,null); }catch(e){}
+      try{ hitEnemy(E,dmg,nx,nz,null); }catch(e){__swallowed(e)}
       E.vel&&(E.vel.x+=nx*p*.08, E.vel.z+=nz*p*.08); E.stun=Math.max(E.stun||0,.5);
       if(!(b.held||b.kin)) b.v.multiplyScalar(-.25);
       b._hitCd=.45;
@@ -19292,7 +19298,7 @@ let faceLast=performance.now();
         updateFace(N.rig,dt);
       }
       if(typeof DIR!=='undefined'&&DIR.on) for(const k in DIR.actors){ const A=DIR.actors[k]; if(A.rig) updateFace(A.rig,dt); }
-    }catch(e){}
+    }catch(e){__swallowed(e)}
     return _renderFace(sc,cam);
   };
 }
@@ -19505,10 +19511,10 @@ function dirEnd(){
     DIR.actors={};
     $('#dirBars').classList.remove('on'); $('#dirSkip').classList.remove('on'); $('#dirTitle').classList.remove('on');
     $('#gl').classList.remove('memory'); document.body.classList.remove('dir');
-    $('#subtitle').classList.remove('show'); try{ stopSpeaking(); }catch(e){}
+    $('#subtitle').classList.remove('show'); try{ stopSpeaking(); }catch(e){__swallowed(e)}
     DIR.on=false; inCut=false; cutCam=null; camera.fov=62; camera.updateProjectionMatrix();
     $('#dirFade').classList.remove('on');
-    try{ if(sc&&sc.after) sc.after(); }catch(e){}
+    try{ if(sc&&sc.after) sc.after(); }catch(e){__swallowed(e)}
     if(DIR.queue.length){ dirPlay(DIR.queue.shift()); return; }
     if(cutQueue.length){ nextCut(); return; }
     if(!P.dead&&!paused&&!mapOpen) startPlay();
@@ -19538,7 +19544,7 @@ function dirFx(kind,b){
       m.position.copy(A.g.position); m.position.y+=11; m.userData.spin=1; A.rise=6; }
     if(k==='lightning'&&A){ const top=A.g.position.clone(); top.y+=60;
       const m=add(new THREE.Mesh(new THREE.CylinderGeometry(.18,.3,60,5),new THREE.MeshBasicMaterial({color:0xfff6a0})));
-      m.position.copy(A.g.position).add(new THREE.Vector3(3,30,-2)); m.userData.life=.35; flash('#fffbe0',.85,500); try{ sfx('thunder'); }catch(e){} }
+      m.position.copy(A.g.position).add(new THREE.Vector3(3,30,-2)); m.userData.life=.35; flash('#fffbe0',.85,500); try{ sfx('thunder'); }catch(e){__swallowed(e)} }
     if((k==='laser'||k==='laserOff')&&A&&B){
       const from=A.g.position.clone(); from.y+=A.h*.8; const to=B.g.position.clone(); to.y+=.9;
       const len=from.distanceTo(to);
@@ -19634,7 +19640,7 @@ function dirUpdate(dt){
 }
 addEventListener('keydown',e=>{
   if(!DIR.on) return;
-  if(e.code==='Space'){ e.preventDefault(); e.stopImmediatePropagation(); try{ stopSpeaking(); }catch(_){} dirNext(); }
+  if(e.code==='Space'){ e.preventDefault(); e.stopImmediatePropagation(); try{ stopSpeaking(); }catch(_){__swallowed(_)} dirNext(); }
   else if(e.code==='Escape'){ e.preventDefault(); e.stopImmediatePropagation(); DIR.i=DIR.sc.shots.length; dirEnd(); }
 },true);
 
@@ -19830,7 +19836,7 @@ function findStage(x,z,preferYaw){
      instanced tree, rock and bush as a sphere */
   const blockers=[], spheres=[], tmpS=new THREE.Sphere(), m4=new THREE.Matrix4(), pv=new THREE.Vector3(), qv=new THREE.Quaternion(), sv=new THREE.Vector3();
   const skip=new Set([sky,terrain,water]);
-  try{ if(typeof hyruleMesh!=='undefined') skip.add(hyruleMesh); if(typeof hWater!=='undefined') skip.add(hWater); }catch(e){}
+  try{ if(typeof hyruleMesh!=='undefined') skip.add(hyruleMesh); if(typeof hWater!=='undefined') skip.add(hWater); }catch(e){__swallowed(e)}
   try{
     scene.updateMatrixWorld(true);
     scene.traverse(o=>{
@@ -19853,7 +19859,7 @@ function findStage(x,z,preferYaw){
       if(tmpS.radius>400) return;
       if(Math.hypot(tmpS.center.x-x,tmpS.center.z-z)<tmpS.radius+130) blockers.push(o);
     });
-  }catch(e){}
+  }catch(e){__swallowed(e)}
   const segHitsSphere=(A,B,S)=>{
     const dx=B.x-A.x, dy=B.y-A.y, dz=B.z-A.z, L2=dx*dx+dy*dy+dz*dz;
     let t=((S[0]-A.x)*dx+(S[1]-A.y)*dy+(S[2]-A.z)*dz)/L2; t=Math.max(0,Math.min(1,t));
@@ -20074,11 +20080,11 @@ const RAIN_LINES=['Wait it out with me. It never lasts, not this time of year.',
   save=function(){ const r=_s.apply(this,arguments);
     try{ const d=JSON.parse(localStorage.getItem(KEY)||'{}'); d.medallionOwned=!!P.medallionOwned; d.medallion=P.medallion||null;
       const str=JSON.stringify(d); localStorage.setItem(KEY,str);
-      if(typeof slotKey==='function') localStorage.setItem(slotKey(SLOT),str); }catch(e){}
+      if(typeof slotKey==='function') localStorage.setItem(slotKey(SLOT),str); }catch(e){__swallowed(e)}
     return r; };
   const _l=load;
   load=function(){ const r=_l.apply(this,arguments);
-    try{ const d=JSON.parse(localStorage.getItem(KEY)||'{}'); P.medallionOwned=!!d.medallionOwned; P.medallion=d.medallion||null; }catch(e){}
+    try{ const d=JSON.parse(localStorage.getItem(KEY)||'{}'); P.medallionOwned=!!d.medallionOwned; P.medallion=d.medallion||null; }catch(e){__swallowed(e)}
     return r; };
 })();
 console.log('group 4: rain shelter for '+npcs.length+' people; Travel Medallion; EX rewards corrected');
@@ -20351,7 +20357,7 @@ function updatePatch(){
   PATCH.mesh.visible=true; TERR_U.uPatch.value.w=1;
 }
 { const _updateSkyPatch=updateSky;
-  updateSky=function(dt){ _updateSkyPatch(dt); try{ updatePatch(); }catch(e){} };
+  updateSky=function(dt){ _updateSkyPatch(dt); try{ updatePatch(); }catch(e){__swallowed(e)} };
 }
 console.log('terrain: textures in the shader; fine 1.25 m ground within '+PATCH.R+' m, detail masked on '
   +DMASK.filter(v=>v<1).length+' of '+DMASK.length+' coarse cells');
@@ -20409,7 +20415,7 @@ function budgetLights(){
 const _lbv=new THREE.Vector3();
 function reachCut(L){ return (L.distance>0?L.distance:60)*1.5; }
 { const _updateSkyLights=updateSky;
-  updateSky=function(dt){ _updateSkyLights(dt); lightTick-=Math.max(dt,.016); if(lightTick<=0){ lightTick=.25; try{ budgetLights(); }catch(e){} } };
+  updateSky=function(dt){ _updateSkyLights(dt); lightTick-=Math.max(dt,.016); if(lightTick<=0){ lightTick=.25; try{ budgetLights(); }catch(e){__swallowed(e)} } };
 }
 budgetLights();
 console.log('look: linear output, sun and sky scaled; point lights budgeted to '+LIGHT_BUDGET);
@@ -20723,7 +20729,7 @@ function updateCaves(){
   }
 }
 { const _updatePlayerCave=updatePlayer;
-  updatePlayer=function(dt){ try{ updateCaves(); }catch(e){} _updatePlayerCave(dt); };
+  updatePlayer=function(dt){ try{ updateCaves(); }catch(e){__swallowed(e)} _updatePlayerCave(dt); };
 }
 { const _updateCameraCave=updateCamera;
   updateCamera=function(dt){
@@ -21127,9 +21133,9 @@ function applyMapView(){
 (function persistPins(){
   const _s=save; save=function(){ const r=_s.apply(this,arguments);
     try{ const d=JSON.parse(localStorage.getItem(KEY)||'{}'); d.pins=P.pins; const str=JSON.stringify(d); localStorage.setItem(KEY,str);
-      if(typeof slotKey==='function') localStorage.setItem(slotKey(SLOT),str); }catch(e){} return r; };
+      if(typeof slotKey==='function') localStorage.setItem(slotKey(SLOT),str); }catch(e){__swallowed(e)} return r; };
   const _l=load; load=function(){ const r=_l.apply(this,arguments);
-    try{ const d=JSON.parse(localStorage.getItem(KEY)||'{}'); P.pins=d.pins||[]; }catch(e){} return r; };
+    try{ const d=JSON.parse(localStorage.getItem(KEY)||'{}'); P.pins=d.pins||[]; }catch(e){__swallowed(e)} return r; };
 })();
 </script>
 <script>
@@ -21368,7 +21374,7 @@ addEventListener('keydown',e=>{
   const hash32=s=>{ let h=0; for(let i=0;i<s.length;i++) h=(h*31+s.charCodeAt(i))|0; return h; };
   function ask(idKey,label){
     say(label+' — which amiibo is it? Pick it in the list below; it will be remembered.');
-    const pickOnce=a=>{ try{ localStorage.setItem('amiibo:'+idKey,a.n); }catch(e){} };
+    const pickOnce=a=>{ try{ localStorage.setItem('amiibo:'+idKey,a.n); }catch(e){__swallowed(e)} };
     window.__amiiboPick=pickOnce;
     amiiboShowAll=true; renderAmiibo();
   }
@@ -21386,7 +21392,7 @@ addEventListener('keydown',e=>{
       if(!api) throw new Error('unknown');
       const a=matchAmiibo(api);
       if(!a){ ask(idHex,api.name+' ('+api.amiiboSeries+')'); return; }
-      try{ localStorage.setItem('amiibo:'+idHex,a.n); }catch(e){}
+      try{ localStorage.setItem('amiibo:'+idHex,a.n); }catch(e){__swallowed(e)}
       say(api.name+' · '+api.amiiboSeries+' → '+a.n); tapAmiibo(a);
     }catch(e){ ask(idHex,'Figure '+head+' '+tail+' (offline or not listed)'); }
   }
@@ -21561,7 +21567,7 @@ function updateBuildingLOD(dt){
   }
 }
 { const _updateSkyLOD=updateSky;
-  updateSky=function(dt){ _updateSkyLOD(dt); if(!(P.inShrine||P.inRes||P.inBeast||P.inCastle)) try{ updateBuildingLOD(Math.max(dt,.016)); }catch(e){} };
+  updateSky=function(dt){ _updateSkyLOD(dt); if(!(P.inShrine||P.inRes||P.inBeast||P.inCastle)) try{ updateBuildingLOD(Math.max(dt,.016)); }catch(e){__swallowed(e)} };
 }
 console.log('LOD: '+LOD_BUILD.length+' building groups with stand-ins; creatures swap to shared stand-ins past '+LOD.near+' m');
 </script>
@@ -21609,7 +21615,7 @@ function updateCulling(dt){
   }
 }
 { const _updateSkyCull=updateSky;
-  updateSky=function(dt){ _updateSkyCull(dt); try{ updateCulling(Math.max(dt,.016)); }catch(e){} };
+  updateSky=function(dt){ _updateSkyCull(dt); try{ updateCulling(Math.max(dt,.016)); }catch(e){__swallowed(e)} };
 }
 console.log('culling: '+CULL.items.length+' small things draw only while they are big enough to see');
 </script>
@@ -21798,7 +21804,7 @@ function updateWorldShadow(){
   }
 })();
 { const _updateSkyShadow=updateSky;
-  updateSky=function(dt){ _updateSkyShadow(dt); try{ updateWorldShadow(); }catch(e){} };
+  updateSky=function(dt){ _updateSkyShadow(dt); try{ updateWorldShadow(); }catch(e){__swallowed(e)} };
 }
 console.log('world shadows: the sun is ray-marched over '+HGRID+'x'+HGRID+' cells of Hyrule and the terrain reads it');
 </script>
@@ -22417,10 +22423,10 @@ if(typeof critters!=='undefined') for(const C of critters) smoothRig(C.rig||(C.g
 /* the hilt shows only when there is a sword to be sheathed */
 { const _refreshHeldSheath=refreshHeld;
   refreshHeld=function(){ const r=_refreshHeldSheath.apply(this,arguments);
-    try{ const w=curW(); if(linkRig.parts.sheath) linkRig.parts.sheath.visible=!!(w&&WEAPONS[w.n]&&!/club|branch|torch|boomerang|rod|hammer|axe/i.test(w.n)); }catch(e){}
+    try{ const w=curW(); if(linkRig.parts.sheath) linkRig.parts.sheath.visible=!!(w&&WEAPONS[w.n]&&!/club|branch|torch|boomerang|rod|hammer|axe/i.test(w.n)); }catch(e){__swallowed(e)}
     return r; };
 }
-try{ refreshHeld(); }catch(e){}
+try{ refreshHeld(); }catch(e){__swallowed(e)}
 console.log('characters: rounded, smoother parts for every rig; noses, Link\'s fringe strands, sheath and pouch');
 </script>
 <script>
@@ -22521,7 +22527,7 @@ const SHEIKAH_EYE=`<svg viewBox="0 0 40 26" width="40" height="26" fill="none" s
   enterShrine=function(s){ const r=_enterShrineArt.apply(this,arguments);
     try{ const d=document.createElement('div'); d.className='toast good';
       d.innerHTML=(s.name||'Shrine')+'<span class="glyphLine">'+sheikahText(String(s.name||'SHRINE').replace(/[^A-Za-z ]/g,'').slice(0,18),11)+'</span>';
-      $('#toasts').appendChild(d); setTimeout(()=>d.remove(),4000); }catch(e){}
+      $('#toasts').appendChild(d); setTimeout(()=>d.remove(),4000); }catch(e){__swallowed(e)}
     return r; };
 }
 console.log('Sheikah Slate art: an original '+SHEIKAH_CHARS.length+'-glyph script, circuit frames and the eye emblem on the Slate screens');
@@ -22725,7 +22731,7 @@ function buildWalkRoom(D){
         $('#subtitle .txt').textContent=C.hint+(C.say&&C.say!==C.hint?'  —  '+C.say:'');
         $('#subtitle').classList.add('show'); clearTimeout(r.__subT); r.__subT=setTimeout(()=>{ if(!inCut) $('#subtitle').classList.remove('show'); },6500); }
       if(!C.solved){
-        let ok=false; try{ ok=C.check(); }catch(e){}
+        let ok=false; try{ ok=C.check(); }catch(e){__swallowed(e)}
         if(ok){ C.solved=true; C.gate.visible=false; C.glow.visible=false; toast('The gate opens','good'); sfx('open'); }
         else if(P.pos.z>r.rz+C.zg-1.6){ P.pos.z=r.rz+C.zg-1.6; }
         break;          /* nothing past the first unsolved chamber matters yet */
@@ -24123,4 +24129,75 @@ const NEW_ARMOR_PLACES=[
     if(seen>=4&&!(P.ownedArmor&&P.ownedArmor['Tunic of Memories'])) setTimeout(()=>give('Tunic of Memories'),2500);
   };
 }
+</script>
+<script>
+"use strict";
+/* ================= BATCH 119 — Roadmap 3, group A: foliage wind and a biome for all of Hyrule ================= */
+/* A1. shadeExisting() looked for foliage in a variable that only ever lived inside the
+   Plateau planter, so the wind never reached a single leaf. The foliage is found here by
+   what it is — the forest banks, and the Plateau's instanced leaves, pines, bushes and
+   grass — and given its own sway. Each instance sways on its own phase, read from where
+   it stands, instead of the whole forest leaning as one. */
+const WIND_INST=`
+  {
+    #ifdef USE_INSTANCING
+      vec4 wpw = modelMatrix * instanceMatrix * vec4(transformed,1.0);
+    #else
+      vec4 wpw = modelMatrix * vec4(transformed,1.0);
+    #endif
+    float hw = clamp(transformed.y * 0.22, 0.0, 1.0);
+    hw *= hw;
+    float pw = wpw.x * 0.09 + wpw.z * 0.11 + uTime * 1.7;
+    float gw = 0.55 + 0.45 * sin(uTime * 0.37 + wpw.x * 0.013 + wpw.z * 0.007);
+    float aw = hw * 0.55 * uWindStr * gw;
+    transformed.x += uWind.x * aw * (0.6 + 0.4 * sin(pw));
+    transformed.z += uWind.y * aw * (0.6 + 0.4 * sin(pw * 1.3 + 1.7));
+  }`;
+const WINDY=new Set();
+function addWind(mat){
+  if(!mat||mat.__windy) return false;
+  mat.__windy=true; WINDY.add(mat);
+  const prev=mat.onBeforeCompile;
+  mat.onBeforeCompile=function(sh){
+    if(prev) prev.call(this,sh);
+    if(!sh.uniforms.uTime){ sh.uniforms.uTime=CEL_UNIFORMS.uTime; sh.uniforms.uWind=CEL_UNIFORMS.uWind; sh.uniforms.uWindStr=CEL_UNIFORMS.uWindStr;
+      sh.vertexShader='uniform float uTime; uniform vec2 uWind; uniform float uWindStr;\n'+sh.vertexShader; }
+    sh.vertexShader=sh.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>'+WIND_INST);
+  };
+  const key=mat.customProgramCacheKey?mat.customProgramCacheKey.call(mat):'';
+  mat.customProgramCacheKey=()=>key+'-wind';
+  mat.needsUpdate=true;
+  return true;
+}
+(function windTheFoliage(){
+  const mats=new Set();
+  for(const k of ['leaf','autumn','pine','snow','palmC']) if(FOREST[k]) mats.add(FOREST[k].material);
+  /* the Plateau planter's own instanced foliage, by the colours it was made with */
+  const PLATEAU_LEAF=new Set([0x3f7a3a,0x2f5f45,0x4f8442,0x6f9a4e,0xdfe9ee]);
+  scene.traverse(o=>{
+    if(!o.isInstancedMesh||!o.material||o.material.vertexColors) return;
+    if(PLATEAU_LEAF.has(o.material.color.getHex())) mats.add(o.material);
+  });
+  let n=0; for(const m of mats) if(addWind(m)) n++;
+  console.log('wind: '+n+' foliage materials sway');
+})();
+
+/* A3. biomeAt() read the Plateau's 1.6 km grid and clamped everything beyond it to the
+   edge, so the whole of Hyrule answered "sand". Outside the Plateau it now reads the same
+   rules that colour the Hyrule terrain. 0 grass · 1 rock · 2 snow · 3 sand · 4 dirt */
+{ const _plateauBiome=biomeAt;
+  const nearR=(x,z,k,r)=>{ const R=REGIONS[k]; if(!R) return 0; const d=Math.hypot(x-R.x,z-R.z); return d<r?smooth(1-d/r):0; };
+  biomeAt=function(x,z){
+    if(onPlateau(x,z)) return _plateauBiome(x,z);
+    const y=groundAt(x,z), w=waterAt(x,z);
+    if(y<w+1.6) return 3;
+    const volcanic=Math.max(nearR(x,z,'eldin',1000),typeof VOLCANO!=='undefined'?VOLCANO(x,z):0);
+    if(volcanic>.35) return 1;
+    if(Math.max(nearR(x,z,'gerudo',1800),nearR(x,z,'wasteland',1000))>.4) return 3;
+    if(tempAt(x,z,y)<0) return 2;
+    if(slopeAt(x,z)>.75) return 1;
+    return 0;
+  };
+}
+console.log('biomes: Hyrule Field '+biomeAt(REGIONS.central.x,REGIONS.central.z)+', Gerudo '+biomeAt(REGIONS.wasteland.x,REGIONS.wasteland.z)+', Hebra '+biomeAt(REGIONS.hebra.x,REGIONS.hebra.z));
 </script>
