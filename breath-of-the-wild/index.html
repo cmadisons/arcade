@@ -16227,8 +16227,8 @@ Object.assign(NAMECOL,{
   'Desert Voe Headband':0x6d8ba4,'Desert Voe Spaulder':0x6d8ba4,'Desert Voe Trousers':0x5c7891,
   /* --- Flamebreaker: scorched iron and dull red --- */
   'Flamebreaker Helm':0x6f2f22,'Flamebreaker Armor':0x6f2f22,'Flamebreaker Boots':0x5b2619,
-  /* --- Snowquill: deep teal with white down --- */
-  'Snowquill Headdress':0x2f6f63,'Snowquill Tunic':0x2f6f63,'Snowquill Trousers':0x275c52,
+  /* --- Snowquill: the Rito set is crimson with white down --- */
+  'Snowquill Headdress':0xa8303c,'Snowquill Tunic':0xb03a42,'Snowquill Trousers':0x8a2a34,
   /* --- Radiant: bone over black --- */
   'Radiant Mask':0xd6cba4,'Radiant Shirt':0xd6cba4,'Radiant Tights':0x2a2a2e,
   /* --- Rubber: insulating yellow --- */
@@ -24852,6 +24852,80 @@ const ARMX={head:{},body:{},legs:{},all:[]};
   refreshArmour();
 }
 console.log('armour: '+Object.keys(ARMX.head).length+' head builds, '+Object.keys(ARMX.body).length+' body builds, 3 leg builds');
+</script>
+
+<script>
+"use strict";
+/* ================= BATCH 127 — Roadmap 4 group C: chests that look like chests ================= */
+/* Every chest in the world was a plain box with a small plate on the front. They are
+   rebuilt here as the three real kinds — wooden, metal-bound and the Sheikah chest
+   inside shrines — with a lid that is visibly a lid, corner bands, a clasp and hinges.
+   The chests in the Shrine of Resurrection are left exactly as they were. */
+const CHESTX={};
+(function chestFactory(){
+  const BOXG=new THREE.BoxGeometry(1,1,1), CYL=new THREE.CylinderGeometry(.5,.5,1,10);
+  const mat=(c,e,sh)=>{ const m=new THREE.MeshPhongMaterial({color:c,flatShading:true,shininess:sh||8,specular:0x1a1a1a});
+    if(e){ m.emissive=new THREE.Color(e); } return m; };
+  const P=(g,geo,m,x,y,z,sx,sy,sz,rx)=>{ const o=new THREE.Mesh(geo,m); o.position.set(x,y,z);
+    o.scale.set(sx,sy===undefined?sx:sy,sz===undefined?sx:sz); if(rx) o.rotation.x=rx;
+    o.castShadow=true; o.receiveShadow=true; g.add(o); return o; };
+  CHESTX.make=function(kind){
+    const wood=kind==='sheikah'?mat(0x2a3138):kind==='metal'?mat(0x6a707a,0,26):mat(0x7a5324);
+    const band=kind==='sheikah'?mat(0x161b20):kind==='metal'?mat(0x3a4048,0,26):mat(0x2f2a22);
+    const glow=mat(0x63d6e2,0x2a8a96);
+    const gold=kind==='wood'?mat(0xb8862a,0,20):mat(0x9aa2aa,0,24);
+    const g=new THREE.Group();
+    const W=1.9, H=.78, D=1.25;
+    /* the box */
+    P(g,BOXG,wood,0,H*.5,0,W,H,D);
+    for(const sx of[-1,1]) P(g,BOXG,band,sx*(W*.5-.06),H*.5,0,.10,H*1.02,D*1.02);   /* corner bands */
+    P(g,BOXG,band,0,H*.5,0,W*1.005,.09,D*1.005);
+    /* the lid, on its hinge at the back */
+    const lid=new THREE.Group(); lid.position.set(0,H,-D*.5); g.add(lid);
+    P(lid,BOXG,wood,0,.17,D*.5,W,.34,D);
+    P(lid,BOXG,wood,0,.36,D*.5,W*.94,.10,D*.86);        /* the crown of the lid */
+    for(const sx of[-1,1]) P(lid,BOXG,band,sx*(W*.5-.06),.17,D*.5,.10,.36,D*1.02);
+    P(lid,BOXG,band,0,.17,D*.5,W*1.005,.09,D*1.01);
+    for(const sx of[-1,1]) P(lid,CYL,gold,sx*W*.28,.02,.03,.07,.16,.07,Math.PI/2);   /* hinge knuckles */
+    /* the clasp on the front */
+    P(g,BOXG,gold,0,H*.78,D*.5+.02,.26,.22,.06);
+    P(g,BOXG,gold,0,H*.62,D*.5+.03,.14,.16,.05);
+    if(kind==='sheikah'){
+      for(const sx of[-1,1]) P(g,BOXG,glow,sx*.42,H*.5,D*.5+.015,.06,H*.62,.03);
+      P(lid,BOXG,glow,0,.33,D*.5,W*.55,.05,.06);
+      P(g,BOXG,glow,0,H*.5,-D*.5-.015,W*.6,.05,.03);
+    }
+    g.userData.lid=lid; g.userData.kind=kind;
+    return g;
+  };
+  /* which chest is which: shrines get the Sheikah chest, ancient and castle places metal */
+  CHESTX.kindFor=function(it){
+    if(it.kind==='shrineChest'||it.kind==='genChest'||(it.obj&&it.obj.userData&&it.obj.userData.shrine)) return 'sheikah';
+    if(it.kind==='castleChest'||it.kind==='skyChest') return 'metal';
+    if(it.kind==='caveChest') return 'wood';
+    return 'wood';
+  };
+})();
+/* swap every chest already standing in the world for the new model */
+(function rebuildChests(){
+  let n=0;
+  const RES_KEEP=new Set([RES&&RES.chestA,RES&&RES.chestB].filter(Boolean));
+  for(const it of interactables){
+    if(!/chest/i.test(it.kind||'')) continue;
+    const g=it.obj||it.mesh||it.g;
+    if(!g||!g.isObject3D||RES_KEEP.has(g)) continue;
+    let keep=false; RES_KEEP.forEach(r=>{ if(r&&(r===g||r.parent===g)) keep=true; });
+    if(keep) continue;
+    const opened=g.userData&&g.userData.lid&&g.userData.lid.rotation.x<-.4;
+    while(g.children.length) g.remove(g.children[0]);
+    const built=CHESTX.make(CHESTX.kindFor(it));
+    while(built.children.length) g.add(built.children[0]);
+    g.userData.lid=built.userData.lid;
+    if(opened) g.userData.lid.rotation.x=-1.15;
+    n++;
+  }
+  console.log('chests rebuilt: '+n+' (wooden, metal-bound and Sheikah), Resurrection chests untouched');
+})();
 </script>
 
 <!-- App Arcade ads + clock (shared, from github.com/cmadisons/app-arcade) -->
