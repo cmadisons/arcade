@@ -24478,5 +24478,125 @@ function skipResurrection(){
 setInterval(()=>{ if(P.playing&&P.inRes&&!P.hasSlate&&!P.__skipHinted){ P.__skipHinted=true; toast('Press S to skip the Shrine of Resurrection · arrow keys to walk','good'); } },1000);
 </script>
 
+<script>
+"use strict";
+/* ================= BATCH 124 — Roadmap 4 group A: Link himself ================= */
+/* A1 clothes when nothing is equipped, A2 a ponytail that hangs and swings, A3 a face
+   with eyes, nose and mouth that answer to how he is doing, A4 hands with thumbs that
+   close on a grip, A5 boots. */
+const LINKX={};
+(function dressLink(){
+  const B=linkRig.bones, P0=linkRig.parts;
+  const M=(c,opts)=>new THREE.MeshPhongMaterial(Object.assign({color:c,flatShading:true,shininess:0,specular:0x0a0a0a},opts||{}));
+  const add=(bone,geo,mat,x,y,z,sx,sy,sz,rx,ry,rz)=>{ const m=new THREE.Mesh(geo,mat);
+    m.position.set(x,y,z); m.scale.set(sx,sy===undefined?sx:sy,sz===undefined?sx:sz);
+    if(rx||ry||rz) m.rotation.set(rx||0,ry||0,rz||0); m.castShadow=true; bone.add(m); return m; };
+  const BOXG=new THREE.BoxGeometry(1,1,1), SPH=new THREE.SphereGeometry(.5,8,6), CYL=new THREE.CylinderGeometry(.5,.5,1,8);
+  /* ---- A3: a face ---- */
+  const skinD=M(shade(LINK_PAL.skin,.92)), white=M(0xf6f2ea), iris=M(0x3f7ab0), dark=M(0x1a1410), mouthM=M(0x8a4c44);
+  LINKX.eyes=[]; LINKX.pupils=[];
+  /* the spec's own eye dots and brow dashes sat above the fringe; they go */
+  for(const o of B.head.children.slice()) if(o.isMesh&&o.position.z>.19&&o.scale.y<=.09&&Math.abs(o.position.x)>.05&&o.position.y>.2) o.visible=false;
+  for(const s of[-1,1]){
+    const w=add(B.head,BOXG,white,s*.095,.205,.203,.072,.058,.02);
+    const ir=add(B.head,BOXG,iris,s*.095,.20,.209,.042,.046,.02);
+    const pu=add(B.head,BOXG,dark,s*.095,.20,.212,.022,.03,.02);
+    LINKX.eyes.push(w); LINKX.pupils.push(pu); void ir;
+  }
+  LINKX.nose=add(B.head,BOXG,skinD,0,.155,.211,.032,.055,.03);
+  add(B.head,BOXG,M(shade(LINK_PAL.skin,.78)),0,.134,.209,.05,.012,.02);   /* under the nose */
+  LINKX.mouth=add(B.head,BOXG,mouthM,0,.105,.206,.055,.013,.02);
+  /* the fringe tufts were cones standing up like spikes; they hang forward instead */
+  for(const o of B.head.children) if(o.isMesh&&o.geometry&&o.geometry.type==='ConeGeometry'&&o.position.y>.24&&o.position.z>.10&&o.material.color&&o.material.color.getHex()===LINK_PAL.hair){
+    o.rotation.x=2.55+ (Math.abs(o.position.x)>.15?.25:0); o.position.y-=.015; o.position.z+=.01; o.scale.y*=1.25;
+  }
+  LINKX.brows=[];
+  for(const s of[-1,1]) LINKX.brows.push(add(B.head,BOXG,M(shade(LINK_PAL.hairD,.85)),s*.095,.245,.205,.085,.022,.02));
+  LINKX.browRest=LINKX.brows.map(o=>o.position.y);
+  /* ---- A2: a ponytail that hangs ---- */
+  LINKX.oldPony=P0.pony||null; if(P0.pony) P0.pony.visible=false;   /* the old stub, kept down below too */
+  { const g=new THREE.Group(); g.position.set(0,.34,-.20); B.head.add(g);
+    const tie=add(g,BOXG,M(LINK_PAL.band),0,0,.02,.13,.07,.13);
+    const t1=add(g,CYL,M(LINK_PAL.hair),0,-.16,-.05,.13,.34,.13);
+    const g2=new THREE.Group(); g2.position.set(0,-.32,-.10); g.add(g2);
+    const t2=add(g2,CYL,M(shade(LINK_PAL.hair,.92)),0,-.12,-.03,.10,.28,.10);
+    const t3=add(g2,CYL,M(shade(LINK_PAL.hair,.86)),0,-.26,-.05,.07,.18,.07);
+    LINKX.pony=g; LINKX.pony2=g2; void tie; void t1; void t2; void t3; }
+  /* ---- A4: hands with thumbs ---- */
+  LINKX.fingers=[];
+  for(const [bone,s] of [[B.handL,-1],[B.handR,1]]){
+    const g=new THREE.Group(); g.position.set(0,-.13,.01); bone.add(g);
+    for(let i=0;i<3;i++) add(g,BOXG,M(LINK_PAL.skin),(i-1)*.045,-.03,.02,.04,.09,.06);
+    add(g,BOXG,M(LINK_PAL.skin),s*.07,.02,.03,.04,.06,.05,0,0,s*.5);   /* the thumb */
+    LINKX.fingers.push(g);
+  }
+  /* ---- A5: boots ---- */
+  LINKX.boots=[];
+  for(const bone of [B.shinL,B.shinR]){
+    const g=new THREE.Group(); g.position.set(0,-.40,0); bone.add(g);
+    const sole=add(g,BOXG,M(0x2a2018),0,-.03,.04,.22,.07,.30);
+    const upper=add(g,BOXG,M(LINK_PAL.boot),0,.07,.01,.21,.16,.23);
+    const cuff=add(g,BOXG,M(LINK_PAL.bootT),0,.17,0,.23,.07,.24);
+    LINKX.boots.push({g,sole,upper,cuff});
+  }
+  void SPH;
+})();
+/* ---- A1: no armour means the Shrine of Resurrection's own clothes ---- */
+{ const _ac=armourColor;
+  armourColor=function(name,slot){
+    if(!name||name==='None') return slot==='body'?0xc9c0ab:slot==='legs'?0xb9a681:0;   /* Old Shirt, Well-Worn Trousers */
+    return _ac.apply(this,arguments);
+  };
+  const _ra=refreshArmour;
+  refreshArmour=function(){
+    _ra.apply(this,arguments);
+    /* an earlier batch stripped him when nothing was equipped; he wears what the
+       Shrine of Resurrection gave him instead — cream shirt, worn trousers */
+    if(LINKX.oldPony) LINKX.oldPony.visible=false;      /* refreshArmour turns the stub back on */
+    const SHIRT=0xd2d6cc, TROUSER=0x7f7a63, TRIM=0xb0b2a4;
+    if(!P.armor.body||P.armor.body==='None'){
+      for(const id of ['torso','yoke','waist','skirt','skirtFL','skirtFR','skirtBL','skirtBR','padL','padR']) rigSkin(linkRig,id,SHIRT);
+      rigSkin(linkRig,'sleeveL',TRIM); rigSkin(linkRig,'sleeveR',TRIM);
+    }
+    if(!P.armor.legs||P.armor.legs==='None'){
+      for(const id of ['thighML','thighMR','shinML','shinMR']) rigSkin(linkRig,id,TROUSER);
+    }
+    const legC=(!P.armor.legs||P.armor.legs==='None')?TROUSER:armourColor(P.armor.legs,'legs');
+    for(const b of LINKX.boots||[]){ b.upper.material=b.upper.material.clone(); b.upper.material.color.setHex(shade(legC,.62));
+      b.cuff.material=b.cuff.material.clone(); b.cuff.material.color.setHex(shade(legC,.8)); }
+  };
+  refreshArmour();
+}
+/* ---- the face and the ponytail answer to how he is doing ---- */
+{ const _an=animate;
+  animate=function(dt,moving,speed){
+    const r=_an.apply(this,arguments);
+    const t=performance.now()/1000;
+    const hurt=P.hp<=(typeof maxHP==='function'?maxHP():120)*.3, cold=!!(P.freezing||P.chill||(P.coldT||0)>0), tired=(typeof maxStam==='function'&&P.stam<maxStam()*.25);
+    /* brows: down and angry when hurt, up when cold, drawn in when out of puff */
+    LINKX.brows.forEach((b,i)=>{ const rest=LINKX.browRest[i];
+      b.position.y=rest+(hurt?-.016:cold?.012:tired?-.007:0);
+      b.rotation.z=(hurt?(i?-.25:.25):tired?(i?.12:-.12):0); });
+    if(LINKX.mouth){ LINKX.mouth.scale.set(.055+(hurt?.01:0),.013+(hurt||tired?.016:0)+(cold?.008:0),.02);
+      LINKX.mouth.position.y=.105+(hurt?-.005:0); }
+    LINKX.pupils.forEach((p,i)=>{ p.position.x=(i?.095:-.095)+Math.sin(t*.7)*.005; p.scale.y=(Math.sin(t*1.9)>.985)?.004:.03; });
+    LINKX.eyes.forEach(e=>{ e.scale.y=(Math.sin(t*1.9)>.985)?.012:.058; });
+    /* the ponytail lags behind him and swings with his speed */
+    if(LINKX.pony){ const sp=Math.min(1,(speed||0)/7);
+      const sway=Math.sin(t*(3.2+sp*6))*(.05+sp*.20);
+      LINKX.pony.rotation.set(-.30-sp*.45+Math.sin(t*2.2)*.04,sway*.5,sway);
+      if(LINKX.pony2) LINKX.pony2.rotation.set(-.18-sp*.30+Math.sin(t*2.6+1)*.05,0,sway*.7);
+    }
+    /* the fist closes on a grip */
+    if(LINKX.oldPony&&LINKX.oldPony.visible) LINKX.oldPony.visible=false;
+    const holding=!!(typeof curW==='function'&&curW());
+    if(LINKX.fingers[1]) LINKX.fingers[1].rotation.x=holding?-.9:-.15;
+    if(LINKX.fingers[0]) LINKX.fingers[0].rotation.x=(typeof curS==='function'&&curS())?-.8:-.15;
+    return r;
+  };
+}
+console.log('Link: face (eyes, nose, mouth, moving brows), hands with thumbs, boots, a swinging ponytail, and clothes when unarmoured');
+</script>
+
 <!-- App Arcade ads + clock (shared, from github.com/cmadisons/app-arcade) -->
 <script src="https://cmadisons.github.io/app-arcade/app-ads.js" data-app="zelda" defer></script>
