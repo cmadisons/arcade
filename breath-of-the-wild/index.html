@@ -24598,5 +24598,112 @@ const LINKX={};
 console.log('Link: face (eyes, nose, mouth, moving brows), hands with thumbs, boots, a swinging ponytail, and clothes when unarmoured');
 </script>
 
+<script>
+"use strict";
+/* ================= BATCH 125 — Roadmap 4 D and A6: real weapons, shields, bows, and gear on the back ================= */
+/* Every weapon was one coloured box and every shield a slab. Each is built from parts
+   now — blade, guard, grip, pommel; a shield with a rim and a boss; a bow with limbs and
+   a string — and what is not in your hands is slung on your back. */
+const GEAR={};
+(function gearFactory(){
+  const BOXG=new THREE.BoxGeometry(1,1,1), CYL=new THREE.CylinderGeometry(.5,.5,1,8),
+        CONE=new THREE.ConeGeometry(.5,1,4), SPH=new THREE.SphereGeometry(.5,8,6);
+  const mat=(c,e)=>{ const m=new THREE.MeshPhongMaterial({color:c,flatShading:true,shininess:18,specular:0x2a2a2a});
+    if(e) m.emissive=new THREE.Color(e); return m; };
+  const put=(g,geo,m,x,y,z,sx,sy,sz,rx,ry,rz)=>{ const o=new THREE.Mesh(geo,m); o.position.set(x,y,z);
+    o.scale.set(sx,sy===undefined?sx:sy,sz===undefined?sx:sz); if(rx||ry||rz) o.rotation.set(rx||0,ry||0,rz||0);
+    o.castShadow=true; g.add(o); return o; };
+  const GRIP=0x4a3526, LEATHER=0x6b4a2a;
+  GEAR.weapon=function(name){
+    const W=WEAPONS[name]||{col:0x9aa2aa,len:1.1,hand:1};
+    const g=new THREE.Group(); const L=W.len||1.1;
+    const el=W.el?(W.el==='fire'?0x902000:W.el==='ice'?0x104060:0x606010):0;
+    const steel=mat(W.col,el), grip=mat(GRIP), gold=mat(shade(W.col,1.25));
+    if(W.rod){
+      put(g,CYL,mat(LEATHER),0,L*.28,0,.045,L*.72,.045);
+      const orb=put(g,SPH,mat(W.col,el||shade(W.col,.4)),0,L*.70,0,.13);
+      for(let i=0;i<3;i++) put(g,CONE,steel,Math.cos(i*2.1)*.09,L*.70,Math.sin(i*2.1)*.09,.05,.16,.05,0,0,i*.7);
+      void orb;
+    } else if(/Boomerang/i.test(name)){
+      put(g,BOXG,steel,0,.10,0,.055,.44,.10,0,0,.5);
+      put(g,BOXG,steel,.16,.34,0,.055,.40,.10,0,0,-.9);
+      put(g,BOXG,grip,0,.02,0,.07,.10,.11);
+    } else if(W.hand===3){                                   /* spear */
+      put(g,CYL,mat(LEATHER),0,L*.34,0,.035,L*.86,.035);
+      put(g,CONE,steel,0,L*.84,0,.075,L*.26,.075);
+      put(g,BOXG,gold,0,L*.70,0,.06,.05,.06);
+      put(g,CYL,grip,0,L*.10,0,.045,.26,.045);
+    } else {                                                 /* swords and claymores */
+      const two=W.hand===2, bw=two?.11:.075, bl=L*(two?.70:.68);
+      put(g,BOXG,steel,0,L*.34,0,bw,bl,.028);                /* blade */
+      put(g,CONE,steel,0,L*.34+bl*.5+L*.05,0,bw,L*.12,.028,0,Math.PI/4,0);  /* point */
+      put(g,BOXG,gold,0,L*.34-bl*.5-.02,0,two?.30:.22,.05,.07);            /* guard */
+      put(g,CYL,grip,0,L*.34-bl*.5-.02-(two?.16:.11),0,.05,two?.30:.20,.05);
+      put(g,SPH,gold,0,L*.34-bl*.5-.02-(two?.32:.22),0,.07);               /* pommel */
+    }
+    return g;
+  };
+  GEAR.shield=function(name){
+    const S=SHIELDS[name]||{col:0x8a6a4a};
+    const g=new THREE.Group();
+    const face=mat(S.col), rim=mat(shade(S.col,.72)), boss=mat(shade(S.col,1.3));
+    const f=put(g,CYL,face,0,0,0,.52,.10,.66,Math.PI/2,0,0); f.scale.set(.52,.10,.66);
+    put(g,BOXG,rim,0,.34,0,.62,.07,.12);
+    put(g,BOXG,rim,0,-.34,0,.62,.07,.12);
+    put(g,BOXG,rim,-.30,0,0,.08,.70,.12);
+    put(g,BOXG,rim,.30,0,0,.08,.70,.12);
+    put(g,SPH,boss,0,0,.09,.16,.16,.10);
+    put(g,BOXG,mat(LEATHER),0,0,-.10,.10,.42,.05);
+    return g;
+  };
+  GEAR.bow=function(name){
+    const B=BOWS[name]||{col:0x8a6a3a};
+    const g=new THREE.Group(); const wood=mat(B.col), string=mat(0xe8e2d0);
+    put(g,CYL,wood,0,.36,0,.035,.62,.035,0,0,.22);
+    put(g,CYL,wood,0,-.36,0,.035,.62,.035,0,0,-.22);
+    put(g,BOXG,mat(shade(B.col,.8)),0,0,0,.055,.30,.06);
+    put(g,BOXG,string,0,0,.10,.012,1.34,.012);
+    return g;
+  };
+})();
+/* the held weapon, shield and bow become the real shapes */
+{ const _rh=refreshHeld;
+  refreshHeld=function(){
+    _rh.apply(this,arguments);
+    if(heldW){ rig.hand.remove(heldW); heldW=null; }
+    if(heldS){ rig.offhand.remove(heldS); heldS=null; }
+    const w=curW(), s=curS(), b=curB();
+    if(aiming&&b){ heldW=GEAR.bow(b.n); heldW.scale.setScalar(.9); heldW.position.set(0,-.10,-.10); heldW.rotation.set(0,Math.PI/2,0); rig.hand.add(heldW); }
+    else if(w){ heldW=GEAR.weapon(w.n); heldW.position.set(0,-.04,-.02); heldW.rotation.set(Math.PI*.98,0,.12); rig.hand.add(heldW); }
+    /* the shield is only in his hand while it is raised; otherwise it rides on his back */
+    if(s&&P.guard){ heldS=GEAR.shield(s.n); heldS.scale.setScalar(.62); heldS.position.set(-.04,-.22,-.16); heldS.rotation.set(.12,0,.1); rig.offhand.add(heldS); }
+    backGear();
+  };
+}
+/* A6: the sheath on his back, with the bow and shield slung beside it */
+function backGear(){
+  const B=rig.back; if(!B) return;
+  while(B.children.length) B.remove(B.children[0]);
+  const w=curW(), s=curS(), b=curB();
+  const sheath=new THREE.Mesh(new THREE.BoxGeometry(1,1,1),
+    new THREE.MeshPhongMaterial({color:0x53381f,flatShading:true,shininess:6}));
+  sheath.scale.set(.13,w?(WEAPONS[w.n]?WEAPONS[w.n].len:1.1)*.72:.8,.07);
+  sheath.position.set(-.12,-.05,-.04); sheath.rotation.set(0,0,.28); sheath.castShadow=true; B.add(sheath);
+  if(b&&!aiming){ const bow=GEAR.bow(b.n); bow.scale.setScalar(.7); bow.position.set(.17,-.02,-.04); bow.rotation.set(0,0,-.5); B.add(bow); }
+  if(s&&!P.guard){ const sh=GEAR.shield(s.n); sh.scale.setScalar(.55); sh.position.set(0,-.10,-.10); sh.rotation.set(0,0,.2); B.add(sh); }
+}
+{ const _an=animate; let was=null;
+  animate=function(dt,moving,speed){
+    const r=_an.apply(this,arguments);
+    /* the shield leaves the back when it is raised, and comes back when it is lowered */
+    const key=(P.guard?1:0)+'|'+(aiming?1:0)+'|'+((curS()||{}).n||'')+'|'+((curB()||{}).n||'')+'|'+((curW()||{}).n||'');
+    if(key!==was){ was=key; try{ backGear(); }catch(e){ __swallowed(e); } }
+    return r;
+  };
+}
+refreshHeld();
+console.log('gear: weapons with blade, guard, grip and pommel; shields with a rim and a boss; bows with limbs and a string; the rest slung on your back');
+</script>
+
 <!-- App Arcade ads + clock (shared, from github.com/cmadisons/app-arcade) -->
 <script src="https://cmadisons.github.io/app-arcade/app-ads.js" data-app="zelda" defer></script>
