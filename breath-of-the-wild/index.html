@@ -7652,7 +7652,7 @@ const hGeo=new THREE.PlaneGeometry(HW,HW,HGRID-1,HGRID-1); hGeo.rotateX(-Math.PI
 {
   const p=hGeo.attributes.position.array, col=new Float32Array(p.length);
   const C={grass:new THREE.Color(0x96b84a), grass2:new THREE.Color(0xa8bc50),
-    lush:new THREE.Color(0x559a3c), rock:new THREE.Color(0x8d8272), scree:new THREE.Color(0x6f6a60),
+    lush:new THREE.Color(0x3f8a2e), rock:new THREE.Color(0x8d8272), scree:new THREE.Color(0x6f6a60),
     sand:new THREE.Color(0xe6b872), dune:new THREE.Color(0xeec27c), snow:new THREE.Color(0xeef2f6),
     ash:new THREE.Color(0x3a3230), lava:new THREE.Color(0x8a3a20), shore:new THREE.Color(0xc9b892),
     sea:new THREE.Color(0x2a5670)};
@@ -7677,7 +7677,7 @@ const hGeo=new THREE.PlaneGeometry(HW,HW,HGRID-1,HGRID-1); hGeo.rotateX(-Math.PI
     else if(temp<0) t.copy(C.snow).lerp(C.rock,clamp((sl-.5)*1.4,0,.6));
     else if(sl>.75) t.copy(C.rock).lerp(C.scree,n*.6);
     else { t.copy(C.grass).lerp(C.grass2,n);
-      t.lerp(C.lush,Math.min(1,near(x,z,'faron',1300)*.9+near(x,z,'woodland',900)*.6));
+      t.lerp(C.lush,Math.min(1,near(x,z,'faron',1400)*1.4+near(x,z,'woodland',900)*.6));
       t.lerp(C.rock,clamp((sl-.42)*1.5,0,.75)); }
     if(zoraStone>0&&y>=HWATER+2) t.lerp(new THREE.Color(0xc4dcec),zoraStone*.85);   /* the Domain's pale luminous stone */
     t.offsetHSL(0,0,(n-.5)*.05);
@@ -24294,7 +24294,8 @@ if(POSTFX.comp){ POSTFX.comp.fragmentShader=POSTFX.comp.fragmentShader.replace('
    land is shaded smoothly. Banding snapped every patch of grass to one of four
    brightnesses (so no grass could be its own colour) and the rim light washed it blue. */
 { const flat={bands:{value:4096},rim:{value:0}};
-  for(const m of [terrain.material,hyruleMesh.material,PATCH.mesh.material,typeof LOD_MAT!=='undefined'?LOD_MAT:null]){
+  /* trees and grass too: the cool rim is a character light, and on a canopy it read as teal */
+  for(const m of [terrain.material,hyruleMesh.material,PATCH.mesh.material,typeof LOD_MAT!=='undefined'?LOD_MAT:null,...WINDY]){
     if(!m) continue;
     const prev=m.onBeforeCompile;
     m.onBeforeCompile=function(sh){ if(prev) prev.call(this,sh); sh.uniforms.uCelBands=flat.bands; sh.uniforms.uCelRim=flat.rim; };
