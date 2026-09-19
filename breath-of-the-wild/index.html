@@ -1916,7 +1916,7 @@ const tGeo=new THREE.PlaneGeometry(WORLD,WORLD,GRID-1,GRID-1); tGeo.rotateX(-Mat
 const BIOME=new Uint8Array(GRID*GRID);   // 0 grass 1 rock 2 snow 3 sand 4 dirt 5 void
 {
   const p=tGeo.attributes.position.array, col=new Float32Array(p.length);
-  const C={grass:new THREE.Color(0x5d8a44),grass2:new THREE.Color(0x7f9750),
+  const C={grass:new THREE.Color(0x7a9c3e),grass2:new THREE.Color(0x98aa4a),
     rock:new THREE.Color(0x8d8272),sand:new THREE.Color(0xcbb98d),snow:new THREE.Color(0xeef2f6),
     dirt:new THREE.Color(0x6d5a3f),road:new THREE.Color(0x9a8b6c),voidc:new THREE.Color(0x3a3630)};
   const t=new THREE.Color();
@@ -7651,9 +7651,9 @@ hWater.rotation.x=-Math.PI/2; hWater.position.y=HWATER; scene.add(hWater);
 const hGeo=new THREE.PlaneGeometry(HW,HW,HGRID-1,HGRID-1); hGeo.rotateX(-Math.PI/2);
 {
   const p=hGeo.attributes.position.array, col=new Float32Array(p.length);
-  const C={grass:new THREE.Color(0x59853f), grass2:new THREE.Color(0x7d9450),
-    lush:new THREE.Color(0x3f7a3a), rock:new THREE.Color(0x8d8272), scree:new THREE.Color(0x6f6a60),
-    sand:new THREE.Color(0xd8c496), dune:new THREE.Color(0xe0cb96), snow:new THREE.Color(0xeef2f6),
+  const C={grass:new THREE.Color(0x7ea03c), grass2:new THREE.Color(0x9aac48),
+    lush:new THREE.Color(0x3c8a2c), rock:new THREE.Color(0x8d8272), scree:new THREE.Color(0x6f6a60),
+    sand:new THREE.Color(0xe6b872), dune:new THREE.Color(0xeec27c), snow:new THREE.Color(0xeef2f6),
     ash:new THREE.Color(0x3a3230), lava:new THREE.Color(0x8a3a20), shore:new THREE.Color(0xc9b892),
     sea:new THREE.Color(0x2a5670)};
   const t=new THREE.Color();
@@ -7666,7 +7666,10 @@ const hGeo=new THREE.PlaneGeometry(HW,HW,HGRID-1,HGRID-1); hGeo.rotateX(-Math.PI
     const n=fbm(x*.004+13,z*.004+29,2);
     const temp=tempAt(x,z,y);
     const desert=Math.max(near(x,z,'gerudo',1800),near(x,z,'wasteland',1000));
-    const volcanic=near(x,z,'eldin',1000);
+    /* Death Mountain and Goron City are volcanic too, not only the canyon at Eldin's centre */
+    const nearP=(px,pz,r)=>{const d=Math.hypot(x-px,z-pz); return d<r?smooth(1-d/r):0;};
+    const volcanic=Math.max(near(x,z,'eldin',1000),nearP(2500,-3800,1300),nearP(2320,-3820,700),nearP(2200,-3000,900));
+    const zoraStone=near(x,z,'zora',260);
     if(y<HWATER-14) t.copy(C.sea);
     else if(y<HWATER+2) t.copy(C.shore);
     else if(volcanic>.35) t.copy(C.ash).lerp(C.lava,clamp((volcanic-.55)*2.4,0,.7));
@@ -7674,8 +7677,9 @@ const hGeo=new THREE.PlaneGeometry(HW,HW,HGRID-1,HGRID-1); hGeo.rotateX(-Math.PI
     else if(temp<0) t.copy(C.snow).lerp(C.rock,clamp((sl-.5)*1.4,0,.6));
     else if(sl>.75) t.copy(C.rock).lerp(C.scree,n*.6);
     else { t.copy(C.grass).lerp(C.grass2,n);
-      t.lerp(C.lush,near(x,z,'faron',1100)*.7+near(x,z,'woodland',900)*.6);
+      t.lerp(C.lush,Math.min(1,near(x,z,'faron',1300)*.9+near(x,z,'woodland',900)*.6));
       t.lerp(C.rock,clamp((sl-.42)*1.5,0,.75)); }
+    if(zoraStone>0&&y>=HWATER+2) t.lerp(new THREE.Color(0xc4dcec),zoraStone*.85);   /* the Domain's pale luminous stone */
     t.offsetHSL(0,0,(n-.5)*.05);
     col[k]=t.r; col[k+1]=t.g; col[k+2]=t.b;
   }
@@ -16882,6 +16886,9 @@ const WIND_VERT_BODY=`
 
 function shade(mat,opts){
   if(!mat||mat.__celled) return mat;
+  /* hand-written shaders (the sky, water, waterfalls) are already lit the way they
+     should be; banding them and adding a rim painted a blue-white film over the sky */
+  if(mat.isShaderMaterial||mat.isRawShaderMaterial) return mat;
   mat.__celled=true;
   const wantWind=!!(opts&&opts.wind);
   const prev=mat.onBeforeCompile;
@@ -20156,7 +20163,7 @@ console.log('group 4: rain shelter for '+npcs.length+' people; Travel Medallion;
 
   /* the colours again, this time from the right place */
   const p=tGeo.attributes.position.array, col=tGeo.attributes.color.array;
-  const C={grass:new THREE.Color(0x5d8a44),grass2:new THREE.Color(0x7f9750),
+  const C={grass:new THREE.Color(0x7a9c3e),grass2:new THREE.Color(0x98aa4a),
     rock:new THREE.Color(0x8d8272),sand:new THREE.Color(0xcbb98d),snow:new THREE.Color(0xeef2f6),
     dirt:new THREE.Color(0x6d5a3f),voidc:new THREE.Color(0x3a3630)};
   const t=new THREE.Color();
@@ -22176,10 +22183,10 @@ function coniferTiers(snow){
     const g=new THREE.ConeGeometry(r,h,9,1,true);
     const p=g.attributes.position.array;
     for(let k=0;k<p.length;k+=3){ if(p[k+1]<0){ const a=Math.atan2(p[k+2],p[k]); p[k+1]-=.25+Math.sin(a*5+i)*.12; } }
-    parts.push({geo:g,m:M4(0,y,0,1,1,1,0,i*.7,0),color:new THREE.Color(0x2f5f45),
+    parts.push({geo:g,m:M4(0,y,0,1,1,1,0,i*.7,0),color:new THREE.Color(0x2e5a2e),
       shade:(c,n,yy)=>{ const o=new THREE.Color().copy(c).offsetHSL(0,0,(t*.05)+(TR()-.5)*.03); if(snow&&n.y>.35) o.lerp(new THREE.Color(0xeef3f6),clamp((n.y-.35)*2.2,0,.92)); return o; }});
   }
-  parts.push({geo:new THREE.ConeGeometry(.35,1.2,6),m:M4(0,4.0,0,1),color:new THREE.Color(snow?0xe8eef2:0x3a6e4e)});
+  parts.push({geo:new THREE.ConeGeometry(.35,1.2,6),m:M4(0,4.0,0,1),color:new THREE.Color(snow?0xe8eef2:0x3a6a36)});
   return mergeParts(parts);
 }
 function palmTrunk(){
@@ -24247,4 +24254,51 @@ function addWind(mat){
   };
 }
 console.log('biomes: Hyrule Field '+biomeAt(REGIONS.central.x,REGIONS.central.z)+', Gerudo '+biomeAt(REGIONS.wasteland.x,REGIONS.wasteland.z)+', Hebra '+biomeAt(REGIONS.hebra.x,REGIONS.hebra.z));
+</script>
+<script>
+"use strict";
+/* ================= BATCH 120 — Roadmap 3, group C: light and sky ================= */
+/* Measured on the audit screenshots: shade went black, the sky was white, and every
+   colour was pulled toward blue-grey. Three causes:
+   - the hemisphere light took the sky's saturated top colour, tinting everything blue
+   - nothing filled the shade, so faces turned from the sun fell to near-black
+   - clouds covered most of the sky, and the god rays doubled the sun glare
+   The values below were tuned against those samples. */
+const LOOK={ ambient:new THREE.AmbientLight(0x5a6c8c,.30), hemiWhite:.45, amb:.30, hemiK:1, sunK:1, neutral:0, cloudCov:.64, god:.75 };
+scene.add(LOOK.ambient);
+hemi.groundColor.set(0x6a5a3a);
+C_yt.set(0x3a84d4); C_yb.set(0xbcdcf0);
+{ const _us=updateSky;
+  updateSky=function(dt){
+    _us(dt);
+    /* the sky's light, not its paint: halfway to white so it lifts the shade without tinting */
+    hemi.color.lerp(new THREE.Color(1,1,1),LOOK.hemiWhite);
+    const f=(P.time/DAY_LEN)%1, el=Math.sin((f-.25)*TAU);
+    const day=clamp(el*2.2,0,1);
+    LOOK.ambient.intensity=lerp(.12,LOOK.amb,day)*(raining?.8:1);
+    hemi.intensity*=LOOK.hemiK; sun.intensity*=LOOK.sunK;
+    LOOK.ambient.color.setRGB(.35,.42,.55).lerp(new THREE.Color(.52,.58,.66),day*.4).lerp(new THREE.Color(.55,.55,.56),LOOK.neutral*day);
+  };
+}
+/* thinner cloud: BotW's clear days are blue with scattered cumulus */
+skyMat.fragmentShader=skyMat.fragmentShader.replace('float cov=mix(.56,.34,storm);','float cov=mix('+LOOK.cloudCov.toFixed(2)+',.34,storm);');
+skyMat.needsUpdate=true;
+/* god rays add to the sun, they do not repaint the frame with it */
+if(POSTFX.comp){ POSTFX.comp.fragmentShader=POSTFX.comp.fragmentShader.replace('*uGod*fall*fall*1.6;','*uGod*fall*fall*'+LOOK.god.toFixed(2)+';'); POSTFX.comp.needsUpdate=true; }
+/* The ground is not banded. BotW's hard light steps belong to characters and props; the
+   land is shaded smoothly. Banding snapped every patch of grass to one of four
+   brightnesses (so no grass could be its own colour) and the rim light washed it blue. */
+{ const flat={bands:{value:4096},rim:{value:0}};
+  for(const m of [terrain.material,hyruleMesh.material,PATCH.mesh.material,typeof LOD_MAT!=='undefined'?LOD_MAT:null]){
+    if(!m) continue;
+    const prev=m.onBeforeCompile;
+    m.onBeforeCompile=function(sh){ if(prev) prev.call(this,sh); sh.uniforms.uCelBands=flat.bands; sh.uniforms.uCelRim=flat.rim; };
+    const key=m.customProgramCacheKey?m.customProgramCacheKey.call(m):'';
+    m.customProgramCacheKey=()=>key+'-flatland';
+    m.needsUpdate=true;
+  }
+}
+/* and less haze: 0.0011 turned everything 500 m away a quarter of the way to the fog colour */
+{ const _uf=updateSky; updateSky=function(dt){ _uf(dt); scene.fog.density=raining?.0022:.0006; }; }
+console.log('look: ambient fill, white-balanced sky light, thinner cloud, softer god rays');
 </script>
