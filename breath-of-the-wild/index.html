@@ -24369,5 +24369,71 @@ STREAM.tick(true);
 { let n=0; scene.traverse(()=>n++); console.log('streaming: '+STREAM.items.length+' small things stream by distance; '+n+' objects attached here'); }
 </script>
 
+<script>
+"use strict";
+/* ================= BATCH 122 — the first quest is a star on the map ================= */
+/* The moment you take the Sheikah Slate, your quest is the Great Plateau Tower, and the
+   Slate marks it with a gold star — on the big map and on the minimap — before any
+   tower has revealed the land. It goes out once you have climbed the tower. */
+QUESTS.dress.t='Follow the Sheikah Slate — go to the Great Plateau Tower (★ on your map). First open the two chests and set the Slate in the pedestal by the door.';
+QUESTS.leave.t='Follow the Sheikah Slate — go to the Great Plateau Tower (★ on your map). Climb out through the cave.';
+QUESTS.tower.t='Follow the Sheikah Slate — reach the Great Plateau Tower (★ on your map).';
+function questStar(){
+  if(!P.hasSlate||P.tower) return null;
+  return {x:LM.tower.x,z:LM.tower.z,label:'Great Plateau Tower — your quest'};
+}
+{ const css=document.createElement('style');
+  css.textContent=`.mk.quest .dot{display:none}
+  .mk.quest .star{font-size:26px;line-height:1;color:#ffd84a;text-shadow:0 0 6px #fff3b0,0 0 14px rgba(255,190,40,.9),0 1px 2px #3a2400;
+    animation:questPulse 1.6s ease-in-out infinite;cursor:default}
+  .mk.quest .tip{opacity:1}
+  @keyframes questPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.18)}}`;
+  document.head.appendChild(css);
+}
+/* the big map: the star is always drawn, revealed land or not */
+{ const _dbm=drawBigMap;
+  drawBigMap=function(){
+    const r=_dbm.apply(this,arguments);
+    const q=questStar(), M=$('#markers');
+    if(q&&M){
+      const [mx,my]=w2m(q.x,q.z), d=document.createElement('div');
+      d.className='mk quest'; d.style.left=(mx/MAPS*100)+'%'; d.style.top=(my/MAPS*100)+'%';
+      d.innerHTML='<div class="dot"></div><div class="star">★</div><div class="tip">'+q.label+'</div>';
+      M.appendChild(d);
+    }
+    return r;
+  };
+  const _mk=markerKind;
+  markerKind=function(el){ return el.classList.contains('quest')?'you':_mk(el); };   /* never filtered out */
+}
+/* the minimap: a star where it lies, or on the rim pointing the way when it is further off */
+{ const _dmm=drawMinimap;
+  drawMinimap=function(){
+    _dmm.apply(this,arguments);
+    const q=questStar(); if(!q||P.inShrine||P.inRes) return;
+    const c=mmCtx, S=340, span=520;
+    let dx=(q.x-P.pos.x)/span*S, dz=(q.z-P.pos.z)/span*S;
+    const a=-P.look.yaw+Math.PI, ca=Math.cos(a), sa=Math.sin(a);
+    let x=dx*ca-dz*sa, y=dx*sa+dz*ca;
+    const L=Math.hypot(x,y), R=S/2-18; if(L>R){ x*=R/L; y*=R/L; }
+    c.save(); c.translate(S/2+x,S/2+y);
+    const pulse=1+.12*Math.sin(performance.now()/260);
+    c.scale(pulse,pulse);
+    c.beginPath();
+    for(let i=0;i<10;i++){ const r=i%2?6:14, t=i/10*TAU-Math.PI/2; c.lineTo(Math.cos(t)*r,Math.sin(t)*r); }
+    c.closePath();
+    c.shadowColor='rgba(255,190,40,.9)'; c.shadowBlur=12;
+    c.fillStyle='#ffd84a'; c.fill(); c.lineWidth=1.5; c.strokeStyle='#5a3a00'; c.stroke();
+    c.restore();
+  };
+}
+/* and say so when the Slate is taken */
+{ const _sq=setQuest;
+  setQuest=function(q){ const r=_sq.apply(this,arguments);
+    if(q==='dress') setTimeout(()=>toast('New quest: go to the Great Plateau Tower — marked ★ on your map','good'),600);
+    return r; };
+}
+</script>
+
 <!-- App Arcade ads + clock (shared, from github.com/cmadisons/app-arcade) -->
 <script src="https://cmadisons.github.io/app-arcade/app-ads.js" data-app="zelda" defer></script>
