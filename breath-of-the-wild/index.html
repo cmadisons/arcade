@@ -1916,7 +1916,7 @@ const tGeo=new THREE.PlaneGeometry(WORLD,WORLD,GRID-1,GRID-1); tGeo.rotateX(-Mat
 const BIOME=new Uint8Array(GRID*GRID);   // 0 grass 1 rock 2 snow 3 sand 4 dirt 5 void
 {
   const p=tGeo.attributes.position.array, col=new Float32Array(p.length);
-  const C={grass:new THREE.Color(0x7a9c3e),grass2:new THREE.Color(0x98aa4a),
+  const C={grass:new THREE.Color(0x8eae48),grass2:new THREE.Color(0xa0b24c),
     rock:new THREE.Color(0x8d8272),sand:new THREE.Color(0xcbb98d),snow:new THREE.Color(0xeef2f6),
     dirt:new THREE.Color(0x6d5a3f),road:new THREE.Color(0x9a8b6c),voidc:new THREE.Color(0x3a3630)};
   const t=new THREE.Color();
@@ -7651,8 +7651,8 @@ hWater.rotation.x=-Math.PI/2; hWater.position.y=HWATER; scene.add(hWater);
 const hGeo=new THREE.PlaneGeometry(HW,HW,HGRID-1,HGRID-1); hGeo.rotateX(-Math.PI/2);
 {
   const p=hGeo.attributes.position.array, col=new Float32Array(p.length);
-  const C={grass:new THREE.Color(0x7ea03c), grass2:new THREE.Color(0x9aac48),
-    lush:new THREE.Color(0x3c8a2c), rock:new THREE.Color(0x8d8272), scree:new THREE.Color(0x6f6a60),
+  const C={grass:new THREE.Color(0x96b84a), grass2:new THREE.Color(0xa8bc50),
+    lush:new THREE.Color(0x559a3c), rock:new THREE.Color(0x8d8272), scree:new THREE.Color(0x6f6a60),
     sand:new THREE.Color(0xe6b872), dune:new THREE.Color(0xeec27c), snow:new THREE.Color(0xeef2f6),
     ash:new THREE.Color(0x3a3230), lava:new THREE.Color(0x8a3a20), shore:new THREE.Color(0xc9b892),
     sea:new THREE.Color(0x2a5670)};
@@ -20163,7 +20163,7 @@ console.log('group 4: rain shelter for '+npcs.length+' people; Travel Medallion;
 
   /* the colours again, this time from the right place */
   const p=tGeo.attributes.position.array, col=tGeo.attributes.color.array;
-  const C={grass:new THREE.Color(0x7a9c3e),grass2:new THREE.Color(0x98aa4a),
+  const C={grass:new THREE.Color(0x8eae48),grass2:new THREE.Color(0xa0b24c),
     rock:new THREE.Color(0x8d8272),sand:new THREE.Color(0xcbb98d),snow:new THREE.Color(0xeef2f6),
     dirt:new THREE.Color(0x6d5a3f),voidc:new THREE.Color(0x3a3630)};
   const t=new THREE.Color();
@@ -24264,8 +24264,13 @@ console.log('biomes: Hyrule Field '+biomeAt(REGIONS.central.x,REGIONS.central.z)
    - nothing filled the shade, so faces turned from the sun fell to near-black
    - clouds covered most of the sky, and the god rays doubled the sun glare
    The values below were tuned against those samples. */
-const LOOK={ ambient:new THREE.AmbientLight(0x5a6c8c,.30), hemiWhite:.45, amb:.30, hemiK:1, sunK:1, neutral:0, cloudCov:.64, god:.75 };
+const LOOK={ ambient:new THREE.AmbientLight(0x5a6c8c,.30), hemiWhite:.7, amb:.12, hemiK:1.28, sunK:.37, neutral:.8, cloudCov:.64, god:.75 };
 scene.add(LOOK.ambient);
+/* No filmic tone curve. ACES mixes the colour channels and flattens everything bright,
+   which is what turned the desert grey and the grass olive: a pure green came out with
+   red in it, and white came out at 75%. The light is balanced so nothing clips instead —
+   about a third sun and two thirds sky, which is how BotW keeps its shade bright. */
+renderer.toneMapping=THREE.NoToneMapping;
 hemi.groundColor.set(0x6a5a3a);
 C_yt.set(0x3a84d4); C_yb.set(0xbcdcf0);
 { const _us=updateSky;
