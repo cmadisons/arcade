@@ -206,7 +206,8 @@
       <button class="act" id="btnMusic">Music: On</button>
     </div>
     <div id="keys">
-      <div><span>Move</span><k>W A S D</k> or <k>↑ ← ↓ →</k></div>
+      <div><span>Move</span><k>↑ ← ↓ →</k></div>
+      <div><span>Skip the Shrine of Resurrection</span><k>S</k></div>
       <div><span>Sprint</span><k>Shift</k></div>
       <div><span>Jump / Climb</span><k>Space</k></div>
       <div><span>Paraglide</span><k>Space in air</k></div>
@@ -24433,6 +24434,45 @@ function questStar(){
     if(q==='dress') setTimeout(()=>toast('New quest: go to the Great Plateau Tower — marked ★ on your map','good'),600);
     return r; };
 }
+</script>
+
+<script>
+"use strict";
+/* ================= BATCH 123 — S skips the Shrine of Resurrection; W, A and D do nothing ================= */
+/* Walk with the arrow keys. W, A and D are dead keys everywhere. S does one thing only:
+   inside the Shrine of Resurrection it skips straight out onto the Great Plateau, as if
+   you had done it all — Slate in hand, Old Shirt and Well-Worn Trousers on, the tower
+   quest started with its star on the map. The touch stick still moves you: it sets the
+   game's own movement state, not the keyboard. */
+function skipResurrection(){
+  if(!P.inRes) return;
+  if(typeof inCut!=='undefined'&&inCut){ cutQueue&&(cutQueue.length=0); inCut=false; cutCam=null; }
+  if(typeof resWake!=='undefined') resWake=0;
+  P.hasSlate=true; if(RES.slateMesh) RES.slateMesh.visible=false;
+  for(const w of ['Old Shirt','Well-Worn Trousers']){
+    if(!P.chests['res_'+w]){ P.chests['res_'+w]=1; const ch=w==='Old Shirt'?RES.chestA:RES.chestB; if(ch) ch.position.y+=.45; give(w); }
+  }
+  if(P.ownedArmor&&P.ownedArmor['Old Shirt']) equipArmor('Old Shirt');
+  if(P.ownedArmor&&P.ownedArmor['Well-Worn Trousers']) equipArmor('Well-Worn Trousers');
+  P.slateDocked=true; if(RES.bigDoor) RES.bigDoor.visible=false; if(RES.dock) RES.dock.material=MAT.glowO;
+  exitRes();
+  toast('Shrine of Resurrection skipped — go to the Great Plateau Tower (★ on your map)','good');
+  updateGear();
+}
+{ const dead=new Set(['KeyW','KeyA','KeyD','KeyS']);
+  const block=e=>{
+    if(!dead.has(e.code)) return;
+    const typing=e.target&&(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA'||e.target.isContentEditable);
+    if(typing) return;                                   /* still type into name boxes */
+    e.preventDefault(); e.stopImmediatePropagation();
+    if(e.type==='keydown'&&e.code==='KeyS'&&!e.repeat&&P.inRes) skipResurrection();
+    keys[e.code]=false;
+  };
+  window.addEventListener('keydown',block,true);
+  window.addEventListener('keyup',block,true);
+}
+/* and say so when you wake */
+setInterval(()=>{ if(P.playing&&P.inRes&&!P.hasSlate&&!P.__skipHinted){ P.__skipHinted=true; toast('Press S to skip the Shrine of Resurrection · arrow keys to walk','good'); } },1000);
 </script>
 
 <!-- App Arcade ads + clock (shared, from github.com/cmadisons/app-arcade) -->
