@@ -24309,5 +24309,65 @@ if(POSTFX.comp){ POSTFX.comp.fragmentShader=POSTFX.comp.fragmentShader.replace('
 console.log('look: ambient fill, white-balanced sky light, thinner cloud, softer god rays');
 </script>
 
+<script>
+"use strict";
+/* ================= BATCH 121 — Roadmap 3, group D: stream the small things ================= */
+/* three.js walks every attached object every frame to update its matrices, visible or
+   not. With 81,000 attached that walk alone cost ~19 ms — the whole 60 fps budget —
+   and two thirds of them were things under 3 m across (animals, monsters, people,
+   crates) that are a pixel or two at 400 m. Anything small is now detached from the
+   scene when it is far away and put back as you approach. Big things (towers, the
+   castle, forests, the terrain) never leave. */
+const STREAM={items:[], t:0, own:false, detached:0,
+  far:r=>r<3?380:r<8?800:r<30?1600:Infinity};
+(function registerStreaming(){
+  const keep=new Set([player,sky,terrain,hyruleMesh,PATCH.mesh,camera,CYCLE&&CYCLE.g].filter(Boolean));
+  const box=new THREE.Box3(), sph=new THREE.Sphere();
+  const roots=[...scene.children.filter(o=>o!==world),...world.children];
+  for(const o of roots){
+    if(keep.has(o)||o.isLight||o.isCamera||o.isInstancedMesh||o.isPoints) continue;
+    box.setFromObject(o); if(box.isEmpty()) continue;
+    box.getBoundingSphere(sph);
+    const far=STREAM.far(sph.radius); if(!isFinite(far)) continue;
+    /* the reference point is where the thing stands, so moving creatures stay right */
+    const off=sph.center.clone().sub(o.position);
+    STREAM.items.push({o,parent:o.parent,far,off,dead:false});
+  }
+  /* when the game removes something itself (a picked item, a felled tree, a dead
+     monster), it must not come back because the streamer thought it was only far away */
+  for(const par of [scene,world]){
+    const _rm=par.remove.bind(par);
+    par.remove=function(...objs){ if(!STREAM.own) for(const o of objs) if(o&&o.__streamItem) o.__streamItem.dead=true; return _rm(...objs); };
+  }
+  for(const it of STREAM.items) it.o.__streamItem=it;
+})();
+STREAM.tick=function(force){
+  const src=(typeof DIR!=='undefined'&&DIR.on)||inCut?camera.position:P.pos;
+  let det=0;
+  STREAM.own=true;
+  for(const it of STREAM.items){
+    if(it.dead) continue;
+    const o=it.o;
+    if(o.parent&&o.parent!==it.parent){ it.dead=true; continue; }        /* re-parented by the game */
+    if(P.mount&&P.mount.g===o){ if(!o.parent) it.parent.add(o); continue; }
+    const dx=o.position.x+it.off.x-src.x, dz=o.position.z+it.off.z-src.z, d2=dx*dx+dz*dz;
+    if(o.parent){ if(d2>(it.far+60)*(it.far+60)){ it.parent.remove(o); det++; } }
+    else if(d2<it.far*it.far){ it.parent.add(o); o.updateMatrixWorld(true); }
+    else det++;
+  }
+  STREAM.own=false;
+  STREAM.detached=det;
+};
+{ const _ue=updateEnemies; let acc=0;
+  updateEnemies=function(dt){ _ue(dt); acc-=dt; if(acc<=0){ acc=.5; try{ STREAM.tick(); }catch(e){ __swallowed(e); } } };
+}
+/* a warp, the Travel Medallion or a cutscene moves you in one frame — catch up at once */
+{ const _ws=typeof warpTo==='function'?warpTo:null;
+  if(_ws) warpTo=function(){ const r=_ws.apply(this,arguments); try{ STREAM.tick(); }catch(e){ __swallowed(e); } return r; };
+}
+STREAM.tick(true);
+{ let n=0; scene.traverse(()=>n++); console.log('streaming: '+STREAM.items.length+' small things stream by distance; '+n+' objects attached here'); }
+</script>
+
 <!-- App Arcade ads + clock (shared, from github.com/cmadisons/app-arcade) -->
 <script src="https://cmadisons.github.io/app-arcade/app-ads.js" data-app="zelda" defer></script>
