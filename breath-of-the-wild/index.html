@@ -24928,5 +24928,39 @@ const CHESTX={};
 })();
 </script>
 
+<script>
+"use strict";
+/* ================= BATCH 128 — Roadmap 4 group E: the leftovers ================= */
+/* E1. The amiibo screen opened with A, and A was switched off when W/A/D were made
+   dead keys. It lives on Y now, and the controls list says so. */
+addEventListener('keydown',e=>{
+  if(e.code!=='KeyY'||!P.playing) return;
+  const sc=$('#amiibo'); if(!sc) return;
+  if(sc.classList.contains('on')){ sc.classList.remove('on'); startPlay(); return; }
+  if(typeof openAmiibo==='function') openAmiibo();
+});
+(function noteTheKey(){
+  const list=document.querySelector('#help')||document.querySelector('#controls');
+  if(!list) return;
+  const row=document.createElement('div');
+  row.innerHTML='<span>Amiibo</span><k>Y</k>';
+  list.appendChild(row);
+})();
+/* E2. The light budget only ran from the game loop, so a still frame rendered on its
+   own could light up every lantern in Hyrule. It now runs before any frame that has
+   gone stale, whoever asked for it. */
+{ let lastBudget=0;
+  const _r=renderer.render.bind(renderer);
+  renderer.render=function(sc,cam){
+    if(sc===scene&&cam===camera){
+      const now=performance.now();
+      if(now-lastBudget>240){ lastBudget=now; try{ budgetLights(); }catch(e){ __swallowed(e); } }
+    }
+    return _r(sc,cam);
+  };
+}
+console.log('leftovers: amiibo on Y; the light budget runs for every frame, not only the game loop');
+</script>
+
 <!-- App Arcade ads + clock (shared, from github.com/cmadisons/app-arcade) -->
 <script src="https://cmadisons.github.io/app-arcade/app-ads.js" data-app="zelda" defer></script>
