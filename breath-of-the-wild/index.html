@@ -24390,7 +24390,8 @@ function questStar(){
   css.textContent=`.mk.quest .dot{display:none}
   .mk.quest .star{font-size:26px;line-height:1;color:#ffd84a;text-shadow:0 0 6px #fff3b0,0 0 14px rgba(255,190,40,.9),0 1px 2px #3a2400;
     animation:questPulse 1.6s ease-in-out infinite;cursor:default}
-  .mk.quest .tip{opacity:1}
+  .mk.quest .tip{opacity:0;top:-30px}
+  .mk.quest:hover .tip{opacity:1}
   @keyframes questPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.18)}}`;
   document.head.appendChild(css);
 }
@@ -24960,6 +24961,246 @@ addEventListener('keydown',e=>{
   };
 }
 console.log('leftovers: amiibo on Y; the light budget runs for every frame, not only the game loop');
+</script>
+
+<script>
+"use strict";
+/* ================= BATCH 129 — Roadmap 5 group A: every piece its own look ================= */
+/* 49 pieces still fell back on the plain hood, tunic or trousers. These builds cover
+   them, so no piece in the game shares a shape by accident. */
+(function moreArmourParts(){
+  const B=linkRig.bones;
+  const BOXG=new THREE.BoxGeometry(1,1,1), CYL=new THREE.CylinderGeometry(.5,.5,1,10),
+        CONE=new THREE.ConeGeometry(.5,1,6), SPH=new THREE.SphereGeometry(.5,10,8);
+  const M=c=>new THREE.MeshPhongMaterial({color:c,flatShading:true,shininess:10,specular:0x181818});
+  const put=(g,geo,c,x,y,z,sx,sy,sz,rx,ry,rz)=>{ const o=new THREE.Mesh(geo,M(c)); o.position.set(x,y,z);
+    o.scale.set(sx,sy===undefined?sx:sy,sz===undefined?sx:sz); if(rx||ry||rz) o.rotation.set(rx||0,ry||0,rz||0);
+    o.castShadow=true; o.userData.tint=true; g.add(o); return o; };
+  const reg=(slot,key,bone,fn)=>{ const g=new THREE.Group(); g.visible=false; bone.add(g); fn(g); ARMX[slot][key]=g; ARMX.all.push(g); };
+  /* ---------- heads ---------- */
+  reg('head','cap',B.head,g=>{                      /* the hero's pointed cap */
+    put(g,BOXG,0x3f7a4a,0,.30,-.02,.46,.26,.44);
+    put(g,CONE,0x3f7a4a,0,.52,-.26,.20,.62,.20,-1.0,0,0);
+    put(g,BOXG,0x2f5f3a,0,.18,.20,.46,.06,.06); });
+  reg('head','bandanna',B.head,g=>{ put(g,BOXG,0x6b4a8a,0,.34,-.02,.46,.14,.44);
+    put(g,BOXG,0x6b4a8a,0,.30,-.24,.16,.10,.22,.4,0,0); });
+  reg('head','veil',B.head,g=>{ put(g,BOXG,0xd8b878,0,.34,-.02,.46,.16,.44);
+    put(g,BOXG,0xe8ce96,0,.12,.20,.42,.26,.05);            /* the cloth over the face */
+    put(g,CYL,0xd8b24a,0,.40,0,.30,.05,.30); });
+  reg('head','headband',B.head,g=>{ put(g,BOXG,0x6ab8d8,0,.32,0,.47,.10,.45);
+    for(const s of[-1,1]) put(g,BOXG,0x8fd0e8,s*.10,.42,-.20,.05,.22,.06,-.5,0,0); });
+  reg('head','wrapMask',B.head,g=>{ put(g,BOXG,0x2a2a4a,0,.26,0,.47,.44,.45);
+    put(g,BOXG,0x1a1a2a,0,.22,.22,.42,.10,.03);
+    for(const s of[-1,1]) put(g,BOXG,0xe8e4dc,s*.09,.24,.226,.07,.045,.02); });
+  reg('head','goggles',B.head,g=>{ put(g,BOXG,0x7a6a4a,0,.34,-.02,.46,.14,.44);
+    for(const s of[-1,1]) put(g,CYL,0x2a3a4a,s*.11,.27,.21,.09,.05,.09,Math.PI/2);
+    put(g,BOXG,0x3a2a1a,0,.27,.20,.30,.04,.04); });
+  reg('head','leaf',B.head,g=>{ put(g,SPH,0x6a8a3a,0,.26,.06,.30,.28,.26);
+    for(const s of[-1,1]) put(g,BOXG,0x1a1410,s*.10,.30,.26,.08,.08,.02);
+    put(g,CONE,0x4f8442,0,.48,-.02,.14,.34,.14,-.2,0,0);
+    for(const s of[-1,1]) put(g,CONE,0x4f8442,s*.24,.34,-.04,.10,.26,.10,0,0,s*.9); });
+  reg('head','deity',B.head,g=>{ put(g,BOXG,0xe8e4dc,0,.24,.10,.46,.42,.34);
+    for(const s of[-1,1]) put(g,BOXG,0xd8d8e8,s*.10,.28,.28,.09,.07,.03);
+    put(g,BOXG,0x8a2a3a,0,.14,.29,.22,.03,.03);
+    for(const s of[-1,1]) put(g,BOXG,0x8a9ab0,s*.22,.40,-.02,.10,.24,.10,0,0,s*.3); });
+  reg('head','rubberHood',B.head,g=>{ put(g,SPH,0xd8c84a,0,.28,0,.32,.34,.32);
+    put(g,BOXG,0xd8c84a,0,.14,.02,.46,.26,.44);
+    for(const s of[-1,1]) put(g,CYL,0x4a4a3a,s*.24,.30,0,.07,.08,.07,0,0,Math.PI/2); });
+  reg('head','turban',B.head,g=>{ put(g,CYL,0x6a4a8a,0,.34,0,.50,.24,.50);
+    put(g,SPH,0x8a6aa8,0,.44,0,.22,.16,.22);
+    put(g,BOXG,0xd8b24a,0,.34,.24,.16,.10,.04); });
+  reg('head','minerHelm',B.head,g=>{ put(g,SPH,0x6a5a3a,0,.30,0,.30,.28,.30);
+    put(g,BOXG,0x6a5a3a,0,.18,.02,.46,.20,.44);
+    const lamp=put(g,CYL,0xe0b030,0,.34,.22,.10,.08,.10,Math.PI/2);
+    lamp.material.emissive=new THREE.Color(0x6a5010); lamp.userData.tint=false; });
+  reg('head','demon',B.head,g=>{ put(g,BOXG,0x2a2230,0,.26,.04,.46,.44,.42);
+    for(const s of[-1,1]) put(g,CONE,0x8a2a3a,s*.20,.44,-.04,.10,.42,.10,-.3,0,s*.6);
+    for(const s of[-1,1]) put(g,BOXG,0xc44a3a,s*.11,.28,.24,.09,.05,.03); });
+  reg('head','mushroom',B.head,g=>{ put(g,SPH,0xd8a0c0,0,.36,0,.44,.26,.44);
+    put(g,CYL,0xf0e0d8,0,.24,0,.24,.14,.24);
+    for(const s of[-1,1]) put(g,SPH,0xf6f2ea,s*.14,.40,.12,.07,.05,.07); });
+  reg('head','softHood',B.head,g=>{ put(g,BOXG,0x2a2a2a,0,.28,-.04,.50,.46,.48);
+    put(g,BOXG,0x2a2a2a,0,.02,-.16,.44,.26,.26);
+    put(g,CONE,0x2a2a2a,0,.46,-.22,.16,.40,.16,-.8,0,0); });
+  /* ---------- bodies ---------- */
+  reg('body','shirt',B.chest,g=>{ put(g,BOXG,0xd2d6cc,0,.06,.02,.56,.36,.38);
+    put(g,BOXG,0xb0b2a4,0,.20,.19,.30,.06,.05); });
+  reg('body','doublet',B.chest,g=>{ put(g,BOXG,0x3f6a8c,0,.06,.02,.60,.40,.42);
+    put(g,BOXG,0xe8e4dc,0,.22,.20,.36,.08,.06);
+    for(const s of[-1,1]) put(g,BOXG,0x2f4f6a,s*.28,.10,.02,.10,.30,.34); });
+  reg('body','heroTunic',B.chest,g=>{ put(g,BOXG,0x3f7a4a,0,.06,.02,.58,.40,.40);
+    put(g,BOXG,0xe8e0c0,0,.16,.22,.22,.18,.04);
+    for(const s of[-1,1]) put(g,BOXG,0x2f5f3a,s*.30,.16,0,.10,.22,.30); });
+  reg('body','harness',B.chest,g=>{ put(g,BOXG,0x6b4a8a,0,.06,.02,.56,.38,.38);
+    for(const s of[-1,1]) put(g,BOXG,0x4a3560,s*.14,.10,.20,.07,.40,.05,0,0,s*.2);
+    put(g,BOXG,0x8a5aa8,0,-.06,.20,.34,.08,.06); });
+  reg('body','rubberSuit',B.chest,g=>{ put(g,BOXG,0xd8c84a,0,.06,.02,.56,.40,.40);
+    for(let i=0;i<3;i++) put(g,BOXG,0xb0a030,0,.18-i*.12,.20,.40,.04,.04); });
+  reg('body','champion',B.chest,g=>{ put(g,BOXG,0x2f6ab0,0,.06,.02,.58,.40,.40);
+    put(g,BOXG,0xe8e4dc,0,.10,.21,.30,.22,.04);
+    for(const s of[-1,1]) put(g,BOXG,0xd8b24a,s*.16,.22,.20,.06,.10,.04); });
+  reg('body','printed',B.chest,g=>{ put(g,BOXG,0xe8e4dc,0,.06,.02,.56,.38,.38);
+    put(g,BOXG,0xc4402f,0,.08,.20,.26,.16,.04); });
+  reg('body','robe',B.chest,g=>{ put(g,BOXG,0x6a4a8a,0,.04,.02,.60,.44,.44);
+    put(g,BOXG,0xd8b24a,0,-.12,.22,.44,.06,.05);
+    put(g,CONE,0x8a6aa8,0,.26,0,.34,.20,.34,Math.PI,0,0); });
+  reg('body','apron',B.chest,g=>{ put(g,BOXG,0x6a5a3a,0,.06,.02,.56,.38,.38);
+    put(g,BOXG,0x4a3a24,0,-.04,.21,.30,.32,.04);
+    for(const s of[-1,1]) put(g,BOXG,0x8a7a5a,s*.14,.22,.20,.06,.10,.05); });
+  reg('body','darkPlate',B.chest,g=>{ put(g,BOXG,0x2a2230,0,.06,.02,.62,.42,.44);
+    for(const s of[-1,1]) put(g,CONE,0x8a2a3a,s*.32,.24,0,.10,.24,.10,0,0,s*.5);
+    put(g,BOXG,0xc44a3a,0,.16,.22,.26,.06,.05); });
+  /* ---------- legs ---------- */
+  for(const [bone,s] of [[linkRig.bones.shinL,-1],[linkRig.bones.shinR,1]]){
+    reg('legs','trousers'+(s<0?'L':'R'),bone,g=>{ put(g,BOXG,0x7f7a63,0,-.08,.01,.24,.34,.24);
+      put(g,BOXG,0x6a6553,0,-.26,.02,.25,.08,.25); });
+    reg('legs','tights'+(s<0?'L':'R'),bone,g=>{ put(g,CYL,0x2a2a4a,0,-.10,0,.21,.40,.21); });
+    reg('legs','feathered'+(s<0?'L':'R'),bone,g=>{ put(g,BOXG,0xa8303c,0,-.08,.01,.24,.34,.24);
+      for(let i=0;i<3;i++) put(g,CONE,0xe8e4dc,0,-.02-i*.10,-.14,.10,.16,.05,-2.4,0,0); });
+  }
+})();
+/* every piece names a build: nothing falls back any more */
+{ const _ab=armourBuild;
+  armourBuild=function(name,slot){
+    if(!name||name==='None') return _ab(name,slot);
+    const n=name;
+    if(slot==='head'){
+      if(/Cap of|Hero's Cap|Cap of the Hero/.test(n)) return 'cap';
+      if(/Climber's Bandanna/.test(n)) return 'bandanna';
+      if(/Gerudo Veil/.test(n)) return 'veil';
+      if(/Desert Voe Headband/.test(n)) return 'headband';
+      if(/Stealth Mask|Sheik's Mask/.test(n)) return 'wrapMask';
+      if(/Salvager Headwear/.test(n)) return 'goggles';
+      if(/Korok Mask/.test(n)) return 'leaf';
+      if(/Fierce Deity Mask/.test(n)) return 'deity';
+      if(/Rubber Helm/.test(n)) return 'rubberHood';
+      if(/Mystic Headpiece/.test(n)) return 'turban';
+      if(/Miner's Mask/.test(n)) return 'minerHelm';
+      if(/Evil Spirit Mask/.test(n)) return 'demon';
+      if(/Cece Hat/.test(n)) return 'mushroom';
+      if(/Dark Hood|Tingle's Hood|Ravio's Hood|Hylian Hood/.test(n)) return 'softHood';
+    } else if(slot==='body'){
+      if(/Old Shirt/.test(n)) return 'shirt';
+      if(/Warm Doublet/.test(n)) return 'doublet';
+      if(/Tunic of the Hero|Tunic of Time|Tunic of the Wind|Tunic of Twilight|Tunic of the Sky|Tunic of the Wild|Hylian Tunic/.test(n)) return 'heroTunic';
+      if(/Climbing Gear/.test(n)) return 'harness';
+      if(/Rubber Armor/.test(n)) return 'rubberSuit';
+      if(/Champion|Tunic of Memories/.test(n)) return 'champion';
+      if(/Nintendo Switch Shirt|Island Lobster Shirt/.test(n)) return 'printed';
+      if(/Mystic Robe/.test(n)) return 'robe';
+      if(/Miner's Top|Salvager Vest/.test(n)) return 'apron';
+      if(/Evil Spirit Armor/.test(n)) return 'darkPlate';
+    } else {
+      if(/Snowquill Trousers/.test(n)) return 'feathered';
+      if(/Tights|Stealth|Dark Trousers/.test(n)) return 'tights';
+    }
+    return _ab(name,slot);
+  };
+  refreshArmour();
+}
+/* how many pieces still land on a fallback shape */
+{ let fall=0; for(const n of Object.keys(ARMOR)){ if(n==='None') continue; const sl=ARMOR[n].slot||'body', b=armourBuild(n,sl);
+    if((sl==='head'&&b==='hood')||(sl==='body'&&b==='tunic')||(sl==='legs'&&b==='trousers')) fall++; }
+  console.log('armour builds: '+Object.keys(ARMX.head).length+' head, '+Object.keys(ARMX.body).length+' body; pieces on a fallback shape: '+fall); }
+</script>
+
+<script>
+"use strict";
+/* ================= BATCH 130 — Roadmap 5 groups B and C ================= */
+/* B5. A sound played at zero volume threw on every ramp: the Web Audio API refuses an
+   exponential ramp to 0. Every ramp is floored now, wherever it is called from. */
+(function fixAudioRamps(){
+  const AP=window.AudioParam&&AudioParam.prototype; if(!AP||AP.__ramped) return;
+  const _e=AP.exponentialRampToValueAtTime;
+  AP.exponentialRampToValueAtTime=function(v,t){ return _e.call(this,(!isFinite(v)||Math.abs(v)<1e-5)?1e-5:v,t); };
+  AP.__ramped=true;
+})();
+/* B2. Every marker was drawn at every zoom, so the map was a field of grey circles.
+   Zoomed out you get the places, towers, shrines and your own pins; the small stuff
+   (chests, camps, memories) comes in as you zoom. */
+(function thinMarkers(){
+  const _apply=applyMapView;
+  applyMapView=function(){
+    const r=_apply.apply(this,arguments);
+    const z=MAPV.z;
+    for(const el of $('#markers').children){
+      if(el.style.display==='none') continue;
+      const k=markerKind(el);
+      const need=(k==='chest'||k==='camp')?2.2:(k==='memory')?1.6:0;
+      if(z<need){ el.style.display='none'; continue; }
+      /* places you have not been to are grey dots; they only clutter the wide view */
+      const lit=el.classList.contains('on')||k==='tower'||k==='you'||k==='pin'||el.classList.contains('quest');
+      if(!lit&&z<2.5){ el.style.display='none'; continue; }
+      /* and nothing shows on land you have not uncovered */
+      if(k!=='you'&&k!=='quest'&&!el.classList.contains('quest')&&!revealedAtPct(parseFloat(el.style.left),parseFloat(el.style.top))) el.style.display='none';
+    }
+    return r;
+  };
+})();
+/* is this spot on the map uncovered yet? read the mask the reveal is painted into */
+let _revCtx=null;
+function revealedAtPct(lx,ly){
+  if(!isFinite(lx)||!isFinite(ly)) return true;
+  if(!_revCtx) _revCtx=revealMask.getContext('2d',{willReadFrequently:true});
+  const x=Math.max(0,Math.min(MAPS-1,Math.round(lx/100*MAPS))), y=Math.max(0,Math.min(MAPS-1,Math.round(ly/100*MAPS)));
+  try{ return _revCtx.getImageData(x,y,1,1).data[3]>30; }catch(e){ return true; }
+}
+/* C. The Great Plateau on the map: its cliff outline, its name, and lit from the start
+   because that is where you wake up. */
+const PLATEAU_MAP={shape:null};
+(function tracePlateau(){
+  /* walk a ring of bearings out from the middle until the ground stops being the Plateau */
+  const pts=[];
+  for(let i=0;i<72;i++){
+    const a=i/72*TAU; let lo=0, hi=1400;
+    for(let k=0;k<18;k++){ const mid=(lo+hi)/2;
+      if(onPlateau(PCX+Math.cos(a)*mid,PCZ+Math.sin(a)*mid)) lo=mid; else hi=mid; }
+    pts.push([PCX+Math.cos(a)*lo,PCZ+Math.sin(a)*lo]);
+  }
+  PLATEAU_MAP.shape=pts;
+})();
+{ const _pr=paintReveal;
+  paintReveal=function(){
+    _pr.apply(this,arguments);
+    /* the Plateau is known from the moment you step out of the cave */
+    if(!P.leftRes&&!P.hasSlate) return;
+    const c=revealMask.getContext('2d'); c.save(); c.fillStyle='#fff'; c.beginPath();
+    PLATEAU_MAP.shape.forEach(([x,z],i)=>{ const [mx,my]=w2m(x,z); i?c.lineTo(mx,my):c.moveTo(mx,my); });
+    c.closePath(); c.fill(); c.restore();
+  };
+}
+{ const _dbm=drawBigMap;
+  drawBigMap=function(){
+    const r=_dbm.apply(this,arguments);
+    const c=$('#bigmap').getContext('2d');
+    const K=c.canvas.width/MAPS;          /* the canvas is painted at 3x for sharpness */
+    c.save();
+    c.setTransform(1,0,0,1,0,0);
+    /* only the land you have uncovered stays: the Plateau from the start, each
+       region as its tower is climbed. The later map batches had stopped doing this. */
+    if(mapRevealed){
+      paintReveal();
+      c.globalCompositeOperation='destination-in';
+      c.drawImage(revealMask,0,0,MAPS,MAPS,0,0,c.canvas.width,c.canvas.height);
+      c.globalCompositeOperation='source-over';
+    }
+    /* the cliff edge */
+    c.beginPath();
+    PLATEAU_MAP.shape.forEach(([x,z],i)=>{ const [mx,my]=w2m(x,z); const px=mx*K, py=my*K; i?c.lineTo(px,py):c.moveTo(px,py); });
+    c.closePath();
+    c.lineWidth=Math.max(2,c.canvas.width/420); c.strokeStyle='rgba(232,163,60,.95)'; c.stroke();
+    c.lineWidth=Math.max(1,c.canvas.width/900); c.strokeStyle='rgba(20,14,8,.55)'; c.stroke();
+    /* the map already prints the name from its own place list; one is enough */
+    c.restore();
+    return r;
+  };
+}
+/* the Plateau is lit the moment you step out of the cave, before any tower */
+{ const _ex=exitRes;
+  exitRes=function(){ const r=_ex.apply(this,arguments); mapRevealed=true; return r; };
+  if(P.leftRes) mapRevealed=true;
+}
+console.log('map: the Great Plateau is outlined, named and lit from the start; markers thin out when zoomed out; audio ramps can no longer hit zero');
 </script>
 
 <!-- App Arcade ads + clock (shared, from github.com/cmadisons/app-arcade) -->
