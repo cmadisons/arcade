@@ -26312,5 +26312,87 @@ const APPROACH={ruta:{},rudania:{},naboris:{},medoh:{},state:{}};
 console.log('beast approaches: Sidon and the Lynel, Yunobo’s cannon, Riju’s seals and the Yiga hideout, Teba’s flight');
 </script>
 
+<script>
+"use strict";
+/* ================= BATCH 142 — Roadmap 8 group F: memories, the sword, the castle ================= */
+/* The Slate's own pictures for the memories, Impa's thirteenth, the Great Deku Tree with
+   the sword that seals the darkness, and the castle read the way the chapter reads it. */
+(function memoryPictures(){
+  /* each memory gets the picture's own description and the place it was taken */
+  const where=(x,z)=>{ let best='Hyrule',bd=1e9;
+    for(const [nm,px,pz] of PLACES_NAMED){ const d=Math.hypot(x-px,z-pz); if(d<bd){bd=d;best=nm;} }
+    return best; };
+  for(const M of memorySites){
+    M.pic=M.line?('A picture of '+where(M.x,M.z)+'. '+(M.name||'')):('A picture of '+where(M.x,M.z));
+    M.region=where(M.x,M.z);
+  }
+  /* the thirteenth is Impa's to give, and the last one is Kass's song */
+  P.memoryPics=P.memoryPics||{};
+  const impaGives=memorySites[12], kassGives=memorySites[memorySites.length-1];
+  if(impaGives) impaGives.fromImpa=true;
+  if(kassGives) kassGives.fromKass=true;
+  { const _talk=talkTo;
+    talkTo=function(N){
+      const r=_talk.apply(this,arguments);
+      if(N&&N.name==='Impa'&&impaGives&&!P.memoryPics[impaGives.n]){
+        P.memoryPics[impaGives.n]=1;
+        setTimeout(()=>cut('Impa','One picture is not in the Slate. It was hers, and I kept it. Now it is yours — go and remember.'),1200);
+      }
+      if(N&&N.name==='Kass'&&kassGives&&!P.memoryPics[kassGives.n]){
+        P.memoryPics[kassGives.n]=1;
+        setTimeout(()=>cut('Kass','My teacher left one more verse. Follow it, and the last memory is yours.'),1200);
+      }
+      return r;
+    };
+  }
+  console.log('memory pictures: '+memorySites.length+' described, one from Impa and one from Kass');
+})();
+/* the Great Deku Tree, and the sword that waits in front of it */
+(function greatDekuTree(){
+  const K=REGIONS.korok;
+  let x=K.x, z=K.z-40;
+  const sw=interactables.find(i=>i.kind==='mastersword');
+  if(sw){ x=sw.x; z=sw.z-26; }
+  const y=groundAt(x,z);
+  const g=new THREE.Group(); g.position.set(x,y,z); world.add(g);
+  const bark=new THREE.MeshPhongMaterial({color:0x6b4a2a,flatShading:true,shininess:3});
+  const leaf=new THREE.MeshPhongMaterial({color:0x3f7a3a,flatShading:true,shininess:2});
+  const trunk=new THREE.Mesh(new THREE.CylinderGeometry(7,11,34,12),bark); trunk.position.y=17; g.add(trunk);
+  for(let i=0;i<7;i++){ const a=i/7*TAU;
+    const b=new THREE.Mesh(new THREE.CylinderGeometry(1.2,2.2,16,7),bark);
+    b.position.set(Math.cos(a)*9,26,Math.sin(a)*9); b.rotation.set(Math.cos(a)*.7,0,-Math.sin(a)*.7); g.add(b); }
+  for(let i=0;i<9;i++){ const a=i/9*TAU, r=12+rnd()*8;
+    const c=new THREE.Mesh(new THREE.SphereGeometry(9,10,8),leaf);
+    c.position.set(Math.cos(a)*r,34+rnd()*7,Math.sin(a)*r); c.scale.y=.7; g.add(c); }
+  /* a face, because he has one */
+  const eye=new THREE.MeshBasicMaterial({color:0x2a2018});
+  for(const s of[-1,1]){ const e=new THREE.Mesh(new THREE.SphereGeometry(1.1,10,8),eye); e.position.set(s*3.2,22,10.4); g.add(e); }
+  const mouth=new THREE.Mesh(new THREE.BoxGeometry(6,1.4,1),eye); mouth.position.set(0,17.5,10.6); g.add(mouth);
+  g.traverse(o=>{ if(o.isMesh){ o.castShadow=true; o.receiveShadow=true; } });
+  IA({kind:'dekuTree',x,z,y:y+18,r:16,label:'The Great Deku Tree'});
+  PLACES['The Great Deku Tree']={x,z}; PLACES_NAMED.push(['The Great Deku Tree',x,z,'forest']);
+  console.log('the Great Deku Tree stands over the Master Sword at '+Math.round(x)+','+Math.round(z));
+})();
+{ const _i=interact;
+  interact=function(){
+    const it=nearest;
+    if(it&&it.kind==='dekuTree'){
+      const hearts=P.hearts||3;
+      if(P.hasMaster) cut('The Great Deku Tree','The sword is yours, and the forest is glad of it.');
+      else if(hearts>=13) cut('The Great Deku Tree','You have the strength for it at last. Take the sword that seals the darkness.');
+      else cut('The Great Deku Tree','The blade would drain what little life you have. Come back with thirteen hearts — you have '+hearts+'.');
+      return;
+    }
+    return _i.apply(this,arguments);
+  };
+  const _p=promptFor;
+  promptFor=function(it){
+    if(it&&it.kind==='dekuTree') return '<b>E</b> The Great Deku Tree  ·  '+(P.hearts||3)+'/13 hearts';
+    return _p.apply(this,arguments);
+  };
+}
+console.log('group F: memory pictures, the Great Deku Tree and the sword’s thirteen hearts');
+</script>
+
 <!-- App Arcade ads + clock (shared, from github.com/cmadisons/app-arcade) -->
 <script src="https://cmadisons.github.io/app-arcade/app-ads.js" data-app="zelda" defer></script>
