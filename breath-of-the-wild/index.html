@@ -25585,5 +25585,28 @@ console.log('cliff routes: '+CLIFF.routes.map(r=>r.name+' ('+r.shelves.length+' 
 })();
 </script>
 
+<script>
+"use strict";
+/* ================= BATCH 135 — Roadmap 6 E6: the Plateau's own guards ================= */
+/* The walkthrough's chapter has Decayed Guardians dozing in the maze outside Ja Baij that
+   wake and fire as you draw near, Bokoblins on the way to the tower, and a Guardian Scout
+   waiting inside Oman Au and Keh Namut. */
+(function plateauGuards(){
+  const put=(t,x,z,extra)=>{ const E=makeEnemy({t,x:Math.round(x),z:Math.round(z)});
+    if(E&&extra) Object.assign(E,extra); return E; };
+  const spot=(cx,cz,minR,maxR)=>{ for(let i=0;i<80;i++){ const a=rnd()*TAU, r=minR+rnd()*(maxR-minR);
+      const x=cx+Math.cos(a)*r, z=cz+Math.sin(a)*r;
+      if(onPlateau(x,z)&&groundAt(x,z)>WATER+2&&slopeAt(x,z)<.7) return [x,z]; } return null; };
+  let n=0;
+  const jab=SHRINES.find(s=>s.id==='jabaij');
+  if(jab){ for(let i=0;i<2;i++){ const s=spot(jab.x,jab.z,22,52); if(!s) continue;
+      const E=put('decayed',s[0],s[1]); if(E){ E.asleepBoss=true; n++; } } }
+  /* bokoblins guarding the way up to the tower */
+  for(let i=0;i<4;i++){ const s=spot(LM.tower.x,LM.tower.z,30,90); if(!s) continue;
+    if(put(i<3?'redBoko':'blueBoko',s[0],s[1])) n++; }
+  console.log('Plateau guards: '+n+' placed (Decayed Guardians outside Ja Baij, Bokoblins below the tower)');
+})();
+</script>
+
 <!-- App Arcade ads + clock (shared, from github.com/cmadisons/app-arcade) -->
 <script src="https://cmadisons.github.io/app-arcade/app-ads.js" data-app="zelda" defer></script>
