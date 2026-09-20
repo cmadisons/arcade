@@ -25307,5 +25307,112 @@ const TOWER={ledges:[],deckY:0,parts:{}};
 console.log('tower: rebuilt from the photograph — terracotta stone, blue Sheikah glow, deck on scalloped brackets, four arms to the pedestal, '+TOWER.ledges.length+' climbable ledges');
 </script>
 
+<script>
+"use strict";
+/* ================= BATCH 132 — Roadmap 6 group A: materials that look like themselves ================= */
+/* Every one of the 164 materials was the same 0.36 m rock in a different colour, lying on
+   the ground and floating in pickups. Each kind is built properly now — a stalked apple,
+   a capped mushroom, a cut of meat on the bone, a fish with a tail, a faceted gem, a
+   horn with a point — and the material's own colour still paints it. */
+const MATMODEL={cache:{}};
+(function materialFactory(){
+  const BOXG=new THREE.BoxGeometry(1,1,1), SPH=new THREE.SphereGeometry(.5,10,8),
+        CYLG=new THREE.CylinderGeometry(.5,.5,1,10), CONE=new THREE.ConeGeometry(.5,1,7),
+        ICO=new THREE.IcosahedronGeometry(.5,0), OCT=new THREE.OctahedronGeometry(.5,0),
+        TOR=new THREE.TorusGeometry(.4,.14,6,12), HEMI=new THREE.SphereGeometry(.5,12,7,0,Math.PI*2,0,Math.PI*.55);
+  const mat=(c,o)=>new THREE.MeshPhongMaterial(Object.assign({color:c,flatShading:true,shininess:8,specular:0x141414},o||{}));
+  const put=(g,geo,m,x,y,z,sx,sy,sz,rx,ry,rz)=>{ const o=new THREE.Mesh(geo,m); o.position.set(x,y,z);
+    o.scale.set(sx,sy===undefined?sx:sy,sz===undefined?sx:sz); if(rx||ry||rz) o.rotation.set(rx||0,ry||0,rz||0);
+    o.castShadow=true; g.add(o); return o; };
+  const LEAF=0x4f8442, STEM=0x6b4a2a, BONE=0xe8e0cc;
+  /* which shape a material takes, from its name and its data */
+  MATMODEL.kindOf=function(n){
+    const M=MATS[n]||{};
+    if(/Shroom|Truffle/i.test(n)) return 'mushroom';
+    if(/Apple|Durian|Fruit|Wildberry|Acorn|Chickaloo|Nut|Banana|Palm/i.test(n)) return 'fruit';
+    if(/Pepper|Carrot|Radish|Pumpkin|Melon|Rice|Wheat|Cane/i.test(n)) return 'crop';
+    if(/Herb|Flower|Princess|Nightshade|Thistle|Armoranth|Violet|Seeds|Lotus|Grass|Leaf|Fern/i.test(n)) return 'herb';
+    if(/Raw |Meat/i.test(n)) return 'meat';
+    if(/Bird|Drumstick|Thigh|Whole Bird/i.test(n)) return 'drumstick';
+    if(/Bass|Trout|Carp|Salmon|Snail|Crab|Porgy|Fish|Eel/i.test(n)) return 'fish';
+    if(/Egg/i.test(n)) return 'egg';
+    if(/Diamond|Ruby|Sapphire|Topaz|Opal|Amber|Luminous/i.test(n)||M.gem) return 'gem';
+    if(/Flint|Ore|Rock Salt|Stone|Pebble/i.test(n)) return 'ore';
+    if(/Horn|Fang|Tooth|Toenail|Claw|Shard/i.test(n)) return 'horn';
+    if(/Guts|Liver|Heart|Stomach/i.test(n)) return 'guts';
+    if(/Wing|Feather/i.test(n)) return 'wing';
+    if(/Butterfly|Beetle|Frog|Lizard|Fairy|Firefly|Snail|Bee/i.test(n)) return 'critter';
+    if(/Wood|Branch|Bundle/i.test(n)) return 'wood';
+    if(/Scale|Fin|Tail/i.test(n)) return 'scale';
+    if(/Ancient|Gear|Screw|Spring|Shaft|Core/i.test(n)) return 'ancient';
+    if(/Elixir|Extract|Milk|Butter|Cheese|Honey|Oil|Sugar|Salt|Flour/i.test(n)) return 'jar';
+    return 'ore';
+  };
+  const builders={
+    fruit:(g,c)=>{ put(g,SPH,mat(c),0,0,0,.34,.32,.34); put(g,CYLG,mat(STEM),0,.30,0,.04,.16,.04,0,0,.2);
+      put(g,BOXG,mat(LEAF),.10,.34,0,.16,.03,.10,0,0,-.4); },
+    crop:(g,c)=>{ put(g,CONE,mat(c),0,0,0,.20,.66,.20,Math.PI); put(g,CYLG,mat(STEM),0,.34,0,.04,.14,.04);
+      put(g,BOXG,mat(LEAF),.07,.38,0,.14,.03,.08,0,0,-.5); },
+    mushroom:(g,c)=>{ put(g,CYLG,mat(0xe8e0cc),0,-.08,0,.09,.30,.09); put(g,HEMI,mat(c),0,.10,0,.30,.26,.30);
+      put(g,TOR,mat(c),0,.07,0,.28,.28,.10,Math.PI/2); },
+    herb:(g,c)=>{ for(let i=0;i<4;i++){ const a=i/4*TAU; put(g,BOXG,mat(c),Math.cos(a)*.08,.06,Math.sin(a)*.08,.06,.34,.10,0,-a,Math.cos(a)*.35); }
+      put(g,SPH,mat(0xe0d8f0),0,.28,0,.10,.08,.10); },
+    meat:(g,c)=>{ put(g,SPH,mat(c),0,0,0,.34,.24,.26); put(g,CYLG,mat(BONE),0,-.02,-.24,.05,.34,.05,Math.PI/2);
+      put(g,SPH,mat(BONE),0,-.02,-.40,.09,.09,.09); },
+    drumstick:(g,c)=>{ put(g,SPH,mat(c),0,.04,0,.26,.30,.26); put(g,CYLG,mat(BONE),0,-.26,0,.06,.32,.06);
+      put(g,SPH,mat(BONE),0,-.42,0,.10,.08,.10); },
+    fish:(g,c)=>{ put(g,SPH,mat(c),0,0,0,.44,.20,.18); put(g,CONE,mat(c),-.44,0,0,.18,.22,.04,0,0,Math.PI/2);
+      put(g,CONE,mat(c),.10,.16,0,.10,.16,.04); put(g,SPH,mat(0x1a1410),.34,.05,.09,.04,.04,.04); },
+    egg:(g,c)=>{ put(g,SPH,mat(c),0,0,0,.24,.30,.24); },
+    gem:(g,c)=>{ put(g,OCT,mat(c,{shininess:70,specular:0x888888}),0,0,0,.34,.44,.34);
+      put(g,OCT,mat(c,{shininess:70}),0,0,0,.20,.60,.20,0,.7,0); },
+    ore:(g,c)=>{ put(g,ICO,mat(c),0,0,0,.34); put(g,ICO,mat(c),.16,.10,.06,.16,.14,.16,.5,.8,0); },
+    horn:(g,c)=>{ put(g,CONE,mat(c),0,.06,0,.12,.56,.12,.25,0,.2); put(g,TOR,mat(c),0,-.18,0,.12,.12,.12,Math.PI/2); },
+    guts:(g,c)=>{ put(g,SPH,mat(c),0,0,0,.30,.24,.28); put(g,TOR,mat(c),0,.10,0,.22,.22,.16,1.0,.4,0); },
+    wing:(g,c)=>{ for(const s of[-1,1]) put(g,CONE,mat(c),s*.14,0,0,.10,.46,.05,0,0,s*1.25); },
+    critter:(g,c)=>{ put(g,SPH,mat(c),0,0,0,.16,.14,.24); for(const s of[-1,1]) put(g,BOXG,mat(c),s*.16,.10,0,.22,.02,.16,0,0,s*.3);
+      put(g,SPH,mat(0x1a1410),0,.04,.16,.07,.07,.07); },
+    wood:(g,c)=>{ put(g,CYLG,mat(c),0,0,0,.09,.72,.09,0,0,1.2); put(g,CYLG,mat(c),.06,.10,.08,.07,.60,.07,.2,0,1.0); },
+    scale:(g,c)=>{ put(g,CONE,mat(c,{shininess:50}),0,0,0,.30,.34,.06,Math.PI*.5); },
+    ancient:(g,c)=>{ put(g,CYLG,mat(c,{shininess:40}),0,0,0,.28,.14,.28); put(g,TOR,mat(0x63d6e2),0,.06,0,.22,.22,.10,Math.PI/2);
+      for(let i=0;i<6;i++){ const a=i/6*TAU; put(g,BOXG,mat(c),Math.cos(a)*.28,0,Math.sin(a)*.28,.10,.10,.06,0,-a,0); } },
+    jar:(g,c)=>{ put(g,CYLG,mat(c,{shininess:40}),0,0,0,.20,.44,.20); put(g,CYLG,mat(0x8a6a4a),0,.26,0,.12,.10,.12); }
+  };
+  MATMODEL.make=function(n){
+    const kind=MATMODEL.kindOf(n), col=(MATS[n]&&MATS[n].col)||0xbbbbbb;
+    const g=new THREE.Group();
+    (builders[kind]||builders.ore)(g,col);
+    g.userData.kind=kind;
+    return g;
+  };
+})();
+/* pickups on the ground */
+{ const _sp=spawnPickup;
+  spawnPickup=function(x,z,d){
+    const before=pickups.length;
+    const r=_sp.apply(this,arguments);
+    for(let i=before;i<pickups.length;i++){
+      const p=pickups[i];
+      if(!p.d||!p.d.m||!MATS[p.d.m]) continue;
+      const model=MATMODEL.make(p.d.m);
+      model.position.copy(p.mesh.position); model.scale.setScalar(.9);
+      scene.remove(p.mesh); scene.add(model); p.mesh=model;
+    }
+    return r;
+  };
+}
+/* and the ones lying about the world to be foraged */
+(function reshapeForage(){
+  let n=0;
+  for(const f of forage||[]){
+    if(!f.m||!f.k||!MATS[f.k]||f.taken) continue;
+    const model=MATMODEL.make(f.k);
+    model.position.copy(f.m.position); model.rotation.copy(f.m.rotation); model.scale.setScalar(.95);
+    const par=f.m.parent||scene; par.remove(f.m); par.add(model); f.m=model; n++;
+  }
+  console.log('materials: '+n+' ingredients on the ground rebuilt as fruit, mushrooms, meat, fish, gems, ore, horns and the rest');
+})();
+</script>
+
 <!-- App Arcade ads + clock (shared, from github.com/cmadisons/app-arcade) -->
 <script src="https://cmadisons.github.io/app-arcade/app-ads.js" data-app="zelda" defer></script>
