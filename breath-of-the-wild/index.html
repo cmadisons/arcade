@@ -25999,5 +25999,142 @@ const SCOPE={on:false,fov:null};
 })();
 </script>
 
+<script>
+"use strict";
+/* ================= BATCH 140 — Roadmap 8 group A: the main quest line ================= */
+/* The game had ninety side quests and not one main quest by name. The thirteen of the
+   walkthrough are here, each with where it points, what finishes it, and a marker on the
+   map; they open as their part of the story does, and the Adventure Log lists them. */
+const MAIN=[
+  {id:'slate',  n:'Follow the Sheikah Slate', where:'Shrine of Resurrection',
+   at:()=>({x:LM.resurrection.x,z:LM.resurrection.z}),
+   open:()=>true, done:()=>!!P.leftRes,
+   t:'Take the Slate, dress, open the door and climb out onto the Great Plateau.'},
+  {id:'plateau',n:'The Isolated Plateau', where:'Great Plateau',
+   at:()=>({x:LM.tower.x,z:LM.tower.z}),
+   open:()=>!!P.leftRes, done:()=>SHRINES.every(s=>P.shrines&&P.shrines[s.id]),
+   t:'Light the Great Plateau Tower and clear the four ancient shrines.'},
+  {id:'impa',   n:'Seek Out Impa', where:'Kakariko Village',
+   at:()=>({x:REGIONS.kakariko.x,z:REGIONS.kakariko.z}),
+   open:()=>!!P.hasGlider, done:()=>!!P.metImpa,
+   t:'Leave the Plateau and find Impa in Kakariko Village.'},
+  {id:'mementos',n:'Locked Mementos', where:'Hateno Ancient Tech Lab',
+   at:()=>({x:3557,z:2048}),
+   open:()=>!!P.metImpa, done:()=>(P.runes||[]).includes('camera'),
+   t:'Have Purah mend the Slate at the Hateno Ancient Tech Lab.'},
+  {id:'beasts', n:'Free the Divine Beasts', where:'Hyrule',
+   at:()=>({x:BEASTS[0].x,z:BEASTS[0].z}),
+   open:()=>!!P.metImpa, done:()=>Object.values(BEAST_ROOMS).every(r=>r.beaten),
+   t:'Free all four Divine Beasts from Ganon’s malice.'},
+  {id:'zora',   n:'Reach Zora’s Domain', where:'Lanayru',
+   at:()=>({x:REGIONS.zora.x,z:REGIONS.zora.z}),
+   open:()=>!!P.metImpa, done:()=>!!(P.visited&&P.visited['Zora’s Domain']),
+   t:'Follow the river east to Zora’s Domain.'},
+  {id:'ruta',   n:'Divine Beast Vah Ruta', where:'Zora’s Domain',
+   at:()=>({x:BEASTS.find(b=>b.id==='ruta').x,z:BEASTS.find(b=>b.id==='ruta').z}),
+   open:()=>!!(P.visited&&P.visited['Zora’s Domain']), done:()=>!!(BEAST_ROOMS.ruta&&BEAST_ROOMS.ruta.beaten),
+   t:'Board Vah Ruta, take its five terminals and face Waterblight Ganon.'},
+  {id:'rudania',n:'Divine Beast Vah Rudania', where:'Death Mountain',
+   at:()=>({x:BEASTS.find(b=>b.id==='rudania').x,z:BEASTS.find(b=>b.id==='rudania').z}),
+   open:()=>!!P.metImpa, done:()=>!!(BEAST_ROOMS.rudania&&BEAST_ROOMS.rudania.beaten),
+   t:'Climb Death Mountain with Yunobo and free Vah Rudania.'},
+  {id:'naboris',n:'Divine Beast Vah Naboris', where:'Gerudo Desert',
+   at:()=>({x:BEASTS.find(b=>b.id==='naboris').x,z:BEASTS.find(b=>b.id==='naboris').z}),
+   open:()=>!!P.metImpa, done:()=>!!(BEAST_ROOMS.naboris&&BEAST_ROOMS.naboris.beaten),
+   t:'Ride the sand seals with Riju and bring Vah Naboris down.'},
+  {id:'medoh',  n:'Divine Beast Vah Medoh', where:'Rito Village',
+   at:()=>({x:BEASTS.find(b=>b.id==='medoh').x,z:BEASTS.find(b=>b.id==='medoh').z}),
+   open:()=>!!P.metImpa, done:()=>!!(BEAST_ROOMS.medoh&&BEAST_ROOMS.medoh.beaten),
+   t:'Fly with Teba and shoot Vah Medoh’s cannons down.'},
+  {id:'memories',n:'Captured Memories', where:'Hyrule',
+   at:()=>{ const m=(memorySites||[]).find(s=>!P.memories[s.n]); return m?{x:m.x,z:m.z}:{x:REGIONS.castle.x,z:REGIONS.castle.z}; },
+   open:()=>(P.runes||[]).includes('camera'), done:()=>Object.keys(P.memories||{}).length>=(memorySites||[]).length,
+   t:'Find the places in the Slate’s pictures and remember.'},
+  {id:'sword',  n:'The Hero’s Sword', where:'Korok Forest',
+   at:()=>({x:REGIONS.korok.x,z:REGIONS.korok.z}),
+   open:()=>!!P.metImpa, done:()=>!!(P.weapons||[]).some(w=>/Master Sword/i.test(w.n))||!!P.hasMasterSword,
+   t:'Walk the Lost Woods to the Great Deku Tree and draw the sword that seals the darkness.'},
+  {id:'ganon',  n:'Destroy Ganon', where:'Hyrule Castle',
+   at:()=>({x:REGIONS.castle.x,z:REGIONS.castle.z}),
+   open:()=>true, done:()=>!!P.ganonBeaten,
+   t:'Climb to the Sanctum and end the Calamity.'}
+];
+P.mainDone=P.mainDone||{}; P.mainOpen=P.mainOpen||{}; P.mainTracked=P.mainTracked||null;
+function mainQuest(id){ return MAIN.find(q=>q.id===id); }
+function mainState(){
+  const open=[],done=[];
+  for(const q of MAIN){
+    let isDone=false, isOpen=false;
+    try{ isDone=!!q.done(); }catch(e){ __swallowed(e); }
+    try{ isOpen=!!q.open(); }catch(e){ __swallowed(e); }
+    if(isDone){ if(!P.mainDone[q.id]){ P.mainDone[q.id]=1; toast('Main quest complete: '+q.n,'good'); } done.push(q); }
+    else if(isOpen){ if(!P.mainOpen[q.id]){ P.mainOpen[q.id]=1; toast('Main quest: '+q.n,'good'); } open.push(q); }
+  }
+  return {open,done};
+}
+function trackedQuest(){
+  const {open}=mainState();
+  if(P.mainTracked){ const q=mainQuest(P.mainTracked); if(q&&!P.mainDone[q.id]) return q; }
+  return open[0]||null;
+}
+function cycleMainQuest(){
+  const {open}=mainState();
+  if(!open.length){ toast('No main quest is open'); return; }
+  const i=open.findIndex(q=>q.id===P.mainTracked);
+  const q=open[(i+1)%open.length];
+  P.mainTracked=q.id; toast('Tracking: '+q.n,'good');
+  if(typeof drawBigMap==='function'&&mapOpen) drawBigMap();
+}
+addEventListener('keydown',e=>{ if(P.playing&&e.code==='KeyJ'&&e.shiftKey) cycleMainQuest(); });
+/* the tracked quest replaces the old one-line banner */
+{ const _uq=updateQuest;
+  updateQuest=function(){
+    const q=trackedQuest();
+    if(!q) return _uq.apply(this,arguments);
+    const h=document.querySelector('#quest .qh'), t=document.querySelector('#quest .qt');
+    if(h) h.textContent='Main Quest · '+q.n;
+    if(t) t.textContent=q.t;
+  };
+  setInterval(()=>{ try{ if(P.playing) updateQuest(); }catch(e){ __swallowed(e); } },1500);
+}
+/* its marker joins the Great Plateau Tower's star on both maps */
+{ const _qs=questStar;
+  questStar=function(){
+    const s=_qs.apply(this,arguments);
+    if(s) return s;                                  /* the Plateau star comes first */
+    const q=trackedQuest(); if(!q) return null;
+    let at=null; try{ at=q.at(); }catch(e){ __swallowed(e); }
+    if(!at||!isFinite(at.x)||!isFinite(at.z)) return null;
+    return {x:at.x,z:at.z,label:q.n+' — your quest'};
+  };
+}
+/* Impa's scene is what sets the four beasts going */
+{ const _talk=talkTo;
+  talkTo=function(N){
+    const r=_talk.apply(this,arguments);
+    if(N&&N.name==='Impa'&&!P.metImpa){
+      P.metImpa=true;
+      setTimeout(()=>{ mainState(); toast('The four Divine Beasts await','good'); },900);
+    }
+    return r;
+  };
+}
+/* and the Log lists them */
+{ const _rp=(typeof renderSlate==='function')?renderSlate:null;
+  const rowsFor=()=>{ const {open,done}=mainState();
+    return open.map(q=>['○ '+q.n,q.where]).concat(done.map(q=>['✔ '+q.n,'done'])); };
+  window.mainQuestRows=rowsFor;
+  if(_rp){ renderSlate=function(){ const r=_rp.apply(this,arguments);
+      const body=document.querySelector('#slateBody');
+      if(body&&/Adventure Log/.test(body.innerHTML)){
+        body.innerHTML+='<div class="eyeb" style="margin-top:14px">Main quests</div>'+
+          rowsFor().map(([a,b])=>`<div class="row"><span>${a}</span><b>${b}</b></div>`).join('');
+      }
+      return r; }; }
+}
+mainState();
+console.log('main quests: '+MAIN.length+' by name, tracked one marked on the map (Shift+J cycles)');
+</script>
+
 <!-- App Arcade ads + clock (shared, from github.com/cmadisons/app-arcade) -->
 <script src="https://cmadisons.github.io/app-arcade/app-ads.js" data-app="zelda" defer></script>
