@@ -25965,5 +25965,39 @@ const SCOPE={on:false,fov:null};
 }
 </script>
 
+<script>
+"use strict";
+/* ================= BATCH 139 — Roadmap 7 A4: the Guardian Scouts in the shrines ================= */
+/* The chapter meets a Guardian Scout I inside Oman Au and another inside Keh Namut. They
+   stand in the room and only wake when you are in it, so nothing fights an empty shrine. */
+(function scoutsInTheShrines(){
+  const made=[];
+  for(const id of ['oman','keh']){
+    const r=ROOMS[id]; if(!r) continue;
+    const x=(r.rx||0)+(id==='oman'?9:-9), z=(r.rz||0)+18;
+    const E=makeEnemy({t:'scoutI',x:Math.round(x),z:Math.round(z)});
+    if(!E) continue;
+    E.pos.set(x,r.floorY+.6,z); E.home.copy(E.pos); E.shrineRoom=r; E.g.visible=false; E.dormant=true;
+    made.push(id);
+  }
+  /* they live only while you are inside that shrine */
+  const _u=updateEnemies;
+  updateEnemies=function(dt){
+    for(const E of enemies){ if(E.shrineRoom&&E.alive) E.dormant=(P.inShrine!==E.shrineRoom); }
+    const r=_u(dt);
+    /* the cull and the shrine's own visibility pass run inside; have the last word here */
+    for(const E of enemies){
+      if(!E.shrineRoom||!E.alive) continue;
+      const inHere=P.inShrine===E.shrineRoom;
+      E.g.visible=inHere; if(E.rig&&E.rig.root) E.rig.root.visible=inHere;
+      if(inHere&&!E.g.parent) scene.add(E.g);
+      if(E.g.__streamItem) E.g.__streamItem.dead=true;   /* never streamed out of its room */
+    }
+    return r;
+  };
+  console.log('Guardian Scout I waiting inside: '+made.join(' and '));
+})();
+</script>
+
 <!-- App Arcade ads + clock (shared, from github.com/cmadisons/app-arcade) -->
 <script src="https://cmadisons.github.io/app-arcade/app-ads.js" data-app="zelda" defer></script>
