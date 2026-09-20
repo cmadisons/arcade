@@ -25608,5 +25608,145 @@ console.log('cliff routes: '+CLIFF.routes.map(r=>r.name+' ('+r.shelves.length+' 
 })();
 </script>
 
+<script>
+"use strict";
+/* ================= BATCH 136 — Roadmap 7 group B: Dueling Peaks and Kakariko ================= */
+/* The chapter's own furniture: the two bridges by name, Octoroks in the river under the
+   tower that drop Octo Balloons, the ring of spikes around Ha Dahamar, a Goddess Statue
+   by Kakariko's pond, the region's four Stone Taluses and its Hinox, and the last five
+   Korok seeds of its fifty-nine. */
+const CH2={};
+(function namedBridges(){
+  const duel=TOWERS.find(t=>t.id==='duel')||{x:2180,z:330};
+  const list=[
+    ['Proxim Bridge',   duel.x-620, duel.z+120],
+    ['Kakariko Bridge', REGIONS.kakariko.x-260, REGIONS.kakariko.z+420]
+  ];
+  const wood=new THREE.MeshPhongMaterial({color:0x6b4a2a,flatShading:true,shininess:4});
+  const plank=new THREE.MeshPhongMaterial({color:0x8a6a44,flatShading:true,shininess:4});
+  for(const [name,bx,bz] of list){
+    PLACES[name]={x:bx,z:bz};
+    PLACES_NAMED.push([name,bx,bz,'bridge']);
+    const y=Math.max(groundAt(bx,bz),waterAt(bx,bz))+1.2;
+    const g=new THREE.Group(); g.position.set(bx,y,bz); world.add(g);
+    const deck=new THREE.Mesh(new THREE.BoxGeometry(1,1,1),plank); deck.scale.set(24,.5,5.2); deck.receiveShadow=true; g.add(deck);
+    for(const s of[-1,1]){ const rail=new THREE.Mesh(new THREE.BoxGeometry(1,1,1),wood);
+      rail.scale.set(24,.9,.35); rail.position.set(0,.7,s*2.4); g.add(rail); }
+    for(let i=-2;i<=2;i++){ for(const s of[-1,1]){ const post=new THREE.Mesh(new THREE.BoxGeometry(1,1,1),wood);
+      post.scale.set(.5,2.4,.5); post.position.set(i*5.4,-.9,s*2.4); post.castShadow=true; g.add(post); } }
+    IA({kind:'place',name,place:'bridge',x:bx,z:bz,y:y+1.5,r:60,label:name});
+  }
+  console.log('bridges named: Proxim Bridge, Kakariko Bridge');
+})();
+/* Octoroks in the river under the Dueling Peaks Tower, and the balloons they leave */
+(function octoroksByTheTower(){
+  const duel=TOWERS.find(t=>t.id==='duel')||{x:2180,z:330};
+  let n=0;
+  for(let i=0;i<6&&n<5;i++){
+    for(let t=0;t<60;t++){
+      const a=rnd()*TAU, r=40+rnd()*220;
+      const x=duel.x+Math.cos(a)*r, z=duel.z+Math.sin(a)*r;
+      if(groundAt(x,z)<waterAt(x,z)-.5){ const E=makeEnemy({t:'octorok',x:Math.round(x),z:Math.round(z)}); if(E){ E.riverOcto=true; n++; } break; }
+    }
+  }
+  CH2.octoroks=n;
+  const _k=killEnemy;
+  killEnemy=function(E){
+    const was=E&&E.alive, pk=pickups.length;
+    const r=_k.apply(this,arguments);
+    if(was&&E&&!E.alive&&E.T&&/Octorok/.test(E.T.n)){
+      /* an octorok is not a bokoblin: its own drops only */
+      for(let i=pickups.length-1;i>=pk;i--) if(/^Bokoblin/.test(pickups[i].label)){ scene.remove(pickups[i].mesh); pickups.splice(i,1); }
+      if(rnd()<.85) spawnPickup(E.pos.x,E.pos.z,{m:'Octo Balloon'});
+      if(rnd()<.35) spawnPickup(E.pos.x+.8,E.pos.z,{m:'Octorok Tentacle'});
+    }
+    return r;
+  };
+  console.log('octoroks in the river by the Dueling Peaks Tower: '+n+' (they drop Octo Balloons)');
+})();
+/* the spikes around Ha Dahamar, cleared when the shrine is done */
+(function spikesOnHaDahamar(){
+  const D=SHRINE_DEFS.find(d=>/Ha Dahamar/i.test(d.name)); if(!D) return;
+  const g=new THREE.Group(); g.position.set(D.x,groundAt(D.x,D.z),D.z); world.add(g);
+  const spikeM=new THREE.MeshPhongMaterial({color:0x4a3f38,flatShading:true,shininess:20});
+  const spikes=[];
+  for(let i=0;i<14;i++){ const a=i/14*TAU, r=7.5;
+    const s=new THREE.Mesh(new THREE.ConeGeometry(.5,1,5),spikeM);
+    s.position.set(Math.cos(a)*r,1.5,Math.sin(a)*r); s.scale.set(.7,3.0,.7); s.rotation.z=Math.cos(a)*.2; s.rotation.x=-Math.sin(a)*.2;
+    s.castShadow=true; g.add(s); spikes.push(s);
+  }
+  CH2.spikes={g,id:D.id,r:8.4};
+  const _u=updateEnemies;
+  updateEnemies=function(dt){
+    _u(dt);
+    if(!CH2.spikes) return;
+    const done=!!(P.genDone&&P.genDone[CH2.spikes.id]);
+    if(done&&CH2.spikes.g.visible){ CH2.spikes.g.visible=false; toast('The spikes around Ha Dahamar sink away','good'); }
+    if(!done&&CH2.spikes.g.visible&&P.playing&&!P.inShrine){
+      const d=Math.hypot(P.pos.x-D.x,P.pos.z-D.z);
+      if(d<CH2.spikes.r&&P.pos.y<groundAt(D.x,D.z)+4){ damage(4,'spikes'); }
+    }
+  };
+  console.log('Ha Dahamar ringed with spikes until its trial is done');
+})();
+/* a Goddess Statue by Kakariko's pond */
+(function kakarikoStatue(){
+  const K=REGIONS.kakariko;
+  let x=K.x+34, z=K.z+26;
+  for(let t=0;t<40;t++){ if(groundAt(x,z)>waterAt(x,z)+.5&&slopeAt(x,z)<.5) break; x=K.x+(rnd()-.5)*90; z=K.z+(rnd()-.5)*90; }
+  const y=groundAt(x,z);
+  const g=new THREE.Group(); g.position.set(x,y,z); world.add(g);
+  const stoneM=new THREE.MeshPhongMaterial({color:0x9aa49a,flatShading:true,shininess:10});
+  const base=new THREE.Mesh(new THREE.CylinderGeometry(1.9,2.2,.9,12),stoneM); base.position.y=.45; g.add(base);
+  const body=new THREE.Mesh(new THREE.ConeGeometry(1.2,3.4,10),stoneM); body.position.y=2.5; g.add(body);
+  const head=new THREE.Mesh(new THREE.SphereGeometry(.55,12,10),stoneM); head.position.y=4.2; g.add(head);
+  for(const s of[-1,1]){ const wing=new THREE.Mesh(new THREE.ConeGeometry(.5,2.4,5),stoneM);
+    wing.position.set(s*1.1,2.8,-.3); wing.rotation.z=s*.5; g.add(wing); }
+  g.traverse(o=>{ if(o.isMesh){ o.castShadow=true; o.receiveShadow=true; } });
+  IA({kind:'statue',x,z,y:y+3,r:8,label:'Goddess Statue'});
+  console.log('Goddess Statue standing by the pond in Kakariko');
+})();
+/* the region's overworld bosses: four Stone Taluses and a Hinox */
+(function duelBosses(){
+  const R=REGIONS.duel; const made=[];
+  const spot=(minR,maxR)=>{ for(let t=0;t<80;t++){ const a=rnd()*TAU, r=minR+rnd()*(maxR-minR);
+      const x=R.x+Math.cos(a)*r, z=R.z+Math.sin(a)*r;
+      if(!onPlateau(x,z)&&groundAt(x,z)>waterAt(x,z)+3&&slopeAt(x,z)<.7) return [x,z]; } return null; };
+  for(let i=0;i<4;i++){ const s=spot(180,900); if(!s) continue;
+    const E=makeEnemy({t:'stoneTalus',x:Math.round(s[0]),z:Math.round(s[1])}); if(E) made.push('Stone Talus'); }
+  const s=spot(250,900);
+  if(s){ const E=makeEnemy({t:'redHinox',x:Math.round(s[0]),z:Math.round(s[1])}); if(E) made.push('Hinox'); }
+  console.log('Dueling Peaks bosses: '+made.join(', '));
+})();
+/* fifty-nine seeds in the Dueling Peaks region */
+(function fiftyNineSeeds(){
+  const R=REGIONS.duel, inRegion=k=>Math.hypot(k.x-R.x,k.z-R.z)<1000;
+  let here=koroks.filter(inRegion).length;
+  if(here>=59){ console.log('Korok seeds in the Dueling Peaks region: '+here); return; }
+  const m4=new THREE.Matrix4(), pos=new THREE.Vector3(), quat=new THREE.Quaternion(), scl=new THREE.Vector3();
+  const pool=koroks.filter(k=>!inRegion(k)&&Math.hypot(k.x-REGIONS.central.x,k.z-REGIONS.central.z)<1400);
+  let moved=0;
+  for(const K of pool){
+    if(here>=59) break;
+    let spot=null;
+    for(let t=0;t<120&&!spot;t++){ const a=rnd()*TAU, r=120+rnd()*820;
+      const x=R.x+Math.cos(a)*r, z=R.z+Math.sin(a)*r;
+      if(!onPlateau(x,z)&&groundAt(x,z)>waterAt(x,z)+2&&slopeAt(x,z)<.7) spot=[x,z]; }
+    if(!spot) continue;
+    const [nx,nz]=spot, dy=groundAt(nx,nz)-groundAt(K.x,K.z);
+    for(const [mesh,idx] of K.parts||[]){
+      mesh.getMatrixAt(idx,m4); m4.decompose(pos,quat,scl);
+      pos.x+=nx-K.x; pos.z+=nz-K.z; pos.y+=dy;
+      m4.compose(pos,quat,scl); mesh.setMatrixAt(idx,m4); mesh.instanceMatrix.needsUpdate=true;
+    }
+    if(K.endPos){ K.endPos[0]+=nx-K.x; K.endPos[1]+=nz-K.z; }
+    K.x=nx; K.z=nz; if(K.y!==undefined) K.y+=dy;
+    here++; moved++;
+  }
+  if(typeof kAdd==='function'){ kBuckets.clear(); for(const K of koroks) kAdd(K); }
+  console.log('Korok seeds: '+moved+' moved into the Dueling Peaks region, '+koroks.filter(inRegion).length+' there now');
+})();
+</script>
+
 <!-- App Arcade ads + clock (shared, from github.com/cmadisons/app-arcade) -->
 <script src="https://cmadisons.github.io/app-arcade/app-ads.js" data-app="zelda" defer></script>
