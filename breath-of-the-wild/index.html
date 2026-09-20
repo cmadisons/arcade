@@ -235,6 +235,7 @@
       <div><span>Swap armour</span><k>4</k></div>
       <div><span>Arrow type</span><k>Tab</k></div>
       <div><span>Eat</span><k>C</k></div>
+      <div><span>Sprint</span><k>Shift</k></div>
       <div><span>Sheikah map</span><k>M</k></div>
       <div><span>Inventory</span><k>Esc</k></div>
     </div>
@@ -15630,7 +15631,7 @@ promptFor=function(it){
     ['central',   120], ['duel',       90], ['lanayru',  85], ['akkala',   80],
     ['faron',      75], ['gerudo',     45], ['wasteland',30], ['hebra',    70],
     ['ridge',      65], ['eldin',      65], ['hateno',   60], ['woodland', 55],
-    ['tabantha',   55], ['hylia',      30], ['plateau',  25], ['korok',    20]
+    ['tabantha',   55], ['hylia',      30], ['plateau',  18], ['korok',    20]   /* the Plateau has 18 in the real game */
   ];
   const magnets=[];
   for(const k in REGIONS) magnets.push([REGIONS[k].x,REGIONS[k].z,140]);
@@ -25544,6 +25545,44 @@ let PLATEAU_PEAK=null;
   console.log('Mount Hylia peak at '+Math.round(px)+','+Math.round(pz)+' — the old man’s doublet and an Amber rock');
 })();
 console.log('cliff routes: '+CLIFF.routes.map(r=>r.name+' ('+r.shelves.length+' shelves)').join(', '));
+</script>
+
+<script>
+"use strict";
+/* ================= BATCH 134 — Roadmap 6 E4: eighteen seeds on the Plateau ================= */
+/* The Great Plateau Tower region holds 18 Korok seeds in the real game. The redistribution
+   left 22 here, so the extra four walk down into Hyrule Field, keeping the total at 900. */
+(function eighteenOnThePlateau(){
+  const here=koroks.filter(k=>onPlateau(k.x,k.z));
+  if(here.length<=18) { console.log('Korok seeds on the Plateau: '+here.length); return; }
+  const extra=here.slice(18);
+  const m4=new THREE.Matrix4(), pos=new THREE.Vector3(), quat=new THREE.Quaternion(), scl=new THREE.Vector3();
+  let moved=0;
+  for(const K of extra){
+    let spot=null;
+    for(let t=0;t<200&&!spot;t++){
+      const a=rnd()*TAU, r=300+rnd()*900;
+      const x=REGIONS.central.x+Math.cos(a)*r, z=REGIONS.central.z+Math.sin(a)*r;
+      if(!onPlateau(x,z)&&groundAt(x,z)>waterAt(x,z)+2&&slopeAt(x,z)<.7) spot=[x,z];
+    }
+    if(!spot) continue;
+    const [nx,nz]=spot, dy=groundAt(nx,nz)-groundAt(K.x,K.z);
+    for(const [mesh,idx] of K.parts||[]){
+      mesh.getMatrixAt(idx,m4); m4.decompose(pos,quat,scl);
+      pos.x+=nx-K.x; pos.z+=nz-K.z; pos.y+=dy;
+      m4.compose(pos,quat,scl); mesh.setMatrixAt(idx,m4); mesh.instanceMatrix.needsUpdate=true;
+    }
+    if(K.endPos){ K.endPos[0]+=nx-K.x; K.endPos[1]+=nz-K.z; }
+    if(K.targets) for(const t of K.targets){ if(t.x!==undefined){ t.x+=nx-K.x; t.z+=nz-K.z; } }
+    K.x=nx; K.z=nz; if(K.y!==undefined) K.y+=dy;
+    moved++;
+  }
+  if(typeof kBuckets!=='undefined'&&typeof kAdd==='function'){   /* rebuild the lookup grid the way the game keys it */
+    kBuckets.clear();
+    for(const K of koroks) kAdd(K);
+  }
+  console.log('Korok seeds: '+moved+' moved off the Plateau, '+koroks.filter(k=>onPlateau(k.x,k.z)).length+' left here of '+koroks.length);
+})();
 </script>
 
 <!-- App Arcade ads + clock (shared, from github.com/cmadisons/app-arcade) -->
