@@ -25860,5 +25860,110 @@ const CH3={lanterns:[],flame:null,furnace:null,lit:0};
 })();
 </script>
 
+<script>
+"use strict";
+/* ================= BATCH 138 — Roadmap 7 group D: the scope, and a beam sent back ================= */
+/* D2. The Sheikah Scope: hold V to look through it, drop a pin where you are aiming, and
+   the pin stands on the map and the minimap until you reach it.
+   D4. The perfect guard now works on a Guardian's beam as well as a sword: a shield
+   swing timed to the shot sends it back at what fired it. */
+const SCOPE={on:false,fov:null};
+(function sheikahScope(){
+  const el=document.createElement('div');
+  el.id='scopeUI';
+  el.style.cssText='position:fixed;inset:0;display:none;pointer-events:none;z-index:14';
+  el.innerHTML=`<div style="position:absolute;inset:0;box-shadow:inset 0 0 180px 60px rgba(8,10,14,.85)"></div>
+    <div style="position:absolute;left:50%;top:50%;width:170px;height:170px;transform:translate(-50%,-50%);
+      border:1px solid rgba(99,214,226,.65);border-radius:50%"></div>
+    <div style="position:absolute;left:50%;top:50%;width:230px;height:1px;transform:translate(-50%,-50%);background:rgba(99,214,226,.5)"></div>
+    <div style="position:absolute;left:50%;top:50%;width:1px;height:230px;transform:translate(-50%,-50%);background:rgba(99,214,226,.5)"></div>
+    <div id="scopeLbl" style="position:absolute;left:50%;bottom:16%;transform:translateX(-50%);font-family:var(--ui);
+      font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:#63d6e2">Scope · F to drop a pin</div>`;
+  document.body.appendChild(el);
+  const aimPoint=()=>{
+    const dir=new THREE.Vector3(); camera.getWorldDirection(dir);
+    /* walk the ray until it meets the ground */
+    let t=20;
+    for(let i=0;i<220;i++){
+      const p=camera.position.clone().addScaledVector(dir,t);
+      if(p.y<=Math.max(groundAt(p.x,p.z),waterAt(p.x,p.z))) return p;
+      t+=12;
+    }
+    return camera.position.clone().addScaledVector(dir,900);
+  };
+  SCOPE.toggle=(on)=>{
+    SCOPE.on=on;
+    el.style.display=on?'block':'none';
+    if(on){ SCOPE.fov=camera.fov; camera.fov=Math.max(10,SCOPE.fov*.28); }
+    else if(SCOPE.fov){ camera.fov=SCOPE.fov; }
+    camera.updateProjectionMatrix();
+  };
+  addEventListener('keydown',e=>{
+    if(!P.playing) return;
+    if(e.code==='KeyP'&&!e.repeat) SCOPE.toggle(!SCOPE.on);
+    else if(e.code==='KeyT'&&SCOPE.on){
+      /* T lights a torch too; while the scope is up it only drops a pin */
+      e.preventDefault(); e.stopImmediatePropagation();
+      const p=aimPoint();
+      P.pins=P.pins||[];
+      if(P.pins.length>=100){ toast('A hundred pins is the most the Slate holds','bad'); return; }
+      P.pins.push({x:p.x,z:p.z});
+      toast('Pin dropped'); sfx('slate');
+    }
+  },true);
+  /* the scope closes on Escape as well */
+  addEventListener('keydown',e=>{ if(e.code==='Escape'&&SCOPE.on) SCOPE.toggle(false); });
+  /* a pin clears itself when you walk to it */
+  { const _u=updatePlayer;
+    updatePlayer=function(dt){ const r=_u.apply(this,arguments);
+      if(P.pins&&P.pins.length&&P.playing){
+        for(let i=P.pins.length-1;i>=0;i--){
+          const pin=P.pins[i];
+          if(Math.hypot(P.pos.x-pin.x,P.pos.z-pin.z)<12){ P.pins.splice(i,1); toast('Pin reached'); }
+        }
+      }
+      return r; };
+  }
+  /* the pin shows on the minimap too */
+  { const _dm=drawMinimap;
+    drawMinimap=function(){
+      _dm.apply(this,arguments);
+      if(!P.pins||!P.pins.length||P.inShrine||P.inRes) return;
+      const c=mmCtx,S=340,span=520;
+      for(const pin of P.pins){
+        let x=(pin.x-P.pos.x)/span*S, y=(pin.z-P.pos.z)/span*S;
+        const L=Math.hypot(x,y), R=S/2-14; if(L>R){ x*=R/L; y*=R/L; }
+        c.save(); c.translate(S/2+x,S/2+y);
+        c.beginPath(); c.moveTo(0,-9); c.lineTo(6,4); c.lineTo(-6,4); c.closePath();
+        c.fillStyle='#e8a33c'; c.shadowColor='rgba(232,163,60,.9)'; c.shadowBlur=8; c.fill(); c.restore();
+      }
+    };
+  }
+  const list=document.querySelector('#help')||document.querySelector('.panel');
+  if(list){ const row=document.createElement('div'); row.innerHTML='<span>Sheikah Scope · drop a pin</span><k>P</k> <k>T</k>'; list.appendChild(row); }
+  console.log('Sheikah Scope on P, pins on T (V already cycles the Sheikah Sensor, F fires a rune)');
+})();
+/* D4. a beam sent back */
+{ const _gb=guardianBeam;
+  guardianBeam=function(E){
+    /* a shield swing in the last quarter-second before the shot is a perfect guard */
+    if(P.parryT>0&&curS()){
+      const S=SHIELDS[curS().n];
+      hitEnemy(E,Math.max(60,(S&&S.grd?S.grd*6:60)),0,0,null);
+      E.stun=2.2; E.beamT=0;
+      toast('Beam sent back!','good'); sfx('parry');
+      const len=E.pos.distanceTo(P.pos);
+      const b=new THREE.Mesh(new THREE.CylinderGeometry(.3,.3,len,6),
+        new THREE.MeshBasicMaterial({color:0x63d6e2,transparent:true,opacity:.95}));
+      const mid=E.pos.clone().add(P.pos).multiplyScalar(.5); mid.y+=1.6;
+      b.position.copy(mid); b.lookAt(E.pos.x,E.pos.y+1.6,E.pos.z); b.rotateX(Math.PI/2);
+      scene.add(b); setTimeout(()=>scene.remove(b),200);
+      return;
+    }
+    return _gb.apply(this,arguments);
+  };
+}
+</script>
+
 <!-- App Arcade ads + clock (shared, from github.com/cmadisons/app-arcade) -->
 <script src="https://cmadisons.github.io/app-arcade/app-ads.js" data-app="zelda" defer></script>
