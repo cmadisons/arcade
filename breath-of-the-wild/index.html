@@ -25748,5 +25748,117 @@ const CH2={};
 })();
 </script>
 
+<script>
+"use strict";
+/* ================= BATCH 137 — Roadmap 7 group C: the Hateno chapter ================= */
+/* The tower under its spikes, the towers named on the map, and Purah's errand: carry the
+   blue flame from the village furnace up the line of lanterns to the lab. */
+const CH3={lanterns:[],flame:null,furnace:null,lit:0};
+(function nameTheTowers(){
+  let n=0;
+  for(const t of TOWERS){
+    if(PLACES[t.n]) continue;
+    PLACES[t.n]={x:t.x,z:t.z};
+    PLACES_NAMED.push([t.n,t.x,t.z,'tower']);
+    n++;
+  }
+  console.log('towers named as places: '+n);
+})();
+(function spikesOnHatenoTower(){
+  const H=TOWERS.find(t=>t.id==='hateno'); if(!H) return;
+  const y=groundAt(H.x,H.z);
+  const g=new THREE.Group(); g.position.set(H.x,y,H.z); world.add(g);
+  const thornM=new THREE.MeshPhongMaterial({color:0x4a3a2a,flatShading:true,shininess:6});
+  const thorns=[];
+  for(let ring=0;ring<9;ring++){
+    for(let i=0;i<10;i++){
+      const a=i/10*TAU+ring*.31;
+      if(Math.abs(((a%TAU)+TAU)%TAU-1.9)<.45) continue;        /* the climbable side stays clear */
+      const r=5.6-ring*.12, yy=8+ring*8.6;
+      const t=new THREE.Mesh(new THREE.ConeGeometry(.5,1,5),thornM);
+      t.position.set(Math.cos(a)*r,yy,Math.sin(a)*r);
+      t.scale.set(1.1,2.6,1.1); t.rotation.set(Math.sin(a)*.5,-a,Math.cos(a)*.5+1.2);
+      t.castShadow=true; g.add(t); thorns.push({m:t,x:H.x+Math.cos(a)*r,z:H.z+Math.sin(a)*r,y:y+yy,burnt:false});
+    }
+  }
+  CH3.thorns=thorns;
+  /* fire burns them away, as the chapter says; you do not have to */
+  const _u=updateEnemies;
+  updateEnemies=function(dt){
+    _u(dt);
+    if(!CH3.thorns||!P.playing) return;
+    for(const t of CH3.thorns){
+      if(t.burnt) continue;
+      let hot=false;
+      for(const F of fires||[]) if(Math.hypot(F.x-t.x,F.z-t.z)<5&&Math.abs((F.y||0)-t.y)<6) hot=true;
+      const w=curW();
+      if(!hot&&P.torchLit&&w&&Math.hypot(P.pos.x-t.x,P.pos.z-t.z)<3&&Math.abs(P.pos.y-t.y)<3) hot=true;
+      if(hot){ t.burnt=true; t.m.visible=false; }
+    }
+  };
+  console.log('Hateno Tower under '+thorns.length+' thorns, with one clear way up');
+})();
+/* ---- Purah's errand: the blue flame up the lantern line ---- */
+(function blueFlameErrand(){
+  const lab={x:3557,z:2048};                                   /* where Purah stands */
+  const V=REGIONS.hateno;
+  const fireM=new THREE.MeshBasicMaterial({color:0x63d6e2,transparent:true,opacity:.9});
+  const postM=new THREE.MeshPhongMaterial({color:0x6b4a2a,flatShading:true,shininess:4});
+  const bowlM=new THREE.MeshPhongMaterial({color:0x4a4a52,flatShading:true,shininess:20});
+  const mk=(x,z,big)=>{
+    const y=groundAt(x,z);
+    const g=new THREE.Group(); g.position.set(x,y,z); world.add(g);
+    const post=new THREE.Mesh(new THREE.CylinderGeometry(big?.5:.16,big?.6:.2,big?3.4:2.4,8),postM);
+    post.position.y=big?1.7:1.2; post.castShadow=true; g.add(post);
+    const bowl=new THREE.Mesh(new THREE.CylinderGeometry(big?1.1:.42,big?.8:.28,big?.8:.34,10),bowlM);
+    bowl.position.y=big?3.6:2.5; g.add(bowl);
+    const flame=new THREE.Mesh(new THREE.ConeGeometry(big?.9:.34,big?2.2:1.0,7),fireM);
+    flame.position.y=big?4.6:3.0; flame.visible=false; g.add(flame);
+    const light=new THREE.PointLight(0x63d6e2,0,big?26:14); light.position.y=big?4.6:3.0; light.visible=false; g.add(light);
+    return {g,x,z,y,flame,light,lit:false,big:!!big};
+  };
+  /* the ancient furnace in the village, already burning blue */
+  CH3.furnace=mk(V.x+26,V.z+34,true);
+  CH3.furnace.lit=true; CH3.furnace.flame.visible=true; CH3.furnace.light.visible=true; CH3.furnace.light.intensity=2.2;
+  IA({kind:'place',name:'Ancient Furnace',place:'furnace',x:CH3.furnace.x,z:CH3.furnace.z,y:CH3.furnace.y+3,r:30,label:'The ancient furnace'});
+  /* a line of lantern posts from the village up to the lab */
+  const N=9;
+  for(let i=1;i<=N;i++){
+    const t=i/(N+1);
+    let x=V.x+(lab.x-V.x)*t+Math.sin(i*1.7)*26, z=V.z+(lab.z-V.z)*t+Math.cos(i*1.3)*26;
+    for(let k=0;k<20&&(groundAt(x,z)<waterAt(x,z)+1||slopeAt(x,z)>1.1);k++){ x+=(rnd()-.5)*30; z+=(rnd()-.5)*30; }
+    CH3.lanterns.push(mk(x,z,false));
+  }
+  /* the lab's own furnace, waiting to be lit */
+  CH3.lab=mk(lab.x+6,lab.z-4,true);
+  IA({kind:'place',name:'Hateno Ancient Tech Lab',place:'lab',x:lab.x,z:lab.z,y:groundAt(lab.x,lab.z)+3,r:40,label:'Hateno Ancient Tech Lab'});
+  /* carrying the flame: a lit torch takes light from any lit bowl and gives it to the next */
+  const _up=updatePlayer;
+  updatePlayer=function(dt){
+    const r=_up.apply(this,arguments);
+    if(!P.playing||P.inShrine||P.inRes) return r;
+    const w=curW(), holdingTorch=!!(w&&WEAPONS[w.n]&&WEAPONS[w.n].torch);
+    const all=[CH3.furnace,...CH3.lanterns,CH3.lab];
+    for(const L of all){
+      const d=Math.hypot(P.pos.x-L.x,P.pos.z-L.z);
+      if(d>3.2) continue;
+      if(L.lit&&holdingTorch&&!P.torchLit){ P.torchLit=true; P.blueFlame=true; toast('Your torch takes the blue flame','good'); sfx('fire'); }
+      else if(!L.lit&&holdingTorch&&P.torchLit&&P.blueFlame){
+        L.lit=true; L.flame.visible=true; L.light.visible=true; L.light.intensity=L.big?2.2:1.2;
+        CH3.lit++; sfx('fire');
+        if(L===CH3.lab){
+          toast('The lab’s furnace burns blue','good');
+          if(!(P.runes||[]).includes('camera')){ P.runes.push('camera'); P.rune=P.runes.length-1; updateGear();
+            cut('Purah','The furnace is lit! Snap — your Slate is fixed. The Camera Rune is yours, and the Compendium with it.'); }
+          if(typeof setQuest==='function'&&QUESTS['bluefire']) setQuest('bluefire');
+        } else toast('Lantern lit ('+CH3.lit+' of '+(CH3.lanterns.length+1)+')');
+      }
+    }
+    return r;
+  };
+  console.log('blue flame errand: the village furnace, '+CH3.lanterns.length+' lanterns and the lab furnace');
+})();
+</script>
+
 <!-- App Arcade ads + clock (shared, from github.com/cmadisons/app-arcade) -->
 <script src="https://cmadisons.github.io/app-arcade/app-ads.js" data-app="zelda" defer></script>
