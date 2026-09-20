@@ -122,6 +122,12 @@
   button.act:disabled{opacity:.32;cursor:default}
   button.act.primary{border-color:rgba(232,163,60,.6);color:var(--amber)}
   button.act.on{border-color:var(--cyan);color:var(--cyan)}
+  #roadmaps{margin-top:26px;font-family:var(--ui);font-size:12.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+  #roadmaps .rmlabel{display:block;margin-bottom:9px;letter-spacing:.3em;color:var(--amber);opacity:.8}
+  #roadmaps a{display:inline-block;margin:3px;padding:5px 11px;color:var(--parchment);text-decoration:none;
+    border:1px solid var(--faint);border-radius:2px;transition:border-color .2s,color .2s,background .2s}
+  #roadmaps a:hover,#roadmaps a:focus-visible{border-color:var(--amber);color:var(--amber);background:rgba(232,163,60,.07);outline:none}
+  #roadmaps a.all{border-color:rgba(232,163,60,.6);color:var(--amber)}
   #keys{margin-top:30px;display:grid;grid-template-columns:repeat(auto-fit,minmax(158px,1fr));gap:4px 22px;
     font-family:var(--ui);font-size:13.5px;color:var(--muted);text-align:left}
   #keys div{display:flex;justify-content:space-between;gap:10px;border-bottom:1px solid rgba(242,231,207,.08);padding:3px 0}
@@ -206,6 +212,19 @@
       <button class="act" id="btnMaster">Master Mode: Off</button>
       <button class="act" id="btnMusic">Music: On</button>
     </div>
+    <nav id="roadmaps">
+      <span class="rmlabel">Roadmaps</span>
+      <a href="https://github.com/cmadisons/arcade/issues/1" target="_blank" rel="noopener" title="Rendering, sound, feel">1</a>
+      <a href="https://github.com/cmadisons/arcade/issues/2" target="_blank" rel="noopener" title="Content, systems, bugs">2</a>
+      <a href="https://github.com/cmadisons/arcade/issues/3" target="_blank" rel="noopener" title="Exact: bugs and colours">3</a>
+      <a href="https://github.com/cmadisons/arcade/issues/4" target="_blank" rel="noopener" title="Link, armour, chests">4</a>
+      <a href="https://github.com/cmadisons/arcade/issues/5" target="_blank" rel="noopener" title="Every armour, the map">5</a>
+      <a href="https://github.com/cmadisons/arcade/issues/6" target="_blank" rel="noopener" title="Materials, tower, ledges">6</a>
+      <a href="https://github.com/cmadisons/arcade/issues/7" target="_blank" rel="noopener" title="The walkthrough">7</a>
+      <a href="https://github.com/cmadisons/arcade/issues/8" target="_blank" rel="noopener" title="Chapters 4 to 15">8</a>
+      <a href="https://github.com/cmadisons/arcade/issues/9" target="_blank" rel="noopener" title="Blocked — I need you">9</a>
+      <a class="all" href="https://github.com/cmadisons/arcade/issues" target="_blank" rel="noopener">All nine</a>
+    </nav>
     <div id="keys">
       <div><span>Move</span><k>↑ ← ↓ →</k></div>
       <div><span>Skip the Shrine of Resurrection</span><k>S</k></div>
