@@ -26136,5 +26136,181 @@ mainState();
 console.log('main quests: '+MAIN.length+' by name, tracked one marked on the map (Shift+J cycles)');
 </script>
 
+<script>
+"use strict";
+/* ================= BATCH 141 — Roadmap 8 B–E: the way onto each Divine Beast ================= */
+/* Each beast had a door you could simply walk into. Each now has the chapter's own way in:
+   Sidon's back and the Lynel's shock arrows at Ruta, Yunobo's cannon on Death Mountain,
+   Riju's sand seal and the Thunder Helm at Naboris, and Teba's flight at Medoh. */
+const APPROACH={ruta:{},rudania:{},naboris:{},medoh:{},state:{}};
+(function ploymusLynel(){
+  const Z=REGIONS.zora;
+  let x=Z.x+220, z=Z.z-260, best=-1e9;
+  for(let t=0;t<200;t++){ const a=rnd()*TAU, r=180+rnd()*260;
+    const px=Z.x+Math.cos(a)*r, pz=Z.z+Math.sin(a)*r;
+    const y=groundAt(px,pz); if(y>best&&!onPlateau(px,pz)){ best=y; x=px; z=pz; } }
+  PLACES['Ploymus Mountain']={x,z}; PLACES_NAMED.push(['Ploymus Mountain',x,z,'mountain']);
+  const E=makeEnemy({t:'redLynel',x:Math.round(x),z:Math.round(z)});
+  if(E){ E.ploymus=true; APPROACH.lynel=E; }
+  /* the tree behind it is stuck full of shock arrows */
+  const g=new THREE.Group(); g.position.set(x+6,groundAt(x+6,z+4),z+4); world.add(g);
+  const trunk=new THREE.Mesh(new THREE.CylinderGeometry(.5,.7,7,7),MAT.wood); trunk.position.y=3.5; g.add(g.userData?g.userData:trunk);
+  g.add(trunk);
+  for(let i=0;i<8;i++){ const a=i/8*TAU;
+    const arr=new THREE.Mesh(new THREE.CylinderGeometry(.05,.05,1.2,5),
+      new THREE.MeshPhongMaterial({color:0xe3d055,flatShading:true,emissive:0x3a3208}));
+    arr.position.set(Math.cos(a)*.8,3+Math.sin(i)*1.4,Math.sin(a)*.8); arr.rotation.z=Math.PI/2; arr.rotation.y=-a; g.add(arr); }
+  IA({kind:'shockTree',x:x+6,z:z+4,y:groundAt(x+6,z+4)+3,r:4,label:'Shock arrows in the tree'});
+  console.log('Ploymus Mountain: a Lynel and a tree full of shock arrows above Zora’s Domain');
+})();
+/* Sidon waits at the Domain and carries you up the falls to Ruta */
+(function sidonsBack(){
+  const B=BEASTS.find(b=>b.id==='ruta'); if(!B) return;
+  const Z=REGIONS.zora;
+  const x=Z.x+40, z=Z.z-30, y=groundAt(x,z);
+  IA({kind:'sidon',x,z,y:y+2,r:8,label:'Ride Sidon up the falls'});
+  APPROACH.ruta.need=()=>((P.arrows&&P.arrows['Shock Arrow'])||0)>=5;
+  APPROACH.ruta.hint='Shock arrows first — the Lynel on Ploymus Mountain guards them';
+  console.log('Sidon waits at Zora’s Domain to carry you to Vah Ruta');
+})();
+/* Yunobo's cannon, and the mountain's heat */
+(function yunobosCannon(){
+  const B=BEASTS.find(b=>b.id==='rudania'); if(!B) return;
+  const x=B.x+60, z=B.z+70, y=groundAt(x,z);
+  const g=new THREE.Group(); g.position.set(x,y,z); world.add(g);
+  const metal=new THREE.MeshPhongMaterial({color:0x5a5148,flatShading:true,shininess:24});
+  const barrel=new THREE.Mesh(new THREE.CylinderGeometry(1.1,1.4,5,10),metal);
+  barrel.rotation.z=Math.PI/2.6; barrel.position.y=2.2; barrel.castShadow=true; g.add(barrel);
+  const base=new THREE.Mesh(new THREE.BoxGeometry(3.2,1.4,3.2),metal); base.position.y=.7; g.add(base);
+  IA({kind:'yunoboCannon',x,z,y:y+2,r:6,label:'Fire Yunobo at Rudania'});
+  APPROACH.rudania.need=()=>(APPROACH.state.yunobo||0)>=3;
+  APPROACH.rudania.hint='Yunobo must knock Rudania down first — three shots from the cannon';
+  console.log('Yunobo’s cannon stands below Vah Rudania');
+})();
+/* Gerudo Town's gate, the Yiga hideout and Riju's sand seal */
+(function gerudoChapter(){
+  const G=REGIONS.gerudoTown;
+  /* the guards at the gate */
+  const gx=G.x, gz=G.z+70, gy=groundAt(gx,gz);
+  IA({kind:'gerudoGate',x:gx,z:gz,y:gy+2,r:14,label:'The gate guards of Gerudo Town'});
+  const wearingGerudo=()=>['head','body','legs'].every(sl=>/Gerudo|Voe Outfitter|Vai/i.test(P.armor[sl]||''));
+  APPROACH.gerudoOK=wearingGerudo;
+  { const _up=updatePlayer;
+    updatePlayer=function(dt){
+      const r=_up.apply(this,arguments);
+      if(P.playing&&!P.inShrine&&!P.inRes){
+        const d=Math.hypot(P.pos.x-G.x,P.pos.z-G.z);
+        if(d<55&&!wearingGerudo()){
+          /* turned away at the gate */
+          const push=Math.atan2(P.pos.z-G.z,P.pos.x-G.x);
+          P.pos.x=G.x+Math.cos(push)*56; P.pos.z=G.z+Math.sin(push)*56;
+          if(!APPROACH.state.turnedAway||performance.now()-APPROACH.state.turnedAway>6000){
+            APPROACH.state.turnedAway=performance.now();
+            toast('“Only vai may enter Gerudo Town.” — you need the Gerudo set','bad');
+          }
+        }
+      }
+      return r;
+    };
+  }
+  /* the Yiga hideout in the canyon, with the stolen Thunder Helm inside */
+  const hx=REGIONS.wasteland.x+700, hz=REGIONS.wasteland.z-520;
+  const y=groundAt(hx,hz);
+  const g=new THREE.Group(); g.position.set(hx,y,hz); world.add(g);
+  const rock=new THREE.MeshPhongMaterial({color:0x6a5a48,flatShading:true,shininess:4});
+  for(let i=0;i<10;i++){ const a=i/10*TAU;
+    const b=new THREE.Mesh(new THREE.DodecahedronGeometry(3.4,0),rock);
+    b.position.set(Math.cos(a)*9,1.8,Math.sin(a)*9); b.castShadow=true; g.add(b); }
+  const banner=new THREE.Mesh(new THREE.PlaneGeometry(4,6),
+    new THREE.MeshLambertMaterial({color:0xb4303c,side:THREE.DoubleSide}));
+  banner.position.set(0,5,-9); g.add(banner);
+  PLACES['Yiga Clan Hideout']={x:hx,z:hz}; PLACES_NAMED.push(['Yiga Clan Hideout',hx,hz,'hideout']);
+  for(let i=0;i<4;i++){ const a=i/4*TAU;
+    makeEnemy({t:i?'yigaFoot':'yigaBlade',x:Math.round(hx+Math.cos(a)*14),z:Math.round(hz+Math.sin(a)*14)}); }
+  IA({kind:'thunderHelm',x:hx,z:hz,y:y+1.5,r:5,label:'The stolen Thunder Helm'});
+  /* Riju's sand seal to Naboris */
+  const sx=G.x+90, sz=G.z-40;
+  IA({kind:'rijuSeal',x:sx,z:sz,y:groundAt(sx,sz)+1.5,r:8,label:'Ride out to Naboris with Riju'});
+  APPROACH.naboris.need=()=>(APPROACH.state.naborisFeet||0)>=3;
+  APPROACH.naboris.hint='Naboris’ feet must be struck by Riju’s lightning — three of them';
+  console.log('Gerudo Town turns voe away; the Yiga hideout holds the Thunder Helm; Riju’s seal waits');
+})();
+/* Teba's flight to Medoh */
+(function tebasFlight(){
+  const R=REGIONS.rito;
+  const x=R.x-30, z=R.z+40, y=groundAt(x,z);
+  IA({kind:'tebaFlight',x,z,y:y+2,r:8,label:'Fly to Medoh with Teba'});
+  APPROACH.medoh.need=()=>(APPROACH.state.medohCannons||0)>=4;
+  APPROACH.medoh.hint='Medoh’s cannons must come down first — four of them, from the air';
+  console.log('Teba waits at Rito Village to fly for Vah Medoh');
+})();
+/* the way in is barred until its task is done */
+{ const _i=interact;
+  interact=function(){
+    const it=nearest;
+    if(it&&(it.kind==='beast'||it.kind==='beast2')){
+      const id=it.id||({'Divine Beast Vah Rudania':'rudania','Divine Beast Vah Medoh':'medoh','Divine Beast Vah Naboris':'naboris'}[it.name])||'ruta';
+      const A=APPROACH[id];
+      if(A&&A.need&&!A.need()&&!(BEAST_ROOMS[id]&&BEAST_ROOMS[id].beaten)){ toast(A.hint,'bad'); return; }
+    }
+    if(it) switch(it.kind){
+      case 'shockTree':
+        P.arrows['Shock Arrow']=(P.arrows['Shock Arrow']||0)+10;
+        toast('Ten Shock Arrows pulled from the tree','good'); sfx('pickup'); updateGear();
+        { const ix=interactables.indexOf(it); if(ix>=0) interactables.splice(ix,1); }
+        return;
+      case 'sidon': {
+        if(!APPROACH.ruta.need()){ toast(APPROACH.ruta.hint,'bad'); return; }
+        const B=BEASTS.find(b=>b.id==='ruta');
+        cut('Prince Sidon','Climb on! I will carry you up the falls — shoot the ice as it comes!');
+        P.pos.set(B.x+20,groundAt(B.x+20,B.z)+40,B.z); P.vel.set(0,0,0);
+        toast('Sidon carries you to Vah Ruta','good'); return; }
+      case 'yunoboCannon': {
+        APPROACH.state.yunobo=(APPROACH.state.yunobo||0)+1;
+        sfx('boom');
+        if(APPROACH.state.yunobo>=3){ cut('Yunobo','That did it, goro! Rudania is down — get aboard!'); toast('Rudania is grounded','good'); }
+        else toast('Yunobo hits Rudania — '+APPROACH.state.yunobo+' of 3');
+        return; }
+      case 'thunderHelm': {
+        if(!(P.ownedArmor&&P.ownedArmor['Thunder Helm'])) give('Thunder Helm');
+        APPROACH.state.helm=true;
+        cut('Riju','You have it back. Then the seals are ready — Naboris is ours to bring down.');
+        { const ix=interactables.indexOf(it); if(ix>=0) interactables.splice(ix,1); }
+        return; }
+      case 'rijuSeal': {
+        if(!APPROACH.state.helm){ toast('Riju needs the Thunder Helm back first','bad'); return; }
+        APPROACH.state.naborisFeet=(APPROACH.state.naborisFeet||0)+1;
+        sfx('thunder');
+        if(APPROACH.state.naborisFeet>=3){ cut('Riju','Its legs are down! Go — Naboris is yours to board.'); toast('Naboris is kneeling','good'); }
+        else toast('Riju’s lightning strikes a foot — '+APPROACH.state.naborisFeet+' of 3');
+        return; }
+      case 'tebaFlight': {
+        APPROACH.state.medohCannons=(APPROACH.state.medohCannons||0)+1;
+        sfx('flurry');
+        if(APPROACH.state.medohCannons>=4){ cut('Teba','All four cannons are down. Medoh is open — I will hold him steady!'); toast('Medoh’s guns are silent','good');
+          const B=BEASTS.find(b=>b.id==='medoh'); P.pos.set(B.x,groundAt(B.x,B.z)+B.y+12,B.z); }
+        else toast('A cannon falls — '+APPROACH.state.medohCannons+' of 4');
+        return; }
+    }
+    return _i.apply(this,arguments);
+  };
+}
+{ const _p=promptFor;
+  promptFor=function(it){
+    if(it) switch(it.kind){
+      case 'shockTree': return '<b>E</b> Pull the shock arrows out';
+      case 'sidon': return '<b>E</b> Ride Sidon up the falls';
+      case 'yunoboCannon': return '<b>E</b> Fire Yunobo at Rudania · '+(APPROACH.state.yunobo||0)+'/3';
+      case 'thunderHelm': return '<b>E</b> Take back the Thunder Helm';
+      case 'rijuSeal': return '<b>E</b> Strike Naboris’ feet · '+(APPROACH.state.naborisFeet||0)+'/3';
+      case 'tebaFlight': return '<b>E</b> Shoot Medoh’s cannons · '+(APPROACH.state.medohCannons||0)+'/4';
+      case 'gerudoGate': return APPROACH.gerudoOK()?'<b>The guards wave you through</b>':'<b>Only vai may enter</b> — wear the Gerudo set';
+    }
+    return _p.apply(this,arguments);
+  };
+}
+console.log('beast approaches: Sidon and the Lynel, Yunobo’s cannon, Riju’s seals and the Yiga hideout, Teba’s flight');
+</script>
+
 <!-- App Arcade ads + clock (shared, from github.com/cmadisons/app-arcade) -->
 <script src="https://cmadisons.github.io/app-arcade/app-ads.js" data-app="zelda" defer></script>
