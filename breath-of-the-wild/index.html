@@ -25414,5 +25414,137 @@ const MATMODEL={cache:{}};
 })();
 </script>
 
+<script>
+"use strict";
+/* ================= BATCH 133 — Roadmap 6 groups C and E: ledges up the cliff, and the chapter by the book ================= */
+/* C3. The Plateau is a mesa: until now the only way up was the cave. Three staircases of
+   ledges are cut into the cliff — north of the Temple, by the Eastern Abbey, and below
+   Mount Hylia — each a run of shelves you can climb and rest on.
+   E. And the walkthrough's missing pieces: the Hylian Trousers in the north-east ruins,
+   the three DLC chests, the Stone Talus in the Forest of Spirits, the Old Man's Warm
+   Doublet at the peak of Mount Hylia with its Amber rock. */
+const CLIFF={routes:[],shelves:[]};
+let PLATEAU_PEAK=null;
+(function cutLedges(){
+  const stone=new THREE.MeshPhongMaterial({color:0x8a8272,flatShading:true,shininess:4,specular:0x151515});
+  const moss=new THREE.MeshPhongMaterial({color:0x6f8a4a,flatShading:true,shininess:2});
+  const BOXG=new THREE.BoxGeometry(1,1,1);
+  /* find the cliff edge on a bearing out of the middle of the Plateau */
+  const edgeOn=(ang)=>{ let lo=0,hi=1400;
+    for(let k=0;k<20;k++){ const mid=(lo+hi)/2;
+      if(onPlateau(PCX+Math.cos(ang)*mid,PCZ+Math.sin(ang)*mid)) lo=mid; else hi=mid; }
+    return lo; };
+  const ROUTES=[[-0.5,'north of the Temple'],[0.75,'by the Eastern Abbey'],[2.6,'below Mount Hylia']];
+  for(const [ang,name] of ROUTES){
+    const r=edgeOn(ang);
+    const ex=PCX+Math.cos(ang)*r, ez=PCZ+Math.sin(ang)*r;
+    const topY=groundAt(ex-Math.cos(ang)*8,ez-Math.sin(ang)*8);
+    const footY=groundAt(ex+Math.cos(ang)*26,ez+Math.sin(ang)*26);
+    const drop=topY-footY;
+    if(drop<6) continue;
+    const steps=Math.max(4,Math.round(drop/4.5));
+    const route={name,x:ex,z:ez,ang,shelves:[]};
+    for(let i=0;i<steps;i++){
+      const t=(i+.5)/steps;
+      const out=2.5+t*15;                                   /* further out as it goes down */
+      const side=Math.sin(i*1.7)*3.2;                       /* the shelves zig-zag */
+      const x=ex+Math.cos(ang)*out+Math.cos(ang+Math.PI/2)*side;
+      const z=ez+Math.sin(ang)*out+Math.sin(ang+Math.PI/2)*side;
+      const y=topY-drop*t;
+      const g=new THREE.Group(); g.position.set(x,y,z); g.rotation.y=-ang; world.add(g);
+      const slab=new THREE.Mesh(BOXG,stone); slab.scale.set(5.2,.9,3.4); slab.position.y=-.45;
+      slab.castShadow=slab.receiveShadow=true; g.add(slab);
+      const lip=new THREE.Mesh(BOXG,moss); lip.scale.set(5.2,.22,.5); lip.position.set(0,.02,1.5); g.add(lip);
+      const back=new THREE.Mesh(BOXG,stone); back.scale.set(5.2,2.4,1.0); back.position.set(0,.8,-1.6); g.add(back);
+      route.shelves.push({x,z,y,r:2.9});
+      CLIFF.shelves.push({x,z,y,r:2.9});
+    }
+    CLIFF.routes.push(route);
+  }
+  /* the shelves are ground you can stand on */
+  const _ga=groundAt;
+  groundAt=function(x,z){
+    const g=_ga(x,z);
+    if(P.inShrine||P.inRes||!CLIFF.shelves.length) return g;
+    let best=g;
+    for(const s of CLIFF.shelves){
+      const dx=x-s.x, dz=z-s.z;
+      if(dx*dx+dz*dz>s.r*s.r) continue;
+      if(s.y>best&&P.pos.y>=s.y-1.6) best=s.y;
+    }
+    return best;
+  };
+})();
+/* ---- E1/E2: the chests the walkthrough lists ---- */
+(function missingChests(){
+  const made=[];
+  const add=(item,x,z,label,purple)=>{
+    let y=groundAt(x,z);
+    const g=new THREE.Group(); g.position.set(x,y,z); g.rotation.y=rnd()*TAU; world.add(g);
+    const built=CHESTX.make(purple?'metal':'wood');
+    while(built.children.length) g.add(built.children[0]);
+    g.userData.lid=built.userData.lid;
+    if(purple) g.traverse(o=>{ if(o.isMesh&&o.material&&o.material.color&&o.material.color.getHex()===0x6a707a){ o.material=o.material.clone(); o.material.color.setHex(0x6a3f8a); } });
+    IA({kind:'armourChest',item,x,z,y:y+1.2,r:4,label:label||'Open the chest',obj:g});
+    made.push(item);
+  };
+  /* the ruins north-east of the Temple of Time */
+  add('Hylian Trousers',LM.temple.x+120,LM.temple.z-95,'Open the chest');
+  /* the three DLC chests */
+  const near=(L,dx,dz)=>[L.x+dx,L.z+dz];
+  const oman=SHRINES.find(s=>s.id==='oman'), jab=SHRINES.find(s=>s.id==='jabaij'), keh=SHRINES.find(s=>s.id==='keh');
+  if(oman) add('Ruby',oman.x+9,oman.z+6,'A purple chest',true);
+  if(jab) add('Nintendo Switch Shirt',jab.x-10,jab.z+7,'A purple chest',true);
+  if(keh) add('Bomb Arrow',keh.x+12,keh.z-14,'A purple chest',true);
+  void near;
+  console.log('chests added from the walkthrough: '+made.join(', '));
+})();
+/* ---- E3: the Stone Talus in the Forest of Spirits ---- */
+(function talusOnThePlateau(){
+  const F=LM.forest; let x=F.x+40, z=F.z+30;
+  for(let t=0;t<40;t++){ const a=rnd()*TAU, r=30+rnd()*90;
+    const tx=F.x+Math.cos(a)*r, tz=F.z+Math.sin(a)*r;
+    if(onPlateau(tx,tz)&&groundAt(tx,tz)>WATER+2&&slopeAt(tx,tz)<.5){ x=tx; z=tz; break; } }
+  const E=makeEnemy({t:'stoneTalus',x:Math.round(x),z:Math.round(z)});
+  if(E){ E.plateauTalus=true; console.log('Stone Talus sleeping in the Forest of Spirits at '+Math.round(x)+','+Math.round(z)); }
+})();
+/* ---- E5: the Old Man waits at the peak of Mount Hylia with the doublet and an Amber rock ---- */
+(function doubletOnThePeak(){
+  const H=LM.hylia; if(!H) return;
+  let px=H.x, pz=H.z, best=-1e9;
+  for(let t=0;t<200;t++){ const a=rnd()*TAU, r=rnd()*120;
+    const x=H.x+Math.cos(a)*r, z=H.z+Math.sin(a)*r;
+    if(!onPlateau(x,z)) continue;
+    const y=groundAt(x,z); if(y>best){ best=y; px=x; pz=z; } }
+  const y=groundAt(px,pz);
+  /* the rock with amber in it */
+  const g=new THREE.Group(); g.position.set(px+3,y,pz+2); world.add(g);
+  const rock=new THREE.Mesh(new THREE.DodecahedronGeometry(1.5,0),
+    new THREE.MeshPhongMaterial({color:0x7d7568,flatShading:true,shininess:4}));
+  rock.position.y=1.1; rock.castShadow=true; g.add(rock);
+  const vein=new THREE.Mesh(new THREE.OctahedronGeometry(.5,0),
+    new THREE.MeshPhongMaterial({color:0xd79b2e,flatShading:true,emissive:0x3a2a08}));
+  vein.position.set(.5,1.6,.7); g.add(vein);
+  IA({kind:'ore',ore:'amber',mesh:rock,x:px+3,z:pz+2,y:y+1.4,r:3.2,label:'Amber in the rock'});
+  PLATEAU_PEAK={x:px,z:pz,y};
+  /* the doublet is his to give up here, once you reach him */
+  P.doubletPeak=false;
+  const _up=updatePlayer;
+  updatePlayer=function(dt){
+    const r=_up.apply(this,arguments);
+    if(!P.doubletPeak&&P.playing&&!P.inShrine&&!P.inRes&&Math.hypot(P.pos.x-px,P.pos.z-pz)<12&&P.pos.y>y-4){
+      P.doubletPeak=true;
+      if(!(P.ownedArmor&&P.ownedArmor['Warm Doublet'])){
+        cut('The old man','You climbed all the way up here? Then you have earned this — my warm doublet. Mount Hylia does not forgive bare shoulders.');
+        give('Warm Doublet');
+      }
+    }
+    return r;
+  };
+  console.log('Mount Hylia peak at '+Math.round(px)+','+Math.round(pz)+' — the old man’s doublet and an Amber rock');
+})();
+console.log('cliff routes: '+CLIFF.routes.map(r=>r.name+' ('+r.shelves.length+' shelves)').join(', '));
+</script>
+
 <!-- App Arcade ads + clock (shared, from github.com/cmadisons/app-arcade) -->
 <script src="https://cmadisons.github.io/app-arcade/app-ads.js" data-app="zelda" defer></script>
