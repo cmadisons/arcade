@@ -25204,5 +25204,108 @@ const PLATEAU_MAP={shape:null};
 console.log('map: the Great Plateau is outlined, named and lit from the start; markers thin out when zoomed out; audio ramps can no longer hit zero');
 </script>
 
+<script>
+"use strict";
+/* ================= BATCH 131 — Roadmap 6 groups B and C: the Great Plateau Tower ================= */
+/* Built from the photograph: terracotta and weathered bronze stone carved all over, a
+   wide round deck with a raised rim on scalloped brackets, a band of glowing Sheikah
+   script beneath it, blue veins climbing a lattice shaft, and four curved arms rising
+   to the dark cone that carries the pedestal and its glowing screen.
+   The rings stand proud of the shaft as ledges, so the tower can be climbed outside. */
+const TOWER={ledges:[],deckY:0,parts:{}};
+(function rebuildTower(){
+  const g=towerObj; if(!g) return;
+  const keep=g.userData||{};
+  while(g.children.length) g.remove(g.children[0]);
+  const M=(c,o)=>new THREE.MeshPhongMaterial(Object.assign({color:c,flatShading:true,shininess:14,specular:0x20160c},o||{}));
+  const stone=M(0xb4632c), stoneD=M(0x8a4a22), bronze=M(0x6a4a2a), dark=M(0x2a2119),
+        lattice=M(0x7a7f84,{shininess:30}), glow=new THREE.MeshBasicMaterial({color:0x63d6e2}),
+        glowDim=new THREE.MeshBasicMaterial({color:0x2f8fa8});
+  const BOX=new THREE.BoxGeometry(1,1,1), CYLG=new THREE.CylinderGeometry(1,1,1,20),
+        CONE=new THREE.ConeGeometry(1,1,14), TOR=new THREE.TorusGeometry(1,.1,8,26),
+        SPH=new THREE.SphereGeometry(1,14,11);
+  const put=(geo,m,x,y,z,sx,sy,sz,rx,ry,rz)=>{ const o=new THREE.Mesh(geo,m); o.position.set(x,y,z);
+    o.scale.set(sx,sy===undefined?sx:sy,sz===undefined?sx:sz); if(rx||ry||rz) o.rotation.set(rx||0,ry||0,rz||0);
+    o.castShadow=true; o.receiveShadow=true; g.add(o); return o; };
+  const H=92, R0=5.4, R1=3.4;
+  /* ---- the base: carved stone skirt and scrollwork ---- */
+  put(CYLG,stone,0,2.2,0,7.4,4.4,7.4);
+  put(TOR,stoneD,0,4.4,0,7.2,7.2,7.2,Math.PI/2).scale.set(7.2,7.2,1.6);
+  for(let i=0;i<8;i++){ const a=i/8*TAU;
+    put(BOX,stoneD,Math.cos(a)*6.6,3.4,Math.sin(a)*6.6,1.5,3.4,.9,0,-a,0);
+    put(TOR,bronze,Math.cos(a)*6.2,6.0,Math.sin(a)*6.2,1.5,1.5,1.5,Math.PI/2,-a,.5); }
+  /* ---- the shaft: lattice, veins, and rings that double as ledges ---- */
+  const rings=[];
+  for(let i=0;i<11;i++){
+    const t=i/10, r=R0-(R0-R1)*t, y=6+i*7.8;
+    put(CYLG,lattice,0,y+3.9,0,r,7.8,r);
+    /* four veins of light up each length */
+    for(let k=0;k<4;k++){ const a=k/4*TAU+t*.6;
+      put(BOX,glowDim,Math.cos(a)*(r+.02),y+3.9,Math.sin(a)*(r+.02),.22,7.0,.22,0,-a,0); }
+    /* the ring: a stone collar standing proud — this is the ledge */
+    const ring=put(CYLG,stone,0,y+7.8,0,r+1.25,.95,r+1.25);
+    put(TOR,bronze,0,y+7.9,0,r+1.15,r+1.15,r+1.15,Math.PI/2).scale.set(r+1.15,r+1.15,1.1);
+    put(CYLG,glow,0,y+8.32,0,r+.98,.10,r+.98);
+    for(let k=0;k<6;k++){ const a=k/6*TAU+i*.4;
+      put(BOX,stoneD,Math.cos(a)*(r+1.0),y+7.2,Math.sin(a)*(r+1.0),1.1,1.5,.7,0,-a,0); }
+    rings.push(ring);
+    TOWER.ledges.push({y:y+8.3,r:r+1.25});
+  }
+  /* ---- the deck: a wide round platform with a raised rim on scalloped brackets ---- */
+  const deckY=H;
+  TOWER.deckY=deckY;
+  for(let i=0;i<10;i++){ const a=i/10*TAU;                    /* brackets */
+    put(BOX,stone,Math.cos(a)*6.4,deckY-2.6,Math.sin(a)*6.4,2.2,3.2,1.5,0,-a,.55);
+    put(TOR,stoneD,Math.cos(a)*8.0,deckY-1.4,Math.sin(a)*8.0,1.7,1.7,1.7,Math.PI/2,-a,0); }
+  put(CYLG,stoneD,0,deckY-.9,0,9.6,1.1,9.6);                  /* the underside */
+  put(CYLG,glow,0,deckY-.25,0,9.9,.22,9.9);                   /* the script band */
+  put(CYLG,stone,0,deckY+.3,0,10.4,.9,10.4);                  /* the floor */
+  put(TOR,stone,0,deckY+1.1,0,10.2,10.2,10.2,Math.PI/2).scale.set(10.2,10.2,1.5);  /* the rim */
+  for(let i=0;i<14;i++){ const a=i/14*TAU;                    /* curls around the rim */
+    put(TOR,bronze,Math.cos(a)*10.1,deckY+1.5,Math.sin(a)*10.1,1.2,1.2,1.2,Math.PI/2,-a,.8); }
+  /* ---- the crown: four curved arms to the cone, and the pedestal ---- */
+  for(let k=0;k<4;k++){ const a=k/4*TAU+Math.PI/4;
+    for(let s=0;s<5;s++){ const t=s/4, rr=6.2-t*4.6, yy=deckY+1.6+t*7.4;
+      put(BOX,stone,Math.cos(a)*rr,yy,Math.sin(a)*rr,1.5-t*.5,2.2,1.3-t*.4,0,-a,t*.5); } }
+  put(CONE,dark,0,deckY+15.5,0,4.4,9.0,4.4);                  /* the cone */
+  put(CONE,stoneD,0,deckY+10.6,0,4.7,2.6,4.7,Math.PI);        /* its lip */
+  for(let i=0;i<10;i++){ const a=i/10*TAU;
+    put(TOR,bronze,Math.cos(a)*3.9,deckY+12.4,Math.sin(a)*3.9,.9,.9,.9,Math.PI/2,-a,.6); }
+  const ped=put(BOX,dark,0,deckY+8.6,0,4.6,2.6,3.0);
+  const screen=put(BOX,glow,0,deckY+8.7,1.58,3.5,1.5,.12);    /* the Sheikah screen */
+  const eye=put(SPH,glow,0,deckY+8.7,1.66,.62,.62,.16);
+  put(TOR,glow,0,deckY+8.7,1.64,.95,.95,.95,0).scale.set(.95,.95,.12);
+  const beam=new THREE.Mesh(new THREE.CylinderGeometry(1.6,1.6,320,12),
+    new THREE.MeshBasicMaterial({color:0x63d6e2,transparent:true,opacity:.10,depthWrite:false}));
+  beam.position.y=deckY+170; g.add(beam);
+  g.userData={rings,eye,beam,screen,ped,deckY};
+  TOWER.parts={screen,eye,ped};
+  void keep;
+})();
+/* the deck and every ring are solid ground you can stand on */
+(function towerSolids(){
+  const T=towerObj; if(!T) return;
+  const base=new THREE.Vector3(); T.getWorldPosition(base);
+  TOWER.world={x:base.x,z:base.z,y:base.y};
+  const _ga=groundAt;
+  groundAt=function(x,z){
+    const g=_ga(x,z);
+    if(P.inShrine||P.inRes) return g;
+    const dx=x-TOWER.world.x, dz=z-TOWER.world.z, d=Math.hypot(dx,dz);
+    if(d>11.5) return g;
+    let best=g;
+    const y0=TOWER.world.y;
+    /* the deck */
+    if(d<10.4){ const dy=y0+TOWER.deckY+.85; if(P.pos.y>=dy-1.6&&dy>best) best=dy; }
+    /* the ledges: the flat top of each ring */
+    for(const L of TOWER.ledges){
+      if(d<=L.r+.15&&d>=L.r-2.2){ const dy=y0+L.y+.45; if(P.pos.y>=dy-1.4&&dy>best) best=dy; }
+    }
+    return best;
+  };
+})();
+console.log('tower: rebuilt from the photograph — terracotta stone, blue Sheikah glow, deck on scalloped brackets, four arms to the pedestal, '+TOWER.ledges.length+' climbable ledges');
+</script>
+
 <!-- App Arcade ads + clock (shared, from github.com/cmadisons/app-arcade) -->
 <script src="https://cmadisons.github.io/app-arcade/app-ads.js" data-app="zelda" defer></script>
