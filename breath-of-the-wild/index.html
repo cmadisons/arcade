@@ -26448,5 +26448,58 @@ console.log('beast approaches: Sidon and the Lynel, Yunobo’s cannon, Riju’s 
 console.log('group F: memory pictures, the Great Deku Tree and the sword’s thirteen hearts');
 </script>
 
+<script>
+"use strict";
+/* ================= BATCH 143 — Roadmap 9 D1: what the three sets really do ==========
+   You answered D1 on 23 September and chose Breath of the Wild behaviour.
+
+   Evil Spirit (the Phantom Ganon set) IS a Breath of the Wild set, so it gets its
+   real powers: Stealth Up on every piece, and with all three worn, Stal-Enemy
+   Disguise and Bone Attack Up.
+
+   Mystic and Miner's are Tears of the Kingdom sets. Rupee Padding and the glow do
+   not exist in this game, so their Breath of the Wild behaviour is defence and
+   nothing else, and they are deliberately left as they are. That is the answer to
+   D1, not a gap. */
+
+/* --- Stealth Up on each piece, through the sneak stat every other stealth
+       piece already uses (sneak:1 = the Stealth and Dark sets' value) --- */
+for(const n of ['Evil Spirit Mask','Evil Spirit Armor','Evil Spirit Greaves'])
+  if(typeof ARMOR!=='undefined'&&ARMOR[n]) ARMOR[n].sneak=1;
+
+/* --- the set bonus, named in both tables the UI reads --- */
+if(typeof SETBONUS!=='undefined') SETBONUS.evilspirit='Stal-Enemy Disguise · Bone Attack Up';
+if(typeof SET_BONUS!=='undefined') SET_BONUS.evilspirit='stal enemies ignore you · bone weapon damage up';
+
+/* --- Stal-Enemy Disguise: the skeletons take you for one of their own.
+       Every stal enemy already carries stal:true, so this needs no list of names.
+       Hit one and it fights back: damage sets aggroT, and while that is running
+       the disguise is off.  So it hides you; it does not make you safe. --- */
+if(typeof canSee==='function'){
+  const _canSeeD1=canSee;
+  canSee=function(E){
+    if(E&&E.T&&E.T.stal&&E.aggroT<=0&&typeof hasSet==='function'&&hasSet('evilspirit')) return false;
+    return _canSeeD1.apply(this,arguments);
+  };
+}
+
+/* --- Bone Attack Up.  Real BotW gives +30% at the set's base level, and this game
+       does not model bonus upgrade levels, so +30% is the honest figure.  It catches
+       'Dragonbone ...' and 'Dragon Bone Boko Bow' alike. --- */
+function boneSetMult(n){
+  return (typeof hasSet==='function'&&hasSet('evilspirit')&&/bone/i.test(String(n||''))) ? 1.30 : 1;
+}
+if(typeof wStat==='function'){
+  const _wStatD1=wStat;
+  wStat=function(){
+    const s=_wStatD1.apply(this,arguments);
+    const m=boneSetMult(s&&s.n);
+    if(m===1||!s||!s.atk) return s;
+    const o=Object.assign({},s); o.atk=Math.round(o.atk*m); return o;
+  };
+}
+console.log('D1: Evil Spirit — stealth up, Stal-Enemy Disguise, Bone Attack Up; Mystic and Miner’s left as defence only (BotW behaviour)');
+</script>
+
 <!-- App Arcade ads + clock (shared, from github.com/cmadisons/app-arcade) -->
 <script src="https://cmadisons.github.io/app-arcade/app-ads.js" data-app="zelda" defer></script>
