@@ -237,8 +237,8 @@
       <div><span>Aim bow</span><k>Right click</k></div>
       <div><span>Raise shield</span><k>Z</k></div>
       <div><span>Parry</span><k>Z + click</k></div>
-      <div><span>Sidehop</span><k>Z + A/D</k></div>
-      <div><span>Backflip</span><k>Z + S</k></div>
+      <div><span>Sidehop</span><k>Z + ← / →</k></div>
+      <div><span>Backflip</span><k>Z + ↓</k></div>
       <div><span>Throw weapon</span><k>G</k></div>
       <div><span>Mount / dismount</span><k>E</k></div>
       <div><span>Revali’s Gale</span><k>H</k></div>
@@ -7315,8 +7315,13 @@ addEventListener('keydown',e=>{
     if(at) openCook(); else eatMeal(); }
   else if(e.code==='Tab') cycleArrow();
   else if(e.code==='KeyT'){ const w=curW(); if(w&&WEAPONS[w.n].torch){P.torchLit=!P.torchLit;toast(P.torchLit?'Torch lit':'Torch out');} }
-  else if(e.code==='KeyZ'&&(keys.KeyA||keys.KeyD||keys.KeyS)){
-    doDodge(keys.KeyS?'back':keys.KeyA?'left':'right');
+  /* Sidehop and backflip used to read A, D and S.  Those were later made dead
+     keys, and the blocker that does it runs in the capture phase and forces them
+     to "not held" before this handler ever sees them - so both moves had been
+     unreachable, while the controls list went on advertising them.  They live on
+     the arrows you actually walk with now. */
+  else if(e.code==='KeyZ'&&(keys.ArrowLeft||keys.ArrowRight||keys.ArrowDown)){
+    doDodge(keys.ArrowDown?'back':keys.ArrowLeft?'left':'right');
   }
   else if(e.code==='KeyG') throwWeapon();
   else if(e.code==='KeyH') useChampion('revali');
